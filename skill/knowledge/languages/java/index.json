@@ -1,0 +1,62 @@
+[
+  {
+    "id": "java-01",
+    "title": "Unsafe Deserialization via ObjectInputStream",
+    "sink_clue": "ObjectInputStream.readObject / readUnshared on attacker-influenced streams; XMLDecoder.readObject; JSON/YAML deserializers configured with polymorphic type resolution from the payload",
+    "when_to_open": "When auditing Java code: Unsafe Deserialization via ObjectInputStream. Sink: ObjectInputStream.readObject / readUnshared on attacker-influenced streams; XMLDecoder.readObject; JSON/YAML deserializers configured with polymorphic type resolution from the payload"
+  },
+  {
+    "id": "java-02",
+    "title": "Expression Language and JNDI Injection",
+    "sink_clue": "InitialContext.lookup(userInput) and variants of javax.naming.Context methods; ValueExpression/ELProcessor.eval with dynamic expressions; ScriptEngine.eval on attacker-influenced strings",
+    "when_to_open": "When auditing Java code: Expression Language and JNDI Injection. Sink: InitialContext.lookup(userInput) and variants of javax.naming.Context methods; ValueExpression/ELProcessor.eval with dynamic expressions; ScriptEngine.eval on attacker-influenced strings"
+  },
+  {
+    "id": "java-03",
+    "title": "XML External Entity Processing in DocumentBuilder",
+    "sink_clue": "DocumentBuilder.parse / SAXParser.parse / XMLStreamReader (XMLInputFactory-created) / Transformer.transform on untrusted documents where the corresponding factory lacks disallow-doctype-decl, external-general-entities, and external-parameter-entities protections",
+    "when_to_open": "When auditing Java code: XML External Entity Processing in DocumentBuilder. Sink: DocumentBuilder.parse / SAXParser.parse / XMLStreamReader (XMLInputFactory-created) / Transformer.transform on untrusted documents where the corresponding factory lacks disallow-doctype-decl, external-general-entities, and external-parameter-entities protections"
+  },
+  {
+    "id": "java-04",
+    "title": "SQL and JPQL Injection in Statement Execution",
+    "sink_clue": "Statement.executeQuery/executeUpdate with concatenated SQL; EntityManager.createQuery/createNativeQuery with string concatenation; any raw-SQL helper composing ORDER BY or identifier fragments from input",
+    "when_to_open": "When auditing Java code: SQL and JPQL Injection in Statement Execution. Sink: Statement.executeQuery/executeUpdate with concatenated SQL; EntityManager.createQuery/createNativeQuery with string concatenation; any raw-SQL helper composing ORDER BY or identifier fragments from input"
+  },
+  {
+    "id": "java-05",
+    "title": "Path Traversal in File Construction and Zip Extraction",
+    "sink_clue": "new File(baseDir, userInput) / Paths.get(baseDir, userInput) feeding file APIs; ZipInputStream.getNextEntry with entry.getName used as the extraction target unvalidated",
+    "when_to_open": "When auditing Java code: Path Traversal in File Construction and Zip Extraction. Sink: new File(baseDir, userInput) / Paths.get(baseDir, userInput) feeding file APIs; ZipInputStream.getNextEntry with entry.getName used as the extraction target unvalidated"
+  },
+  {
+    "id": "java-06",
+    "title": "Command Execution and Unsafe Reflection",
+    "sink_clue": "Runtime.exec / ProcessBuilder.start with shell-composed strings; Class.forName with a dynamic name followed by reflection; URLClassLoader with attacker-influenced URLs",
+    "when_to_open": "When auditing Java code: Command Execution and Unsafe Reflection. Sink: Runtime.exec / ProcessBuilder.start with shell-composed strings; Class.forName with a dynamic name followed by reflection; URLClassLoader with attacker-influenced URLs"
+  },
+  {
+    "id": "java-07",
+    "title": "Concurrency and Mutable State in Servlets",
+    "sink_clue": "Mutable instance fields in HttpServlet/Filter/singletons holding request or identity data; shared SimpleDateFormat/HashMap instances used from request threads; check-then-act sequences on instance state",
+    "when_to_open": "When auditing Java code: Concurrency and Mutable State in Servlets. Sink: Mutable instance fields in HttpServlet/Filter/singletons holding request or identity data; shared SimpleDateFormat/HashMap instances used from request threads; check-then-act sequences on instance state"
+  },
+  {
+    "id": "java-08",
+    "title": "Boxed Primitive Comparison and Silent Numerical Overflow",
+    "sink_clue": "== / != on Integer/Long wrappers guarding authorization; String.split-derived arrays indexed or counted for access decisions; int arithmetic (sums, multiplies) whose result feeds bounds or quota checks",
+    "when_to_open": "When auditing Java code: Boxed Primitive Comparison and Silent Numerical Overflow. Sink: == / != on Integer/Long wrappers guarding authorization; String.split-derived arrays indexed or counted for access decisions; int arithmetic (sums, multiplies) whose result feeds bounds or quota checks"
+  },
+  {
+    "id": "java-09",
+    "title": "Cryptography and Weak PRNG Misuse",
+    "sink_clue": "new Random() / Math.random() feeding security values; Cipher.getInstance(\"AES\") or explicit ECB or a fixed IV; TrustManager implementations with empty check methods and HostnameVerifier returning true; ==/Arrays.equals on MessageDigest outputs",
+    "when_to_open": "When auditing Java code: Cryptography and Weak PRNG Misuse. Sink: new Random() / Math.random() feeding security values; Cipher.getInstance(\"AES\") or explicit ECB or a fixed IV; TrustManager implementations with empty check methods and HostnameVerifier returning true; ==/Arrays.equals on MessageDigest outputs"
+  },
+  {
+    "id": "java-10",
+    "title": "Servlet and URL Discrepancies in Security Filters",
+    "sink_clue": "Security filters making allow/deny decisions on HttpServletRequest.getRequestURI() / getRequestURL() string prefixes; URL/URI comparisons guarding redirects or fetches; URL.openConnection on attacker-influenced URLs; forward/redirect targets validated only on the original path",
+    "when_to_open": "When auditing Java code: Servlet and URL Discrepancies in Security Filters. Sink: Security filters making allow/deny decisions on HttpServletRequest.getRequestURI() / getRequestURL() string prefixes; URL/URI comparisons guarding redirects or fetches; URL.openConnection on attacker-influenced URLs; forward/redirect targets validated only on the original path"
+  }
+]

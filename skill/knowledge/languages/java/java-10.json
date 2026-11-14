@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "java-10",
+  "title": "Servlet and URL Discrepancies in Security Filters",
+  "language": "java",
+  "platform_conditions": "Jakarta/Javax servlet containers (Tomcat, Jetty, Undertow); exact normalization differences depend on container version, which is why the review must confirm the container's rules",
+  "security_mechanism": "A security filter that decides on getRequestURI() sees the RAW request path while the container later maps the SERVLET path after decoding and normalizing, so /admin;%2fadmin, //admin, /./admin, and %-encoded variants pass the prefix check yet land on the protected resource — the checker and the dispatcher disagree about which resource is being accessed. java.net.URL additionally treats a URL as a string with equals/openStream semantics differing from java.net.URI's RFC-3986 parsing (URL equals resolves hostnames via DNS, URI does not), and URL.openConnection dispatches on the scheme (file:, jar:, http:) so an attacker-controlled URL can pick the file handler; redirects and RequestDispatcher.forward re-enter the filter chain with a different path than the one originally checked.",
+  "source_sink_clues": {
+    "source": "Request paths, query strings, forward/include targets, and URLs taken from requests or configuration for outbound fetches.",
+    "sink": "Security filters making allow/deny decisions on HttpServletRequest.getRequestURI() / getRequestURL() string prefixes; URL/URI comparisons guarding redirects or fetches; URL.openConnection on attacker-influenced URLs; forward/redirect targets validated only on the original path"
+  },
+  "tracking_guards": "Require the decision be made on the container-decoded, normalized path (getServletPath/getPathInfo or the matched mapping) rather than the raw URI, and re-run the check after any forward; require URL allowlist checks on a canonicalized URI with the scheme fixed to https and redirect targets re-validated per hop; confirm container-level encoding rules with the actual container version.",
+  "not_candidate_when": "Authorization is enforced at the resource/mapping level (container or framework security constraints) rather than by string prefixes on the raw URI, the path is decoded and normalized before comparison and re-checked after forwards, or the outbound URL's scheme and host are matched against a fixed allowlist on canonical form.",
+  "synthetic_vulnerable_example": "if (request.getRequestURI().startsWith(\"/admin\")) { checkAdmin(); }",
+  "synthetic_safe_example": "if (request.getServletPath().startsWith(\"/admin\")) { checkAdmin(); }",
+  "public_references": [
+    "CWE-436: Interpretation Conflict — https://cwe.mitre.org/data/definitions/436.html",
+    "CWE-601: URL Redirection to Untrusted Site — https://cwe.mitre.org/data/definitions/601.html",
+    "Java SE documentation: URL — https://docs.oracle.com/javase/8/docs/api/java/net/URL.html",
+    "OWASP Authentication Cheat Sheet (authorization enforcement points) — https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_java_10",
+      "pattern": "request\\.getRequestURI\\(\\)\\.startsWith",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "java-10"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

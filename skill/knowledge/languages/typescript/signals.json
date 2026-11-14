@@ -1,0 +1,72 @@
+[
+  {
+    "pattern_id": "sig_ts_01",
+    "pattern": "req\\.body\\s+as\\s+UserProfile",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "ts-01"
+  },
+  {
+    "pattern_id": "sig_ts_02",
+    "pattern": "const\\s+user:\\s*any\\s*=",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "ts-02"
+  },
+  {
+    "pattern_id": "sig_ts_03",
+    "pattern": "function\\s+isAdmin.*x\\s+is\\s+Admin\\s*\\{\\s*return\\s+true;",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "ts-03"
+  },
+  {
+    "pattern_id": "sig_ts_04",
+    "pattern": "map\\[userKey\\]\\s*=\\s*value",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "ts-04"
+  },
+  {
+    "pattern_id": "sig_ts_05",
+    "pattern": "enum\\s+Role\\s*\\{.*User\\s*=\\s*1",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "ts-05"
+  },
+  {
+    "pattern_id": "sig_ts_06",
+    "pattern": "@ValidateRole\\s+userRole",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "ts-06"
+  },
+  {
+    "pattern_id": "sig_ts_07",
+    "pattern": "verifyPermissions\\(req\\);\\s*next\\(\\);",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "ts-07"
+  },
+  {
+    "pattern_id": "sig_ts_08",
+    "pattern": "function\\s+get\\(id:\\s*string\\):\\s*User",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "ts-08"
+  },
+  {
+    "pattern_id": "sig_ts_09",
+    "pattern": "class\\s+Secret\\s*\\{\\s*private\\s+key",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "ts-09"
+  },
+  {
+    "pattern_id": "sig_ts_10",
+    "pattern": "JSON\\.parse\\(jsonPayload\\)\\.id",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "ts-10"
+  }
+]

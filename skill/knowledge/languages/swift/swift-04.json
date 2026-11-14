@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "swift-04",
+  "title": "Data Race in Concurrency and Actor Reentrancy",
+  "language": "swift",
+  "platform_conditions": "Swift runtime concurrency semantics (actors, Sendable, structured concurrency); applies wherever Swift runs, including iOS/macOS and server-side Swift",
+  "security_mechanism": "An actor suspends at every await and is free to run other messages before the suspended one resumes, so a check performed before an await no longer describes the state when the awaited work returns — the balance check passes twice for two concurrent messages, and both deduct. Marking a type @unchecked Sendable or a property nonisolated(unsafe) silences the compiler's data-race analysis without adding synchronization, turning shared mutable state into a classic unsynchronized race across queues or Tasks. Weaker atomic-ordering mistakes (relaxed ordering where acquire/release was required in the underlying C/ObjC primitives) and lock poisoning/deadlock in mixed GCD/async code complete the same class.",
+  "source_sink_clues": {
+    "source": "Concurrent requests or UI events reaching the same actor/queue; attacker-controlled values that drive two interleaved check-then-act sequences (double-spend, double-redeem, TOCTOU on permission flags).",
+    "sink": "State checks separated from the mutation by an await inside an actor; @unchecked Sendable conformance on stateful types; nonisolated(unsafe) on mutable properties; shared vars mutated from multiple Tasks/DispatchQueues without a lock"
+  },
+  "tracking_guards": "Check the security-relevant condition is re-validated after every await (or the read-check-write sequence is a single non-suspending critical section); check @unchecked Sendable types actually serialize access with a lock or confinement; check permission/authorization flags are not cached in mutable shared state that another request can flip.",
+  "not_candidate_when": "The actor method performs its check and mutation without any intervening await, the shared state is immutable or actor-isolated with no @unchecked escape, or the operation is idempotent so an interleaved second execution cannot change the security outcome.",
+  "synthetic_vulnerable_example": "if balance >= amount { await deduct(); balance -= amount }",
+  "synthetic_safe_example": "/* re-check balance after await */",
+  "public_references": [
+    "CWE-362: Concurrent Execution using Shared Resource with Improper Synchronization — https://cwe.mitre.org/data/definitions/362.html",
+    "CWE-367: Time-of-check Time-of-use (TOCTOU) Race Condition — https://cwe.mitre.org/data/definitions/367.html",
+    "Swift Programming Language guide: Concurrency (actors and Sendable)"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_swift_04",
+      "pattern": "if\\s+balance\\s*>=\\s*amount\\s*\\{\\s*await\\s+deduct\\(\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "swift-04"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

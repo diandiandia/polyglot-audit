@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "id": "go-08",
+  "title": "Unsafe and cgo Lifetime and Pointer Boundary",
+  "language": "go",
+  "platform_conditions": "Go 1.x standard library (unsafe, cgo via C toolchain; unsafe.String and unsafe.Slice require Go 1.20+); applies to all build targets including GOARCH-specific layouts",
+  "security_mechanism": "unsafe.String(&b[0], len(b)) builds a string header over the existing byte slice without copying: the result aliases a mutable buffer, so later writes to b change a 'constant' string (breaking map keys and interning assumptions), and if b is reallocated or escapes the pointer becomes dangling. unsafe.Slice(ptr, len) trusts the caller-supplied length entirely — a length from a C call or a decoded header yields an out-of-bounds slice the GC and bounds checker will not catch. At the cgo boundary, C code cannot keep Go pointers, buffer lengths agreed between Go and C drift apart, and the runtime's cgocheck only catches some of these classes.",
+  "source_sink_clues": {
+    "source": "Lengths and pointers from C return values, binary protocol fields, and decoded headers that reach unsafe constructors.",
+    "sink": "unsafe.String / unsafe.Slice with input-derived pointer/length; unsafe.Pointer arithmetic between Go and C buffers; reflect with unsafe.Pointer to forge values"
+  },
+  "tracking_guards": "Require lengths used in unsafe constructors be validated against the real allocation immediately before the call; prefer an explicit copy (string(b)) over aliasing when the bytes cross a trust boundary; at cgo boundaries check buffers are allocated on the C side or pinned (runtime.Pinner, Go 1.21+) and that both sides agree on the length contract.",
+  "not_candidate_when": "The unsafe conversion's length comes from the same local allocation whose lifetime provably covers the use, the string is copied (string(b)) rather than aliased, the cgo buffer is allocated and sized entirely on the C side with a pinned pointer, or the code path is an isolated reviewed helper unreachable from untrusted input.",
+  "synthetic_vulnerable_example": "str := unsafe.String(&b[0], len(b))",
+  "synthetic_safe_example": "str := string(b) // Safe copy allocation avoiding unsafe pointer escape",
+  "public_references": [
+    "CWE-119: Improper Restriction of Operations within the Bounds of a Memory Buffer — https://cwe.mitre.org/data/definitions/119.html",
+    "Go standard library: unsafe — https://pkg.go.dev/unsafe"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_go_08",
+      "pattern": "unsafe\\.String\\(",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "go-08"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "cpp-02",
+  "title": "Asynchronous Lifetime and Coroutine Data Race",
+  "language": "cpp",
+  "platform_conditions": "C++11 threads and C++20 coroutines on any conforming toolchain; manifestation depends on scheduler timing and memory model",
+  "security_mechanism": "A detached std::thread constructed with `[this]() {...}` captures the raw pointer; when the owning object is destroyed (request ends, parent returns) the still-running thread dereferences freed memory, and there is no join or signal to stop it. The intended fix — enable_shared_from_this — only works when the object is already owned by a shared_ptr and shared_from_this() is called after construction; calling it in a constructor or on a stack object throws or produces an empty weak reference, so a superficially 'fixed' version can still dangle. C++20 coroutines repeat the pattern at co_await boundaries: frame suspension may outlive the caller's scope, so parameters passed by reference and locals referenced across co_await dangle when the coroutine resumes after its parent returned. Non-atomic shared state mutated from the callback is simultaneously a data race (undefined behavior under the C++ memory model).",
+  "source_sink_clues": {
+    "source": "Request lifetime boundaries: completion callbacks, detached workers, timers, and coroutine resumptions that execute after the request context or session object was destroyed.",
+    "sink": "std::thread(...).detach() or stored callback capturing `this`; shared_from_this()/weak_ptr misuse; coroutine lambdas taking reference parameters and referencing locals across co_await"
+  },
+  "tracking_guards": "Check that asynchronous work owns the object through shared_ptr taken via enable_shared_from_this BEFORE launching (and that the object is managed by shared_ptr at all), that detached threads are replaced by scoped joinable threads (std::jthread) or an explicit stop mechanism, and that coroutine parameters are taken by value and no local is referenced across a co_await.",
+  "not_candidate_when": "The thread/callback is joined or awaited before the owner can be destroyed, ownership is carried by a shared_ptr captured by value and the object's lifetime is provably covered, or the coroutine is consumed to completion within the parent scope (no suspension escapes).",
+  "synthetic_vulnerable_example": "std::thread([this]() { this->process(); }).detach();",
+  "synthetic_safe_example": "auto self = shared_from_this(); std::thread([self]() { self->process(); }).detach();",
+  "public_references": [
+    "CWE-416: Use After Free — https://cwe.mitre.org/data/definitions/416.html",
+    "CWE-362: Concurrent Execution using Shared Resource with Improper Synchronization — https://cwe.mitre.org/data/definitions/362.html",
+    "C++ Core Guidelines: CP concurrency rules — https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines",
+    "cppreference: std::enable_shared_from_this — https://en.cppreference.com/w/cpp/memory/enable_shared_from_this"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_cpp_02",
+      "pattern": "std::thread\\(\\[this\\]",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "cpp-02"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "java-04",
+  "title": "SQL and JPQL Injection in Statement Execution",
+  "language": "java",
+  "platform_conditions": "Java SE 8+ (JDBC java.sql / javax.persistence JPQL); applies to any JDBC driver and JPA provider",
+  "security_mechanism": "java.sql.Statement executes the string exactly as passed, so ' + id + ' concatenation composes the value into the SQL text before the database parses it; PreparedStatement instead sends the statement and parameters separately and the driver binds them after parsing, making the boundary structural rather than escaper-dependent. JPQL/SQL via EntityManager.createQuery or createNativeQuery has the same split: named/positional parameters (:id, ?1) are bound out-of-band, while string concatenation lets a quote in the value become query syntax. ORDER BY, table, and column names cannot be parameterized anywhere, so they must come from a server-side allowlist, never from client text.",
+  "source_sink_clues": {
+    "source": "Request parameters, filter/sort field names from the client, and values concatenated into Statement or JPQL strings.",
+    "sink": "Statement.executeQuery/executeUpdate with concatenated SQL; EntityManager.createQuery/createNativeQuery with string concatenation; any raw-SQL helper composing ORDER BY or identifier fragments from input"
+  },
+  "tracking_guards": "Require PreparedStatement with ? placeholders and setString/setInt (or JPA parameter binding via setParameter) for every value; require non-parameterizable identifiers be mapped through a fixed allowlist dictionary from client keys to server-side constants; treat any concatenation in the query string as a candidate.",
+  "not_candidate_when": "All values bind through PreparedStatement or JPA parameter binding, the only concatenated fragments come from a fixed server-side mapping, or the query string is a constant and parameters carry all dynamics.",
+  "synthetic_vulnerable_example": "stmt.executeQuery(\"SELECT * FROM accounts WHERE id = '\" + id + \"'\");",
+  "synthetic_safe_example": "PreparedStatement ps = conn.prepareStatement(\"SELECT * FROM accounts WHERE id = ?\"); ps.setString(1, id);",
+  "public_references": [
+    "CWE-89: Improper Neutralization of Special Elements in SQL Command — https://cwe.mitre.org/data/definitions/89.html",
+    "Oracle Java Tutorials: Using Prepared Statements — https://docs.oracle.com/javase/tutorial/jdbc/basics/prepared.html",
+    "OWASP SQL Injection Prevention Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_java_04",
+      "pattern": "stmt\\.executeQuery\\(.*SELECT",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "java-04"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

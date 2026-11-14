@@ -1,0 +1,211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polyglot-audit.internal/schemas/meta.schema.json",
+  "title": "polyglot-audit schema-subset meta schema",
+  "description": "SWR-025 元 schema；绑定 DSR-007。Meta schema describing the supported JSON Schema keyword subset (DSR-007). Every production schema in this directory must validate against this meta schema; any keyword outside the supported subset fails validation instead of being ignored.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "$id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "type": {
+      "enum": [
+        "object",
+        "array",
+        "string",
+        "integer",
+        "number",
+        "boolean",
+        "null"
+      ]
+    },
+    "required": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": {
+      "oneOf": [
+        {
+          "const": false
+        },
+        {
+          "$ref": "#/$defs/schema"
+        }
+      ]
+    },
+    "properties": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/schema"
+      }
+    },
+    "items": {
+      "$ref": "#/$defs/schema"
+    },
+    "minItems": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "maxItems": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "uniqueItems": {
+      "type": "boolean"
+    },
+    "minLength": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "maxLength": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "minimum": {
+      "type": "number"
+    },
+    "maximum": {
+      "type": "number"
+    },
+    "enum": {
+      "type": "array"
+    },
+    "const": {},
+    "pattern": {
+      "type": "string"
+    },
+    "oneOf": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/schema"
+      }
+    },
+    "$defs": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/schema"
+      }
+    },
+    "$ref": {
+      "type": "string",
+      "pattern": "^#/"
+    }
+  },
+  "$defs": {
+    "schema": {
+      "$id": "#/$defs/schema",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "$schema": {
+          "type": "string"
+        },
+        "$id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "object",
+            "array",
+            "string",
+            "integer",
+            "number",
+            "boolean",
+            "null"
+          ]
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": {
+          "oneOf": [
+            {
+              "const": false
+            },
+            {
+              "$ref": "#/$defs/schema"
+            }
+          ]
+        },
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/schema"
+          }
+        },
+        "items": {
+          "$ref": "#/$defs/schema"
+        },
+        "minItems": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxItems": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "uniqueItems": {
+          "type": "boolean"
+        },
+        "minLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minimum": {
+          "type": "number"
+        },
+        "maximum": {
+          "type": "number"
+        },
+        "enum": {
+          "type": "array"
+        },
+        "const": {},
+        "pattern": {
+          "type": "string"
+        },
+        "oneOf": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/schema"
+          }
+        },
+        "$defs": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/schema"
+          }
+        },
+        "$ref": {
+          "type": "string",
+          "pattern": "^#/"
+        }
+      }
+    }
+  }
+}

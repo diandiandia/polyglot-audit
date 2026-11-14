@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "id": "ruby-05",
+  "title": "Mass Assignment and Parameter Type Confusion",
+  "language": "ruby",
+  "platform_conditions": "Ruby 3.x; MRI — request params are nested Hash/Array structures whose keys, nesting depth and value types the client controls",
+  "security_mechanism": "HTTP parameters arrive as nested hashes with attacker-chosen keys and value types, but Ruby method signatures say nothing about either: code written for params[:user] as a flat hash of strings silently accepts user[role]=admin, or a Hash/Array where a String was expected, because assignment interfaces copy whatever keys they are handed into model attributes or query conditions. Without an explicit permit list, the caller sets any attribute — role, admin, approved — and condition interfaces fed raw nested params change query shape based on the value's runtime type.",
+  "source_sink_clues": {
+    "source": "Form and query bodies with attacker-controlled keys and nesting (user[role]=admin, key[]=...), including JSON request bodies.",
+    "sink": "Model update interfaces fed the raw params hash (update(params[:user]), attributes=), and query condition interfaces receiving raw nested params values"
+  },
+  "tracking_guards": "Require an explicit permit list between the request and the model (params.require(...).permit(:name, :email) style whitelisting); require type checks on params values (is_a?(String), to_s) before they enter comparisons or conditions.",
+  "not_candidate_when": "Only permit-listed scalar keys reach the attribute update, params values are type-validated before use in conditions, or the hash is constructed server-side from known fields.",
+  "synthetic_vulnerable_example": "User.update(params[:user])",
+  "synthetic_safe_example": "User.update(user_params) # using strong_parameters",
+  "public_references": [
+    "CWE-915: Improperly Controlled Modification of Dynamically-Determined Object Attributes — https://cwe.mitre.org/data/definitions/915.html",
+    "OWASP Web Application Security: Mass Assignment cheat sheet family — https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_ruby_05",
+      "pattern": "User\\.update\\(params\\[:user\\]\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "ruby-05"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

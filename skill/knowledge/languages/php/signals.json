@@ -1,0 +1,72 @@
+[
+  {
+    "pattern_id": "sig_php_01",
+    "pattern": "\\$password_hash\\s*==\\s*'0e",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "php-01"
+  },
+  {
+    "pattern_id": "sig_php_02",
+    "pattern": "unserialize\\(\\$_COOKIE",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "php-02"
+  },
+  {
+    "pattern_id": "sig_php_03",
+    "pattern": "include\\(\\$_GET\\['page'\\]",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "php-03"
+  },
+  {
+    "pattern_id": "sig_php_04",
+    "pattern": "system\\('ping.*\\$host",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "php-04"
+  },
+  {
+    "pattern_id": "sig_php_05",
+    "pattern": "\\$pdo->query\\(\\\"SELECT.*\\$email",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "php-05"
+  },
+  {
+    "pattern_id": "sig_php_06",
+    "pattern": "extract\\(\\$_POST\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "php-06"
+  },
+  {
+    "pattern_id": "sig_php_07",
+    "pattern": "echo.*_GET\\['comment'\\]",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "php-07"
+  },
+  {
+    "pattern_id": "sig_php_08",
+    "pattern": "md5\\(\\$password\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "php-08"
+  },
+  {
+    "pattern_id": "sig_php_09",
+    "pattern": "simplexml_load_string\\(.*LIBXML_NOENT",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "php-09"
+  },
+  {
+    "pattern_id": "sig_php_10",
+    "pattern": "strpos\\(.*==\\s*false",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "php-10"
+  }
+]

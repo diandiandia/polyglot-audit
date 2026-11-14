@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "ts-06",
+  "title": "Decorator-Driven Validation Gaps",
+  "language": "typescript",
+  "platform_conditions": "Experimental decorators and emitDecoratorMetadata are compile-time transforms; validation only runs if the framework reads that metadata at runtime",
+  "security_mechanism": "Validation declared purely as decorators (@ValidateRole) is inert data attached to the class: it executes only if the runtime actually loads reflect-metadata, imports the decorator's registering module, and invokes a validation pipeline over the metadata. Omit any of those -- enableMetadata off, tree-shaken side-effect import, no validation bootstrap -- and the compiled handler accepts anything while the source still reads as if a check exists. Missing metadata also fails silently: the validator sees no rules and returns 'valid' rather than erroring.",
+  "source_sink_clues": {
+    "source": "Request bodies and DTOs bound to decorator-annotated classes whose declared rules never execute at runtime.",
+    "sink": "Validation/authorization decorators on properties or handlers that are trusted as enforced without verifying a runtime pipeline consumes them"
+  },
+  "tracking_guards": "Check a runtime validator is bootstrapped (metadata reflect polyfill imported, validation middleware invoked per request) and fails closed; check a test or integration point asserts invalid payloads are actually rejected.",
+  "not_candidate_when": "A test in the same tree demonstrates invalid input is rejected at runtime, validation runs in explicit middleware independent of decorator metadata, or the annotation is documentation-only on an internal type with no external entry point.",
+  "synthetic_vulnerable_example": "@ValidateRole userRole: string;",
+  "synthetic_safe_example": "@ValidateRole userRole: string; // ensure reflect-metadata enabled",
+  "public_references": [
+    "CWE-754: Improper Check for Unusual or Exceptional Conditions — https://cwe.mitre.org/data/definitions/754.html",
+    "CWE-285: Improper Authorization — https://cwe.mitre.org/data/definitions/285.html",
+    "TypeScript Handbook: Decorators — https://www.typescriptlang.org/docs/handbook/decorators.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_ts_06",
+      "pattern": "@ValidateRole\\s+userRole",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "ts-06"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

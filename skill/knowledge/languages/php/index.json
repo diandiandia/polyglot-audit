@@ -1,0 +1,62 @@
+[
+  {
+    "id": "php-01",
+    "title": "Type Juggling and Loose Comparison Bypasses",
+    "sink_clue": "=== vs == distinctions aside: == / != on authenticators; in_array / array_search without $strict=true; switch matching attacker-controlled scalars; strcmp/strlen receiving attacker-chosen argument types",
+    "when_to_open": "When auditing PHP code: Type Juggling and Loose Comparison Bypasses. Sink: === vs == distinctions aside: == / != on authenticators; in_array / array_search without $strict=true; switch matching attacker-controlled scalars; strcmp/strlen receiving attacker-chosen argument types"
+  },
+  {
+    "id": "php-02",
+    "title": "PHP Object Injection via unserialize()",
+    "sink_clue": "unserialize() on attacker-controlled data; is_dir/file_exists/fopen/file_get_contents and friends receiving phar:// paths",
+    "when_to_open": "When auditing PHP code: PHP Object Injection via unserialize(). Sink: unserialize() on attacker-controlled data; is_dir/file_exists/fopen/file_get_contents and friends receiving phar:// paths"
+  },
+  {
+    "id": "php-03",
+    "title": "Local File Inclusion via include/require",
+    "sink_clue": "include/require with a dynamic path; file_get_contents/fopen on an attacker string while allow_url_fopen is on; move_uploaded_file into an attacker-influenced location",
+    "when_to_open": "When auditing PHP code: Local File Inclusion via include/require. Sink: include/require with a dynamic path; file_get_contents/fopen on an attacker string while allow_url_fopen is on; move_uploaded_file into an attacker-influenced location"
+  },
+  {
+    "id": "php-04",
+    "title": "Command and Code Injection via eval/system",
+    "sink_clue": "system / exec / shell_exec / passthru / proc_open / backticks; eval; $fn() and call_user_func with input-derived names; mail() fifth argument",
+    "when_to_open": "When auditing PHP code: Command and Code Injection via eval/system. Sink: system / exec / shell_exec / passthru / proc_open / backticks; eval; $fn() and call_user_func with input-derived names; mail() fifth argument"
+  },
+  {
+    "id": "php-05",
+    "title": "SQL Injection via mysqli/PDO String Interpolation",
+    "sink_clue": "$pdo->query / $pdo->exec / mysqli_query on interpolated strings; query builders receiving concatenated fragments for ORDER BY / LIMIT / column names",
+    "when_to_open": "When auditing PHP code: SQL Injection via mysqli/PDO String Interpolation. Sink: $pdo->query / $pdo->exec / mysqli_query on interpolated strings; query builders receiving concatenated fragments for ORDER BY / LIMIT / column names"
+  },
+  {
+    "id": "php-06",
+    "title": "Global Variable Injection via extract() and parse_str()",
+    "sink_clue": "extract() on superglobals; parse_str() without a destination array; security checks reading variables name-matched to request keys via $_REQUEST; code trusting $_FILES name/type fields",
+    "when_to_open": "When auditing PHP code: Global Variable Injection via extract() and parse_str(). Sink: extract() on superglobals; parse_str() without a destination array; security checks reading variables name-matched to request keys via $_REQUEST; code trusting $_FILES name/type fields"
+  },
+  {
+    "id": "php-07",
+    "title": "Cross-Site Scripting via Unescaped echo",
+    "sink_clue": "echo/print of unescaped request data; htmlspecialchars calls without ENT_QUOTES or with a charset mismatched to the document; header('Location: '.attacker_url)",
+    "when_to_open": "When auditing PHP code: Cross-Site Scripting via Unescaped echo. Sink: echo/print of unescaped request data; htmlspecialchars calls without ENT_QUOTES or with a charset mismatched to the document; header('Location: '.attacker_url)"
+  },
+  {
+    "id": "php-08",
+    "title": "Weak Cryptography and Deprecated Hash Functions",
+    "sink_clue": "md5/sha1 applied to passwords; rand/mt_rand/uniqid feeding security tokens; == / != comparisons of digests or MACs; missing session_regenerate_id() after authentication state changes",
+    "when_to_open": "When auditing PHP code: Weak Cryptography and Deprecated Hash Functions. Sink: md5/sha1 applied to passwords; rand/mt_rand/uniqid feeding security tokens; == / != comparisons of digests or MACs; missing session_regenerate_id() after authentication state changes"
+  },
+  {
+    "id": "php-09",
+    "title": "XML External Entity Injection in simplexml",
+    "sink_clue": "simplexml_load_string / DOMDocument::loadXML with LIBXML_NOENT; SoapClient constructed with an input URL; curl transfers with input URLs and unrestricted protocol/redirect options",
+    "when_to_open": "When auditing PHP code: XML External Entity Injection in simplexml. Sink: simplexml_load_string / DOMDocument::loadXML with LIBXML_NOENT; SoapClient constructed with an input URL; curl transfers with input URLs and unrestricted protocol/redirect options"
+  },
+  {
+    "id": "php-10",
+    "title": "strpos False vs Zero Comparison Hazard",
+    "sink_clue": "Loose == / != tests of strpos results on security gates; @-suppressed calls whose results feed checks; (int)/intval coercion before authorization decisions; preg_match validators not compared with === 1",
+    "when_to_open": "When auditing PHP code: strpos False vs Zero Comparison Hazard. Sink: Loose == / != tests of strpos results on security gates; @-suppressed calls whose results feed checks; (int)/intval coercion before authorization decisions; preg_match validators not compared with === 1"
+  }
+]

@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "id": "kotlin-03",
+  "title": "Unsafe Deserialization in Intent Extras",
+  "language": "kotlin",
+  "platform_conditions": "Android runtime (API level 1+ for getSerializableExtra/getParcelableExtra; the type-checked variants getSerializableExtra(name, Class) exist from API 33)",
+  "security_mechanism": "Intent extras carrying Serializable/Parcelable objects are deserialized by the OS from the Parcel the sending app wrote, so any app that can reach the component chooses both the class and the field values of the reconstructed object. getSerializableExtra instantiates whatever class name the attacker encoded, which turns every serializable helper class into a gadget: a class whose readObject/equals/toString performs file, network, or command operations is invoked during deserialization or later use. The same trust shape appears with reflection-based binding frameworks that populate Kotlin non-null fields from untrusted bundles, yielding null in fields the type system promised are non-null.",
+  "source_sink_clues": {
+    "source": "Extras of Intents delivered by other apps (exported components), deep-link URIs, or bundles restored from untrusted storage/notifications.",
+    "sink": "intent.getSerializableExtra / getParcelableExtra without class validation; Bundle.getSerializable on attacker-supplied bundles; reflective bundle-to-object binding that bypasses constructors"
+  },
+  "tracking_guards": "Check the deserialized object's runtime type against an expected class before use (the API 33+ typed getSerializableExtra(name, MyClass::class.java) variant, or an instanceof check on older levels); check the receiving component is not exported or rejects Intents from untrusted packages (callingPackage checks / signature permissions); check no gadget classes with side-effecting Serializable implementations are reachable.",
+  "not_candidate_when": "The component only receives Intents the app itself created and sends (non-exported, or PendingIntent it filled itself with FLAG_IMMUTABLE), the extra is read with the type-checked API-33+ variant constrained to a concrete data class, or the deserialized object is a plain data holder whose every field is validated before any sensitive use.",
+  "synthetic_vulnerable_example": "val data = intent.getSerializableExtra(\"data\")",
+  "synthetic_safe_example": "val data = IntentCompat.getSerializableExtra(intent, \"data\", MyClass::class.java)",
+  "public_references": [
+    "CWE-502: Deserialization of Untrusted Data — https://cwe.mitre.org/data/definitions/502.html",
+    "Android developer documentation: security tips — https://developer.android.com/privacy-and-security/security-tips"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_kotlin_03",
+      "pattern": "intent\\.getSerializableExtra\\(",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "kotlin-03"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

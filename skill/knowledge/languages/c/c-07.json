@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "c-07",
+  "title": "Error Path and Return Value Dropping Causing Fail-Open",
+  "language": "c",
+  "platform_conditions": "C99/C11 on any hosted toolchain; C has no exceptions, so every failure is signalled only through return values, errno, or out-parameters",
+  "security_mechanism": "Every security-relevant libc call communicates failure through its return value: malloc returns NULL, read/recv return short counts or -1 with EINTR/EAGAIN, and custom validators return a status code. C's calling convention lets the result be discarded silently — a statement expression `verify_signature(cert);` compiles with no diagnostic, so the code proceeds exactly as if the check had passed. Partial reads compound this: a loop that ignores the return of read() processes whatever garbage remained in the buffer, and cleanup jumps that skip rollback on error leave the resource in the privileged state the failure was supposed to undo.",
+  "source_sink_clues": {
+    "source": "Environment and input conditions that trigger the error path: malformed certificates, exhausted memory under request load, signals and EINTR during IO, packets cut short mid-protocol.",
+    "sink": "Security validators and fallible resource calls whose return value is not branched on: verify/authenticate helpers, malloc/read/recv/setuid/seteuid/chmod on privilege-relevant paths"
+  },
+  "tracking_guards": "Check that the return of every security decision function is assigned and branched on with a fail-closed default (deny on error), that read/recv results are checked for both -1 and short counts before the buffer is trusted, and that setuid/chmod/malloc failures abort the privileged operation instead of continuing.",
+  "not_candidate_when": "The return value is consumed and every failure branch exits before any privileged or trust-dependent action, the call cannot fail on the audited path (documented always-success with an assertion enforced at startup), or the dropped result is a non-security diagnostic on a path with no authorization or resource consequence.",
+  "synthetic_vulnerable_example": "verify_signature(cert); proceed_action();",
+  "synthetic_safe_example": "if (!verify_signature(cert)) return -1; proceed_action();",
+  "public_references": [
+    "CWE-252: Unchecked Return Value — https://cwe.mitre.org/data/definitions/252.html",
+    "CWE-754: Improper Check for Unusual or Exceptional Conditions — https://cwe.mitre.org/data/definitions/754.html",
+    "CWE-755: Improper Handling of Exceptional Conditions — https://cwe.mitre.org/data/definitions/755.html",
+    "SEI CERT C Coding Standard: EXP12-C (do not ignore values returned by security functions)"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_c_07",
+      "pattern": "verify_signature\\(cert\\);",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "c-07"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

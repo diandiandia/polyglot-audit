@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "id": "scala-05",
+  "title": "Non-Exhaustive Pattern Matching and Option.get Panic",
+  "language": "scala",
+  "platform_conditions": "Scala 2.13 / Scala 3 standard library on the JVM; MatchError and NoSuchElementException are JVM exceptions terminating request handling",
+  "security_mechanism": "Option.get, head, and Try.get throw on the empty/failure case, so a parsed-and-validated value is assumed present on the strength of a match that never happened -- an attacker who sends the malformed shape causes NoSuchElementException at the guard, and depending on handler wiring the request either dies or, in a catch-all recovery path, proceeds with defaults. A non-exhaustive match throws MatchError for the uncovered case; when the default branch of an exhaustive match grants rather than denies, the unexpected input fails open. Java interop nulls bypass Option semantics entirely: a null returned from a Java method flows into Scala code typed as non-null and detonates later.",
+  "source_sink_clues": {
+    "source": "Payload-derived parse results (Option/Try/Either), enums and sealed hierarchies built from input discriminants, and Java method returns that may be null.",
+    "sink": "Option.get / .head / Try.get / .apply on parsed values; non-exhaustive match on input-driven variants; fail-open default branches in authorization matches"
+  },
+  "tracking_guards": "Check parsed values are consumed via match/map/getOrElse with an explicit deny path, matches over input-driven variants are exhaustive with a deny-all default, and null-prone Java results are wrapped with Option(...) before use.",
+  "not_candidate_when": "The empty case is handled by an explicit deny/default branch, the match is exhaustive over a sealed hierarchy the attacker cannot extend, or the accessor operates on server-constructed values that cannot be empty.",
+  "synthetic_vulnerable_example": "val result = parseInput(data).get",
+  "synthetic_safe_example": "parseInput(data) match { case Some(v) => v; case None => return }",
+  "public_references": [
+    "CWE-755: Improper Handling of Exceptional Conditions — https://cwe.mitre.org/data/definitions/755.html",
+    "CWE-754: Improper Check for Unusual or Exceptional Conditions — https://cwe.mitre.org/data/definitions/754.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_scala_05",
+      "pattern": "parseInput\\(data\\)\\.get",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "scala-05"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

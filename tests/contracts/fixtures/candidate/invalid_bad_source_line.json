@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "candidate_id": "cand-0004",
+  "issue": "py-04",
+  "source": {"path": "a.py", "line": 0, "symbol": "s", "kind": "param", "control": "x"},
+  "sink": {"path": "b.py", "line": 2, "symbol": "t", "kind": "deserialization", "effect": "rce"},
+  "steps": [{"path": "a.py", "line": 1, "role": "source", "note": "n"}],
+  "guard_analysis": "none",
+  "impact_claim": "rce",
+  "open_questions": [],
+  "provenance": {"hunt_tasks": ["task-0001"]}
+}

@@ -1,0 +1,72 @@
+[
+  {
+    "pattern_id": "sig_c_01",
+    "pattern": "strcpy\\(",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "c-01"
+  },
+  {
+    "pattern_id": "sig_c_02",
+    "pattern": "malloc\\(total\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "c-02"
+  },
+  {
+    "pattern_id": "sig_c_03",
+    "pattern": "free\\(ptr\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "c-03"
+  },
+  {
+    "pattern_id": "sig_c_04",
+    "pattern": "struct\\s+Data\\s+d;",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "c-04"
+  },
+  {
+    "pattern_id": "sig_c_05",
+    "pattern": "printf\\([a-zA-Z_]",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "c-05"
+  },
+  {
+    "pattern_id": "sig_c_06",
+    "pattern": "strncpy\\(",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "c-06"
+  },
+  {
+    "pattern_id": "sig_c_07",
+    "pattern": "verify_signature\\(cert\\);",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "c-07"
+  },
+  {
+    "pattern_id": "sig_c_08",
+    "pattern": "access\\(.*W_OK\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "c-08"
+  },
+  {
+    "pattern_id": "sig_c_09",
+    "pattern": "system\\(user_command\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "c-09"
+  },
+  {
+    "pattern_id": "sig_c_10",
+    "pattern": "printf\\(\\\"Signal",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "c-10"
+  }
+]

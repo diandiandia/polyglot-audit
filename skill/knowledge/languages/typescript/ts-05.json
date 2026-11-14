@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "ts-05",
+  "title": "Numeric Enum Traps and Unchecked Literal Unions",
+  "language": "typescript",
+  "platform_conditions": "Numeric enums survive into emitted JS as reverse-mapping objects; const enums are erased -- both behaviors are tsc emit rules, runtime is the compiled JavaScript",
+  "security_mechanism": "A numeric enum parameter is only checked to be 'some number' at runtime: setRole(3.7) or setRole(-1) compiles when the caller holds the value as any/number, and because regular enums emit a lookup object, the runtime value never matches a declared member. const enums are fully erased, so a payload that claims a const-enum-typed field supplies any number with no runtime evidence. String literal unions used for roles or states have the same gap on the wire: the union exists only in the checker, so unvalidated 'admin' strings arrive from payloads and drive privilege checks.",
+  "source_sink_clues": {
+    "source": "Decoded request fields typed as numeric enums, const enums, or string literal unions without a runtime membership check.",
+    "sink": "Functions taking enum/literal-union parameters fed from external data; privilege and state checks comparing against enum members"
+  },
+  "tracking_guards": "Check every enum/literal-union value crossing the boundary is validated with a runtime membership test (a schema enum, Object.values includes, or exhaustive parse) before use; prefer string literal unions validated at parse time over numeric enums.",
+  "not_candidate_when": "The enum value originates in server-side constants and never crosses deserialization, the value passed a validated schema enum parse, or the member cannot affect authorization.",
+  "synthetic_vulnerable_example": "enum Role { User = 1, Admin = 2 }; function setRole(r: Role) { ... }",
+  "synthetic_safe_example": "type Role = 'User' | 'Admin';",
+  "public_references": [
+    "CWE-704: Incorrect Type Conversion or Cast — https://cwe.mitre.org/data/definitions/704.html",
+    "CWE-285: Improper Authorization — https://cwe.mitre.org/data/definitions/285.html",
+    "TypeScript Handbook: Enums — https://www.typescriptlang.org/docs/handbook/enums.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_ts_05",
+      "pattern": "enum\\s+Role\\s*\\{.*User\\s*=\\s*1",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "ts-05"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

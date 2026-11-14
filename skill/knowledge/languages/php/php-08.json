@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "id": "php-08",
+  "title": "Weak Cryptography and Deprecated Hash Functions",
+  "language": "php",
+  "platform_conditions": "PHP 7.4/8.x; password_hash (bcrypt/argon2) and random_bytes (CSPRNG) are available, md5/sha1 remain fast general-purpose hashes often misapplied to passwords",
+  "security_mechanism": "md5 and sha1 are unsalted and designed to be fast: after any leak of the stored digests, offline guessing runs at GPU speeds, so password digests computed with them fall to bulk cracking. password_hash applies bcrypt/argon2 with a per-hash salt and a cost factor that makes verification deliberately slow, which is what makes storage resistant. rand(), mt_rand() and uniqid() (microsecond time plus a small constant component by default) are predictable — mt_range state is recoverable from observed outputs — so tokens and reset codes drawn from them are guessable; random_bytes() draws from the CSPRNG. Comparing digests with == short-circuits at the first differing byte and leaks a timing oracle that recovers authenticators byte by byte.",
+  "source_sink_clues": {
+    "source": "Credential and token material itself: password values, session/reset tokens, API keys, MAC tags generated or compared by the application.",
+    "sink": "md5/sha1 applied to passwords; rand/mt_rand/uniqid feeding security tokens; == / != comparisons of digests or MACs; missing session_regenerate_id() after authentication state changes"
+  },
+  "tracking_guards": "Require password_hash + password_verify for credentials; require random_bytes for any security token; require hash_equals for authenticator comparison; require session_regenerate_id(true) at login and privilege escalation points.",
+  "not_candidate_when": "The fast hash digests non-secret content (file checksums, cache keys), the PRNG output feeds non-security features such as sampling or nonces for display, or the session ID is already regenerated at every privilege transition.",
+  "synthetic_vulnerable_example": "$hash = md5($password);",
+  "synthetic_safe_example": "$hash = password_hash($password, PASSWORD_BCRYPT);",
+  "public_references": [
+    "CWE-327: Use of a Broken or Risky Cryptographic Algorithm — https://cwe.mitre.org/data/definitions/327.html",
+    "CWE-338: Use of Cryptographically Weak Pseudo-Random Number Generator — https://cwe.mitre.org/data/definitions/338.html",
+    "CWE-208: Observable Timing Discrepancy — https://cwe.mitre.org/data/definitions/208.html",
+    "PHP manual: password_hash — https://www.php.net/manual/en/function.password-hash.php",
+    "PHP manual: random_bytes — https://www.php.net/manual/en/function.random-bytes.php"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_php_08",
+      "pattern": "md5\\(\\$password\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "php-08"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

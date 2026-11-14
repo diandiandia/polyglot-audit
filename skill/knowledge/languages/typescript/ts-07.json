@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "ts-07",
+  "title": "Floating Promise in Security Handlers",
+  "language": "typescript",
+  "platform_conditions": "Promise semantics of the JavaScript runtime apply wherever the compiled JavaScript runs (Node.js server handlers, browsers)",
+  "security_mechanism": "verifyPermissions(req) without await starts the check and returns a Promise the handler discards; the next() call runs immediately, so the request is dispatched while the authorization is still pending -- and when the check later resolves or rejects, nothing consumes the result. A rejected permission check becomes an unhandled rejection (crash or log line) while the request already completed. The type signature reveals the bug (Promise<void> discarded) but tsc does not error without lint enforcement, so the hole ships silently.",
+  "source_sink_clues": {
+    "source": "Async authentication/authorization/rate-limit functions invoked in middleware and handlers whose Promise is not awaited.",
+    "sink": "Discarded Promise results before security decisions and sensitive operations in middleware chains"
+  },
+  "tracking_guards": "Check every security-decision call in middleware is awaited before next(); check the codebase enforces no-floating-promises (eslint rule) in CI; check rejections in these handlers fail closed by short-circuiting the response.",
+  "not_candidate_when": "The operation is deliberately parallel with a later await/Promise.all before the guarded branch, the function is synchronous, or the middleware awaits inside a wrapper that propagates rejection into the response path.",
+  "synthetic_vulnerable_example": "app.use((req, res, next) => { verifyPermissions(req); next(); });",
+  "synthetic_safe_example": "app.use(async (req, res, next) => { await verifyPermissions(req); next(); });",
+  "public_references": [
+    "CWE-754: Improper Check for Unusual or Exceptional Conditions — https://cwe.mitre.org/data/definitions/754.html",
+    "CWE-285: Improper Authorization — https://cwe.mitre.org/data/definitions/285.html",
+    "TypeScript Handbook: tsc CLI options (strict family) — https://www.typescriptlang.org/docs/handbook/compiler-options.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_ts_07",
+      "pattern": "verifyPermissions\\(req\\);\\s*next\\(\\);",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "ts-07"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

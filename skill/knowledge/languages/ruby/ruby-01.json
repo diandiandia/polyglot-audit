@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "ruby-01",
+  "title": "Unsafe Deserialization via Marshal.load",
+  "language": "ruby",
+  "platform_conditions": "Ruby 3.x standard library (Marshal, Psych YAML); on Psych 4.x (bundled since Ruby 3.1) YAML.load is an alias for safe_load, while Psych 3.x (Ruby 2.7/3.0) YAML.load permits arbitrary object instantiation",
+  "security_mechanism": "Marshal.load rebuilds the object graph named inside the byte stream, instantiating user-defined classes without running their initialize and then firing serialization hooks along the way, so attacker-chosen instances reach dangerous states and methods — the stdlib documentation itself warns Marshal data must never come from untrusted input. Psych's YAML.load on Psych 3.x resolves tags to arbitrary Ruby classes, giving the same primitive, while YAML.safe_load restricts resolution to permitted classes. The JSON gem's create_additions option likewise re-instantiates classes from json_class tags in the document.",
+  "source_sink_clues": {
+    "source": "Session/state cookies, queued or cached payloads, and any byte stream an attacker can write that reaches a load call.",
+    "sink": "Marshal.load on untrusted bytes; YAML.load (Psych 3.x) without safe_load/permitted_classes; JSON.parse with create_additions: true"
+  },
+  "tracking_guards": "Check that untrusted state uses a data-only format (JSON without create_additions) or YAML.safe_load with an explicit permitted_classes list; check that a signature/HMAC over the payload is verified before any load call and the key is not attacker-readable.",
+  "not_candidate_when": "The bytes are produced and consumed within one trust domain with no network or shared-storage exposure, an HMAC/signature envelope is verified before loading, or safe_load permits only the expected primitive types so no attacker-chosen class can be instantiated.",
+  "synthetic_vulnerable_example": "data = Marshal.load(params[:state])",
+  "synthetic_safe_example": "data = JSON.parse(params[:state])",
+  "public_references": [
+    "CWE-502: Deserialization of Untrusted Data — https://cwe.mitre.org/data/definitions/502.html",
+    "Ruby stdlib documentation: Marshal — https://docs.ruby-lang.org/en/3.2/Marshal.html",
+    "Ruby stdlib documentation: Psych — https://docs.ruby-lang.org/en/3.2/Psych.html",
+    "OWASP Deserialization Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_ruby_01",
+      "pattern": "Marshal\\.load\\(params\\[:state\\]\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "ruby-01"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "kotlin-09",
+  "title": "TLS and TrustManager Bypass in Network Callbacks",
+  "language": "kotlin",
+  "platform_conditions": "javax.net.ssl on JVM and Android runtime (API level 1+ for SSLSocketFactory/X509TrustManager; Network Security Config requires API 24+)",
+  "security_mechanism": "A custom X509TrustManager whose checkServerTrusted body is empty (or only logs) makes every certificate chain accepted, so a machine with a hostile network position — attacker AP, compromised router, malicious proxy — terminates TLS invisibly; a HostnameVerifier returning true removes the hostname match the same way. This is usually added to silence a self-signed-certificate exception in debug and then shipped. Because the trust decision is inside the app, TLS loses its endpoint-authentication property entirely: tokens, session cookies, and user data flow in plaintext to the attacker while the UI still shows a secure connection.",
+  "source_sink_clues": {
+    "source": "The network position itself: any response the attacker substitutes on the path between device and server, accepted because the app disabled chain and hostname validation.",
+    "sink": "sslSocketFactory(untrustedFactory, trustAllManager) / hostnameVerifier { _, _ -> true } / X509TrustManager with empty checkServerTrusted / SSLSocketFactory created from a null-trust SSLContext; cleartext http:// endpoints enabled via usesCleartextTraffic or an ATS-style networkSecurityConfig exception"
+  },
+  "tracking_guards": "Check the installed trust manager actually verifies the chain and throws on failure (or that no custom manager is installed at all); check HostnameVerifier is absent or delegates to the default; check network security config does not blanket-disable cleartext or add user-added CAs for release builds; check certificate pinning (CertificatePinner / networkSecurityConfig pins) for high-value endpoints.",
+  "not_candidate_when": "The trust-all factory is confined to unit tests or debug variants and cannot ship in release builds, the custom manager genuinely validates the chain against a pinned set (self-signed pinning is a legitimate use), or the endpoint carries no secret and only fetches public static content.",
+  "synthetic_vulnerable_example": "builder.sslSocketFactory(trustAllSslSocketFactory, trustAllManager)",
+  "synthetic_safe_example": "builder.certificatePinner(pinner)",
+  "public_references": [
+    "CWE-295: Improper Certificate Validation — https://cwe.mitre.org/data/definitions/295.html",
+    "Android developer documentation: security tips (networking) — https://developer.android.com/privacy-and-security/security-tips",
+    "Android developer documentation: Network Security Config — https://developer.android.com/training/articles/security-config.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_kotlin_09",
+      "pattern": "builder\\.sslSocketFactory\\(trustAll",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "kotlin-09"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

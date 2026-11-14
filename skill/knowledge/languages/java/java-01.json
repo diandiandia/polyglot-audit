@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "java-01",
+  "title": "Unsafe Deserialization via ObjectInputStream",
+  "language": "java",
+  "platform_conditions": "Java SE 8+ standard library; applies wherever Java serialization endpoints exist (servlet apps, RMI, JMS), independent of OS",
+  "security_mechanism": "ObjectInputStream.readObject reads the class descriptor named in the stream, loads that class through the classloader, instantiates it WITHOUT running its normal constructors, and invokes its readObject/defaultReadObject/readResolve hooks. An attacker who controls the stream therefore only needs a gadget class present on the classpath whose deserialization hooks (or subsequent toString/compare/equals invocations) chain into Runtime.exec or template/EL evaluation — the deserializer executes the attacker's chosen code path itself. XMLDecoder performs an analogous reconstruction from XML expression documents, and JSON/YAML binders with polymorphic type metadata (a @class/@type property) reach the same instantiation-through-input shape.",
+  "source_sink_clues": {
+    "source": "Serialized payloads an attacker can write: HTTP cookies/parameters, RMI or JMS endpoints, session stores, uploaded files, queue messages.",
+    "sink": "ObjectInputStream.readObject / readUnshared on attacker-influenced streams; XMLDecoder.readObject; JSON/YAML deserializers configured with polymorphic type resolution from the payload"
+  },
+  "tracking_guards": "Check for a look-ahead deserialization filter: JEP 290 ObjectInputFilter (or a library like a validating ObjectInputStream) with a class allowlist applied BEFORE instantiation, or replacement by a data-only format (JSON into fixed types). Note that filters must reject by default (ALLOWLIST), and a blacklist is not a guard.",
+  "not_candidate_when": "The stream is produced and consumed inside one trust domain with no network or shared-storage exposure, an ObjectInputFilter with an explicit class allowlist is installed on the stream, or the payload is covered by an integrity check (HMAC/signature) verified before deserialization with a key the attacker cannot read.",
+  "synthetic_vulnerable_example": "ObjectInputStream ois = new ObjectInputStream(is); Object obj = ois.readObject();",
+  "synthetic_safe_example": "ValidatingObjectInputStream vois = new ValidatingObjectInputStream(is);",
+  "public_references": [
+    "CWE-502: Deserialization of Untrusted Data — https://cwe.mitre.org/data/definitions/502.html",
+    "Oracle: Secure Coding Guidelines for Java SE, Object Deserialization section — https://www.oracle.com/java/technologies/javase/seccodeguide.html",
+    "Java SE documentation: ObjectInputStream — https://docs.oracle.com/javase/8/docs/api/java/io/ObjectInputStream.html",
+    "OWASP Deserialization Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_java_01",
+      "pattern": "ois\\.readObject\\(",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "java-01"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

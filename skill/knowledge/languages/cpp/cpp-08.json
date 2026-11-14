@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "cpp-08",
+  "title": "Uninitialized Members and Padding Information Leak",
+  "language": "cpp",
+  "platform_conditions": "C++11 and later on any conforming toolchain; padding layout follows the platform ABI (Itanium/SysV, MSVC)",
+  "security_mechanism": "A class with no default member initializers leaves its members indeterminate when default-constructed on the stack or via a raw allocation: reading a field yields whatever bytes occupied the storage, which may be a previous request's data. Two consequences follow: logic reading such a field (an authorization flag, a length) behaves attacker-shiftable, and a whole-object serialize — copying sizeof(S) including the ABI padding the compiler inserts between members — transmits uninitialized padding bytes to the peer, leaking fragments of earlier heap or stack contents. C++11 member initializers and value-initialization `S s{}` close the gap; placement-new into raw storage does not.",
+  "source_sink_clues": {
+    "source": "Objects constructed on request paths without explicit initialization and then serialized, hashed, or copied into responses; padding bytes covered by whole-object copies.",
+    "sink": "memcpy/send/serialize over sizeof(obj) of a default-constructed object; any read of a member that no constructor initialized"
+  },
+  "tracking_guards": "Check that every member has a default member initializer (`int x{0};`) or the constructor initializes all members, that instances are value-initialized (`S s{};`) rather than default constructed, and that serialization copies field-by-field (or via a member-wise serializer) instead of whole-object memcpy of sizeof(S).",
+  "not_candidate_when": "Every constructor initializes every member and value-initialization is used at each instantiation, the object is never serialized beyond its explicitly-written fields, or the type is only used as an internal scratch object whose bytes never leave the process.",
+  "synthetic_vulnerable_example": "struct S { int x; int y; }; S s; serialize(s);",
+  "synthetic_safe_example": "struct S { int x{0}; int y{0}; }; S s{}; serialize(s);",
+  "public_references": [
+    "CWE-457: Use of Uninitialized Variable — https://cwe.mitre.org/data/definitions/457.html",
+    "CWE-908: Use of Uninitialized Resource — https://cwe.mitre.org/data/definitions/908.html",
+    "cppreference: default initialization — https://en.cppreference.com/w/cpp/language/default_initialization",
+    "C++ Core Guidelines: C.41 (initialize in constructors) — https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_cpp_08",
+      "pattern": "struct\\s+S\\s*\\{.*int\\s+x;\\s*int\\s+y;",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "cpp-08"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

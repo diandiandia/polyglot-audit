@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "js-02",
+  "title": "Code Injection via eval and new Function",
+  "language": "javascript",
+  "platform_conditions": "ECMAScript 2020 semantics in Node.js runtime and browsers; identical engine behavior in both",
+  "security_mechanism": "eval and the Function constructor compile their argument as a full program with the caller's scope chain, so an injected expression is indistinguishable from first-party code and can close over in-scope variables. A string argument to setTimeout/setInterval is the same construction delayed. Node's vm module is frequently mistaken for a sandbox, but its contexts share the process: scripts can reach the host objects via the built-in constructor escape chains (this.constructor.constructor) and exit into require('child_process'). Dynamic require(path) / import(specifier) with attacker text loads attacker-chosen modules from the resolver's search path.",
+  "source_sink_clues": {
+    "source": "User-supplied expression or rule strings (template fragments, formula fields, stored 'script' columns), request-derived module names, and persisted strings later handed to eval / new Function / string setTimeout.",
+    "sink": "eval(), new Function(), string-form setTimeout/setInterval, vm.runInNewContext/runInThisContext on untrusted text, dynamic require() / import() with attacker-controlled specifiers"
+  },
+  "tracking_guards": "Check the evaluated text is a compile-time constant and only values are dynamic; check data-shaped inputs are parsed with JSON.parse instead of evaluated; check expression needs are met by a parser/expression library that never calls eval; check dynamic imports resolve from a fixed allowlist of module names.",
+  "not_candidate_when": "The argument is a literal constant in the shipped code, the input is parsed with JSON.parse (data, not code), or require targets are chosen from a fixed internal map keyed by a validated enum value.",
+  "synthetic_vulnerable_example": "const res = eval(userCode);",
+  "synthetic_safe_example": "const res = JSON.parse(userCode);",
+  "public_references": [
+    "CWE-94: Improper Control of Generation of Code — https://cwe.mitre.org/data/definitions/94.html",
+    "CWE-95: Eval Injection — https://cwe.mitre.org/data/definitions/95.html",
+    "Node.js documentation: vm module (execution of untrusted code is not its purpose) — https://nodejs.org/api/vm.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_js_02",
+      "pattern": "eval\\(userCode\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "js-02"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

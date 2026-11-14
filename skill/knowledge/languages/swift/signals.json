@@ -1,0 +1,72 @@
+[
+  {
+    "pattern_id": "sig_swift_01",
+    "pattern": "withUnsafeBytes\\s*\\{\\s*ptr\\s*=",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "swift-01"
+  },
+  {
+    "pattern_id": "sig_swift_02",
+    "pattern": "NSKeyedUnarchiver\\.unarchiveObject\\(",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "swift-02"
+  },
+  {
+    "pattern_id": "sig_swift_03",
+    "pattern": "json\\[\\\"token\\\"\\]\\s+as!\\s+String",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "swift-03"
+  },
+  {
+    "pattern_id": "sig_swift_04",
+    "pattern": "if\\s+balance\\s*>=\\s*amount\\s*\\{\\s*await\\s+deduct\\(\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "swift-04"
+  },
+  {
+    "pattern_id": "sig_swift_05",
+    "pattern": "webView\\.evaluateJavaScript\\(",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "swift-05"
+  },
+  {
+    "pattern_id": "sig_swift_06",
+    "pattern": "UserDefaults\\.standard\\.set\\(secretToken",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "swift-06"
+  },
+  {
+    "pattern_id": "sig_swift_07",
+    "pattern": "baseDir\\.appendingPathComponent\\(userInput\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "swift-07"
+  },
+  {
+    "pattern_id": "sig_swift_08",
+    "pattern": "try\\?\\s+JSONDecoder\\(\\)\\.decode\\(",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "swift-08"
+  },
+  {
+    "pattern_id": "sig_swift_09",
+    "pattern": "NSRange\\(location:\\s*0,\\s*length:\\s*10\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "swift-09"
+  },
+  {
+    "pattern_id": "sig_swift_10",
+    "pattern": "Data\\(capacity:\\s*remoteSize\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "swift-10"
+  }
+]

@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "swift-02",
+  "title": "Objective-C Interop and NSKeyedUnarchiver",
+  "language": "swift",
+  "platform_conditions": "iOS/macOS SDK (Apple frameworks: Foundation NSKeyedUnarchiver, NSPredicate, KVC)",
+  "security_mechanism": "NSKeyedUnarchiver.unarchiveObject(with:) reconstructs whatever class names the serialized data names; because the archive is attacker-supplied bytes, any class conforming to NSSecureCoding-agnostic NSCoder decoding becomes a deserialization gadget, and Foundation classes with side-effecting initWithCoder implementations have a long history of exploitable use. The typed replacement unarchivedObject(ofClass:from:) refuses classes that do not implement NSSecureCoding, closing the class-confusion hole. The same trust mismatch appears across the ObjC bridge: 'as!' downcasts a bridged AnyObject to a concrete type and traps (or worse, mis-types) when the runtime object differs; KVC setValue(_:forKeyPath:) with an external key path reaches arbitrary setters; NSPredicate(format:) with an interpolated string parses the input as a predicate expression language (injection in its own grammar); String(format:) with an external format string is printf-style format injection.",
+  "source_sink_clues": {
+    "source": "Serialized archives from other apps/IPC/pasteboard/network, external strings feeding predicate or format templates, and external key paths.",
+    "sink": "NSKeyedUnarchiver.unarchiveObject(with:); 'as!' on bridged runtime objects; setValue(_:forKeyPath:) with external keys; NSPredicate(format:)/NSExpression(expressionWithFormat:) with interpolated strings; String(format: externalFormat)"
+  },
+  "tracking_guards": "Check deserialization uses NSKeyedUnarchiver.unarchivedObject(ofClass:from:) with an explicit NSSecureCoding class or rejects archives whose classes are not allowlisted; check downcasts use conditional 'as?' with handled failure; check predicate/format strings are built from constants with values bound as arguments (NSPredicate(value:) is still a format — require escaping or constant formats) and key paths come from a fixed allowlist.",
+  "not_candidate_when": "The archive was produced and consumed inside the same app with no IPC/pasteboard exposure, decoding is constrained to one NSSecureCoding data class of plain properties, or the predicate/format templates are compile-time constants and only argument values are dynamic.",
+  "synthetic_vulnerable_example": "let obj = NSKeyedUnarchiver.unarchiveObject(with: data)",
+  "synthetic_safe_example": "let obj = try NSKeyedUnarchiver.unarchivedObject(ofClass: SafeClass.self, from: data)",
+  "public_references": [
+    "CWE-502: Deserialization of Untrusted Data — https://cwe.mitre.org/data/definitions/502.html",
+    "CWE-704: Incorrect Type Conversion or Cast — https://cwe.mitre.org/data/definitions/704.html",
+    "Apple developer documentation: NSKeyedUnarchiver — https://developer.apple.com/documentation/foundation/nskeyedunarchiver",
+    "Apple developer documentation: NSPredicate — https://developer.apple.com/documentation/foundation/nspredicate"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_swift_02",
+      "pattern": "NSKeyedUnarchiver\\.unarchiveObject\\(",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "swift-02"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

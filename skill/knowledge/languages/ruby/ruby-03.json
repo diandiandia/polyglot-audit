@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "ruby-03",
+  "title": "Command Injection in Kernel#open and System Backticks",
+  "language": "ruby",
+  "platform_conditions": "Ruby 3.x standard library; MRI on POSIX (Kernel#open and IO.read detect a leading pipe character regardless of intent)",
+  "security_mechanism": "Kernel#open and IO.read treat a string beginning with '|' as a command line and spawn it through the shell, so a filename parameter that an attacker prefixes with '| ' becomes command execution without any shell API appearing in the code. system, exec, backticks, %x and IO.popen/Open3 invoked with a single interpolated string likewise pass the whole text to /bin/sh, letting ; | $() split or append commands. File.open and FileUtils do not perform the pipe check, so the sink choice — Kernel#open versus File.open — decides exploitability.",
+  "source_sink_clues": {
+    "source": "Request-derived file names, command fragments and arguments reaching these APIs directly or through interpolation.",
+    "sink": "Kernel#open(attacker_string); IO.read(attacker_string); system / exec / backticks / %x; IO.popen and Open3 calls with a single shell string"
+  },
+  "tracking_guards": "Require array-form IO.popen/Open3 with a fixed argv[0]; require File.open/FileUtils (no pipe processing) for genuine file access; require input validation that rejects a leading '|' and shell metacharacters before any string form is used.",
+  "not_candidate_when": "File access goes through File.open/FileUtils which never spawn shells, command arguments are passed as array elements with a constant executable, or the value is validated to contain no leading pipe and no shell metacharacters before use.",
+  "synthetic_vulnerable_example": "open(\"|\" + params[:file_cmd]).read",
+  "synthetic_safe_example": "IO.popen([\"/bin/safe\", params[:arg]]).read",
+  "public_references": [
+    "CWE-78: Improper Neutralization of Special Elements used in an OS Command — https://cwe.mitre.org/data/definitions/78.html",
+    "Ruby stdlib documentation: Kernel — https://docs.ruby-lang.org/en/3.2/Kernel.html",
+    "Ruby stdlib documentation: IO — https://docs.ruby-lang.org/en/3.2/IO.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_ruby_03",
+      "pattern": "open\\(\\\"\\|\\\"\\s*\\+\\s*params",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "ruby-03"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

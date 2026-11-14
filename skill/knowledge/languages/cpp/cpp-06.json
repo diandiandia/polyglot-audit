@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "cpp-06",
+  "title": "Ownership and Deletion Mismatch",
+  "language": "cpp",
+  "platform_conditions": "C++11 and later on any conforming toolchain; smart-pointer adoption depends on the codebase's C++ standard baseline",
+  "security_mechanism": "`new T[]` must be released with delete[] because the array form stores a count and runs the destructor loop; plain delete on an array pointer runs one destructor and hands a differently-shaped block to the allocator, corrupting the heap. Naked new/delete make ownership implicit, so two code paths that both 'own' the same pointer produce a double free, and a path that forgets its delete leaks until the resource (a lock file, a credential handle) is exhausted. shared_ptr adds its own trap: two shared_ptr instances constructed from the same raw pointer hold two independent control blocks, destroying the object twice when each hits zero.",
+  "source_sink_clues": {
+    "source": "Object lifetimes steered by request flow: early returns, error paths, and re-handoff of buffers between modules, any of which can free or re-take ownership while another path still holds the pointer.",
+    "sink": "delete applied to a new[] pointer; two owners freeing one raw pointer; shared_ptr constructed from a raw pointer already owned elsewhere"
+  },
+  "tracking_guards": "Check that allocation goes through make_unique/make_shared (never naked new held in raw pointers), that array allocations use unique_ptr<T[]> or std::vector, and that no raw pointer that already has an owner is passed to a smart-pointer constructor or deleted a second time.",
+  "not_candidate_when": "The allocation is owned exclusively by a smart pointer and no raw alias is ever deleted, the raw pointer is non-owning (observer) by documented convention and its owner provably outlives all users, or the array is a compile-time constant replaced by std::array/vector.",
+  "synthetic_vulnerable_example": "int *arr = new int[user_len]; delete arr;",
+  "synthetic_safe_example": "auto arr = std::make_unique<int[]>(user_len);",
+  "public_references": [
+    "CWE-404: Improper Resource Shutdown or Release — https://cwe.mitre.org/data/definitions/404.html",
+    "CWE-415: Double Free — https://cwe.mitre.org/data/definitions/415.html",
+    "cppreference: std::unique_ptr — https://en.cppreference.com/w/cpp/memory/unique_ptr",
+    "C++ Core Guidelines: R resource-management rules — https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_cpp_06",
+      "pattern": "delete\\s+arr;",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "cpp-06"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

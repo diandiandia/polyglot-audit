@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "swift-07",
+  "title": "Path Traversal via URL appendingPathComponent",
+  "language": "swift",
+  "platform_conditions": "iOS/macOS SDK (Foundation URL/FileManager) with Swift runtime semantics; sandbox boundary rules are iOS/macOS specific",
+  "security_mechanism": "URL.appendingPathComponent(percentEncoded:) percent-encodes '/' only when the API notices it, and the string-based variants historically kept '../' sequences intact, so a name like '../../Private/doc' appended to a sandbox container URL escapes the intended directory once FileManager resolves the path. Symbolic links inside a writable directory (downloads, documents imported from other apps, archive members) redirect writes outside the sandbox even when the resolved prefix was checked earlier — the check and the write race. Archive extraction trusting member names repeats the class; security-scoped bookmarks resolving to attacker-influenced paths can widen the sandbox boundary the app was granted.",
+  "source_sink_clues": {
+    "source": "File names from other apps (open-in, share extensions), archive entry names, server-supplied download names, and document provider inputs.",
+    "sink": "baseDir.appendingPathComponent(userInput) / FileManager contentsOfDirectory and copyItem at the resolved path; symlink-following writes; archive entry extraction without member validation; predictable temp names in shared containers"
+  },
+  "tracking_guards": "Check the incoming name is stripped to its lastPathComponent or re-validated against a strict pattern before appending; check the final URL's path, after resolving (URL(fileURLWithPath:).standardized / resolvingSymlinksInPath), still has the intended base as its prefix at write time; check archive extraction validates each entry name and the temporary names come from a random generator.",
+  "not_candidate_when": "Names are generated server/app-side (UUIDs) and never taken from the client, the component is reduced to lastPathComponent plus a post-append prefix check on the resolved path, or the destination directory contains no attacker-writable symlinks and the app verified it at write time.",
+  "synthetic_vulnerable_example": "let dest = baseDir.appendingPathComponent(userInput)",
+  "synthetic_safe_example": "let clean = (userInput as NSString).lastPathComponent; let dest = baseDir.appendingPathComponent(clean)",
+  "public_references": [
+    "CWE-22: Improper Limitation of a Pathname to a Restricted Directory — https://cwe.mitre.org/data/definitions/22.html",
+    "CWE-59: Improper Link Resolution Before File Access — https://cwe.mitre.org/data/definitions/59.html",
+    "Apple developer documentation: FileManager — https://developer.apple.com/documentation/foundation/filemanager"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_swift_07",
+      "pattern": "baseDir\\.appendingPathComponent\\(userInput\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "swift-07"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

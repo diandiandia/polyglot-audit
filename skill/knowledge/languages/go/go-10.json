@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "id": "go-10",
+  "title": "Encoding and Parser Discrepancies in JSON and URLs",
+  "language": "go",
+  "platform_conditions": "Go 1.x standard library (encoding/json, net/url, net/http); applies to all build targets",
+  "security_mechanism": "encoding/json matches struct field names case-insensitively when the exact name is absent, so a payload key 'isadmin' populates a field declared as isAdmin — an authorization field the API contract never exposed. Duplicate JSON keys are resolved last-wins with no error, and unknown fields are silently ignored, letting an attacker add privileged fields that a strict decoder would reject. Decoding into interface{} turns every number into float64, so 64-bit IDs above 2^53 lose precision and can collide with another resource's identifier. On the URL side, net/url parses and normalizes differently from browsers and proxies (percent-encoding, backslashes, embedded control characters), and http.Client follows redirects by default, so an allowlist checked on the first request is not enforced on the destination.",
+  "source_sink_clues": {
+    "source": "JSON request bodies, upstream API responses parsed into interface{}, and URLs from clients that pass through redirects or proxies.",
+    "sink": "json.Unmarshal into structs holding security-relevant fields (roles/flags) without DisallowUnknownFields; numeric IDs decoded via interface{} into float64; authorization decisions on net/url-parsed values; http.Client requests that follow redirects from untrusted responses"
+  },
+  "tracking_guards": "Require json.Decoder with DisallowUnknownFields for payloads feeding authorization decisions, and case-sensitive field handling (renamed fields or explicit checks) for privilege-bearing names; require int64/json.Number decoding for 64-bit IDs; require redirect policy that re-applies the host allowlist per hop (CheckRedirect returning an error).",
+  "not_candidate_when": "The struct carries no privilege-relevant fields or unknown fields are rejected, IDs decode as exact-width integers (json.Number/int64), the redirect policy re-validates every hop, or the parsed URL host matches a fixed allowlist after canonicalization on each redirect target.",
+  "synthetic_vulnerable_example": "json.Unmarshal(data, &adminObj)",
+  "synthetic_safe_example": "dec := json.NewDecoder(data); dec.DisallowUnknownFields(); dec.Decode(&adminObj)",
+  "public_references": [
+    "CWE-436: Interpretation Conflict — https://cwe.mitre.org/data/definitions/436.html",
+    "CWE-190: Integer Overflow or Wraparound — https://cwe.mitre.org/data/definitions/190.html",
+    "CWE-601: URL Redirection to Untrusted Site — https://cwe.mitre.org/data/definitions/601.html",
+    "Go standard library: encoding/json — https://pkg.go.dev/encoding/json",
+    "Go standard library: net/url — https://pkg.go.dev/net/url"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_go_10",
+      "pattern": "json\\.Unmarshal\\(data,\\s*&adminObj\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "go-10"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

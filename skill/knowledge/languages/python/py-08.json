@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "py-08",
+  "title": "SSRF and Protocol/Redirect Handling in urllib",
+  "language": "python",
+  "platform_conditions": "CPython 3.x standard library (urllib.request, urllib.parse, ssl); applies to server-side outbound fetchers",
+  "security_mechanism": "urlopen accepts whatever scheme the caller passes, so an attacker-supplied URL can select file://, ftp://, or (on builds still exposing it) other handlers, and urllib follows redirect chains blindly, allowing an approved-https URL to 30x into an internal address or a disallowed scheme. Building an ssl.SSLContext with CERT_NONE / check_hostname=False silently removes server authentication. urllib.parse also normalizes differently from browsers and origin servers (backslashes, embedded whitespace, percent-encoding), so an allowlist decided on parsed components can be evaded by a canonicalization mismatch.",
+  "source_sink_clues": {
+    "source": "URLs, host names, or path strings taken from requests, webhooks, import features, or link-preview fetchers.",
+    "sink": "urllib.request.urlopen / Request.build_opener fetch of an attacker-influenced URL; ssl contexts created with CERT_NONE or check_hostname=False; security decisions based on urllib.parse output without canonicalization"
+  },
+  "tracking_guards": "Check for a scheme allowlist (https only) plus a host allowlist resolved against a DNS-rebinding-safe IP check before the request; check redirects are disabled or re-validated by a custom HTTPRedirectHandler that re-applies the allowlist per hop; check the default SSL context (no CERT_NONE) is kept.",
+  "not_candidate_when": "The URL host is matched against a fixed allowlist after canonicalization and IP resolution, redirects are disabled or re-validated at every hop, and certificate verification remains at defaults; or the fetched URL is constructed entirely from server-side constants.",
+  "synthetic_vulnerable_example": "resp = urllib.request.urlopen(user_url)",
+  "synthetic_safe_example": "if not user_url.startswith(('https://', 'http://')): raise ValueError(); resp = urllib.request.urlopen(user_url)",
+  "public_references": [
+    "CWE-918: Server-Side Request Forgery — https://cwe.mitre.org/data/definitions/918.html",
+    "CWE-295: Improper Certificate Validation — https://cwe.mitre.org/data/definitions/295.html",
+    "CWE-601: URL Redirection to Untrusted Site — https://cwe.mitre.org/data/definitions/601.html",
+    "Python documentation: urllib.request — https://docs.python.org/3/library/urllib.request.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_py_08",
+      "pattern": "urllib\\.request\\.urlopen\\(user_url\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "py-08"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

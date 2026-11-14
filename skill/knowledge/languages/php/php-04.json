@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "id": "php-04",
+  "title": "Command and Code Injection via eval/system",
+  "language": "php",
+  "platform_conditions": "PHP 7.4/8.x on POSIX hosts (system/exec/shell_exec/passthru and backticks shell out via /bin/sh; disable_functions can remove them but is a deployment, not code, guard)",
+  "security_mechanism": "system(), exec(), shell_exec(), passthru(), proc_open() and the backtick operator hand the whole string to /bin/sh -c, so ; | && $() ` in a value like $host terminate the intended command and start attacker-controlled ones. eval() executes attacker text as PHP source directly. Dynamic dispatch constructs — $fn() variable functions, call_user_func with an input-derived name, and $$variable indirection — let the request choose which function runs. mail()'s fifth parameter is appended to the sendmail command line, so a crafted value such as -X/tmp/log invokes sendmail options from the request.",
+  "source_sink_clues": {
+    "source": "Request parameters interpolated into command strings, function/method names, variable variable names, or mail() additional parameters.",
+    "sink": "system / exec / shell_exec / passthru / proc_open / backticks; eval; $fn() and call_user_func with input-derived names; mail() fifth argument"
+  },
+  "tracking_guards": "Require escapeshellarg() on every interpolated value (or proc_open with an argv array) so metacharacters cannot break out; require a fixed allowlist mapping input to callable names before dynamic dispatch; require mail() extra parameters to be compile-time constants.",
+  "not_candidate_when": "The command string is entirely constant, every dynamic value passes through escapeshellarg before interpolation, dispatched function names resolve through a fixed allowlist array, or the eval target is a constant string with only numeric validated input.",
+  "synthetic_vulnerable_example": "system('ping -c 1 ' . $host);",
+  "synthetic_safe_example": "system('ping -c 1 ' . escapeshellarg($host));",
+  "public_references": [
+    "CWE-78: Improper Neutralization of Special Elements used in an OS Command — https://cwe.mitre.org/data/definitions/78.html",
+    "CWE-94: Improper Control of Generation of Code — https://cwe.mitre.org/data/definitions/94.html",
+    "CWE-95: Eval Injection — https://cwe.mitre.org/data/definitions/95.html",
+    "PHP manual: escapeshellarg — https://www.php.net/manual/en/function.escapeshellarg.php",
+    "PHP manual: eval — https://www.php.net/manual/en/function.eval.php"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_php_04",
+      "pattern": "system\\('ping.*\\$host",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "php-04"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

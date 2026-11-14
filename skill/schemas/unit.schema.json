@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polyglot-audit.internal/schemas/unit.schema.json",
+  "description": "SWR-004/SWR-005 版本化数据契约；绑定 DSR-006/007/014/015/056。unit 记录：清点与切块后的分析单元（审计分母）。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "unit_id",
+    "snapshot_id",
+    "component",
+    "language",
+    "ranges",
+    "risk_factors"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "unit_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "component": {
+      "type": "string"
+    },
+    "language": {
+      "type": "string"
+    },
+    "ranges": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "risk_factors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

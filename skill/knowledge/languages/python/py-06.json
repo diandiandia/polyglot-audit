@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "py-06",
+  "title": "XML Entity Expansion, External Entities, and Regex Backtracking",
+  "language": "python",
+  "platform_conditions": "CPython 3.x standard library; xml.etree is vulnerable to expansion but raises on external entity retrieval, unlike xml.sax and xml.dom",
+  "security_mechanism": "Entity declarations in a DTD let a small document reference itself recursively: xml.etree and xml.sax still perform recursive entity expansion (billion-laughs) and quadratic blowup, so a few hundred bytes expand to gigabytes in memory. xml.sax and xml.dom additionally resolve external entities to file:// or http:// targets, giving local file read and SSRF. The same shape of unbounded work exists in re: a crafted input against a vulnerable pattern drives exponential backtracking on one CPU core with no timeout mechanism.",
+  "source_sink_clues": {
+    "source": "XML documents uploaded or posted by clients; regex patterns and subject strings supplied by users.",
+    "sink": "xml.etree.ElementTree.fromstring/parse, xml.sax.parse/parseString, xml.dom.minidom.parseString on untrusted documents; re.match/search with attacker-influenced pattern or unbounded subject"
+  },
+  "tracking_guards": "Verify parsing goes through defusedxml (or an explicit parser with DTD and entity processing disabled) rather than the stdlib defaults; for regex, verify the pattern is a compile-time constant, subject length is capped, and the pattern has no nested quantifiers over overlapping alternations.",
+  "not_candidate_when": "XML comes from a trusted internal producer and DTDs are absent by construction, or defusedxml is used; the regex pattern is constant with no nested quantifiers and the input length is bounded to a few kilobytes.",
+  "synthetic_vulnerable_example": "tree = xml.etree.ElementTree.fromstring(xml_payload)",
+  "synthetic_safe_example": "import defusedxml.ElementTree as ET; tree = ET.fromstring(xml_payload)",
+  "public_references": [
+    "CWE-776: Improper Restriction of Recursive Entity References in DTDs — https://cwe.mitre.org/data/definitions/776.html",
+    "CWE-611: Improper Restriction of XML External Entity Reference — https://cwe.mitre.org/data/definitions/611.html",
+    "CWE-1333: Inefficient Regular Expression Complexity — https://cwe.mitre.org/data/definitions/1333.html",
+    "Python documentation: XML vulnerabilities — https://docs.python.org/3/library/xml.html#xml-vulnerabilities"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_py_06",
+      "pattern": "xml\\.etree\\.ElementTree\\.fromstring\\(",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "py-06"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

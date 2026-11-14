@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "scala-08",
+  "title": "Unbounded Stream and LazyList Resource Exhaustion",
+  "language": "scala",
+  "platform_conditions": "Scala 2.13 / Scala 3 standard library (LazyList, Iterator, scala.util.matching.Regex) on the JVM",
+  "security_mechanism": "LazyList memoizes every evaluated element, so a long-running transform over an unbounded or client-driven stream retains all computed cells -- memory grows monotonically with request volume even though the code reads as lazy. Stream-processing pipelines without a frame-length limit or backpressure accept declared sizes from the wire and allocate ahead of validation; an unbounded actor mailbox queues attacker messages without limit. The collection-side '.r' RichString regex recompiles a pattern on every call and, combined with a nested-quantifier pattern, drives JVM regex backtracking to full CPU on one request thread.",
+  "source_sink_clues": {
+    "source": "Client-driven stream/frame volumes, message rates into actor mailboxes, and subject strings matched against collection-built regexes.",
+    "sink": "LazyList.from(...)/memoized chains over request data; stream/frame reads sized from wire headers without caps; unbounded mailbox receive; .r regex over untrusted strings"
+  },
+  "tracking_guards": "Check frame lengths against fixed caps before allocation, streams are consumed without retaining heads (or use backpressured stream libraries), mailboxes are bounded, and regex patterns are precompiled constants with bounded subjects.",
+  "not_candidate_when": "The lazy sequence is finite and bounded by construction, backpressure or bounded queues are in place upstream, or the regex is a linear pattern over length-capped input.",
+  "synthetic_vulnerable_example": "val stream = LazyList.from(0).map(process)",
+  "synthetic_safe_example": "/* use Akka/FS2 streams with backpressure */",
+  "public_references": [
+    "CWE-400: Uncontrolled Resource Consumption — https://cwe.mitre.org/data/definitions/400.html",
+    "CWE-770: Allocation of Resources Without Limits or Throttling — https://cwe.mitre.org/data/definitions/770.html",
+    "CWE-1333: Inefficient Regular Expression Complexity — https://cwe.mitre.org/data/definitions/1333.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_scala_08",
+      "pattern": "LazyList\\.from\\(0\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "scala-08"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

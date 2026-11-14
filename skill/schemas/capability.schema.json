@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polyglot-audit.internal/schemas/capability.schema.json",
+  "description": "SWR-023 版本化数据契约；绑定 DSR-001/002/003/005/021。capability 记录：探测得到的宿主特性与状态披露，未实测保持 unknown。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "adapter",
+    "adapter_version",
+    "checked_at",
+    "features"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "adapter": {
+      "type": "string",
+      "minLength": 1
+    },
+    "adapter_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "checked_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "features": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "enforced",
+              "not_enforced",
+              "unknown"
+            ]
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

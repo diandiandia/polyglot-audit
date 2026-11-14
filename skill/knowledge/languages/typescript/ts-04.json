@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "id": "ts-04",
+  "title": "Index Signatures Enabling Prototype Pollution",
+  "language": "typescript",
+  "platform_conditions": "Compiles to plain JavaScript property assignment; prototype-chain semantics of the runtime apply wherever the emitted JS runs",
+  "security_mechanism": "Record<string, T> and index-signature types tell the checker any key is acceptable, so map[userKey] = value compiles without question even when userKey is '__proto__'; at runtime that assignment re-points the object's prototype exactly as in the JavaScript prototype-pollution class. Without noUncheckedIndexedAccess, reading users[attackerId] is typed as T rather than T | undefined, so the undefined a miss returns propagates into authorization code as if it were a real record -- and a falsy-but-typed value can pass the wrong check.",
+  "source_sink_clues": {
+    "source": "Client-supplied keys (field names, column names, path segments) used to index or write into typed dictionaries.",
+    "sink": "obj[attackerKey] = value on plain objects typed with index signatures; unguarded reads typed T from Record<string, T> feeding security decisions"
+  },
+  "tracking_guards": "Check keys are validated against an allowlist or matched against a key-pattern grammar before indexing; check storage uses Object.create(null) or Map<string, T>; check noUncheckedIndexedAccess is enabled so reads are T | undefined and handled.",
+  "not_candidate_when": "The key comes from a fixed enum or allowlist, the container is a Map or null-prototype object immune to prototype writes, or the indexed value is re-validated after the read.",
+  "synthetic_vulnerable_example": "const map: Record<string, any> = {}; map[userKey] = value;",
+  "synthetic_safe_example": "const map = new Map<string, any>(); map.set(userKey, value);",
+  "public_references": [
+    "CWE-1321: Improperly Controlled Modification of Dynamically-Determined Object Attributes — https://cwe.mitre.org/data/definitions/1321.html",
+    "TypeScript Handbook: More on Functions & Object Types (index signatures) — https://www.typescriptlang.org/docs/handbook/2/objects.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_ts_04",
+      "pattern": "map\\[userKey\\]\\s*=\\s*value",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "ts-04"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

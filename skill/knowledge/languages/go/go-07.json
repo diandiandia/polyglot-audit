@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "go-07",
+  "title": "Path Traversal in Archive and File Serving",
+  "language": "go",
+  "platform_conditions": "Go 1.x standard library (path/filepath, net/http, archive/zip, archive/tar); applies to all build targets",
+  "security_mechanism": "filepath.Join concatenates and cleans, but Clean never removes leading '..' relative to the joined root, so Join(base, \"../../etc/passwd\") yields a path outside base; a guard written as strings.HasPrefix(clean, \"..\") on the cleaned relative path also misses encoded or absolute variants. http.Dir applies Clean and rejects '..' path elements in URL form, but it follows symlinks inside the served root, so a symlink placed there (e.g. via an upload or archive extraction earlier) escapes to arbitrary files. Archive extraction reintroduces the same flaw: zip/tar entry names with absolute paths or '..' segments (Zip Slip) escape the extraction directory unless each entry name is validated against the destination root.",
+  "source_sink_clues": {
+    "source": "File path parameters, archive entry names from uploaded zips/tars, and URL path segments reaching file-serving handlers.",
+    "sink": "filepath.Join(baseDir, userInput) feeding os.Open/ReadFile or archive extraction targets; http.FileServer/http.Dir over directories that contain or receive attacker-influenced symlinks; zip/tar entry extraction using f.Name unvalidated"
+  },
+  "tracking_guards": "Require a containment check after Join: filepath.Clean then confirm the result is still within baseDir (e.g. filepath.Rel and absence of '..' or an EvalSymlinks-based prefix comparison); require archive extraction to reject entry names that are absolute, contain '..', or whose joined path escapes the destination; prefer serving from an allowlist of files.",
+  "not_candidate_when": "The joined path is verified to remain inside baseDir after cleaning and symlink resolution, archive entries are validated against the destination root before extraction, the file list is a fixed server-side allowlist, or the path component is generated server-side (UUID) with no client input in the path.",
+  "synthetic_vulnerable_example": "target := filepath.Join(baseDir, userInput)",
+  "synthetic_safe_example": "clean := filepath.Clean(userInput); if strings.HasPrefix(clean, \"..\") { return }; target := filepath.Join(baseDir, clean)",
+  "public_references": [
+    "CWE-22: Improper Limitation of a Pathname to a Restricted Directory — https://cwe.mitre.org/data/definitions/22.html",
+    "Go standard library: path/filepath — https://pkg.go.dev/path/filepath",
+    "Go standard library: archive/zip — https://pkg.go.dev/archive/zip"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_go_07",
+      "pattern": "filepath\\.Join\\(baseDir,\\s*userInput\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "go-07"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

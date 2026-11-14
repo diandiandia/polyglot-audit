@@ -1,0 +1,72 @@
+[
+  {
+    "pattern_id": "sig_cpp_01",
+    "pattern": "std::string_view.*std::string\\(",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "cpp-01"
+  },
+  {
+    "pattern_id": "sig_cpp_02",
+    "pattern": "std::thread\\(\\[this\\]",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "cpp-02"
+  },
+  {
+    "pattern_id": "sig_cpp_03",
+    "pattern": "data\\[user_index\\]",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "cpp-03"
+  },
+  {
+    "pattern_id": "sig_cpp_04",
+    "pattern": "vec\\.reserve\\(total\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "cpp-04"
+  },
+  {
+    "pattern_id": "sig_cpp_05",
+    "pattern": "static_cast<Derived\\*>",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "cpp-05"
+  },
+  {
+    "pattern_id": "sig_cpp_06",
+    "pattern": "delete\\s+arr;",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "cpp-06"
+  },
+  {
+    "pattern_id": "sig_cpp_07",
+    "pattern": "throw\\s+std::runtime_error",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "cpp-07"
+  },
+  {
+    "pattern_id": "sig_cpp_08",
+    "pattern": "struct\\s+S\\s*\\{.*int\\s+x;\\s*int\\s+y;",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "cpp-08"
+  },
+  {
+    "pattern_id": "sig_cpp_09",
+    "pattern": "memset\\(&my_obj",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "cpp-09"
+  },
+  {
+    "pattern_id": "sig_cpp_10",
+    "pattern": "delete\\s+b;",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "cpp-10"
+  }
+]

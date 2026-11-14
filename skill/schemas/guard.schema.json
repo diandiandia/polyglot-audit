@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polyglot-audit.internal/schemas/guard.schema.json",
+  "description": "SWR-006 版本化数据契约；绑定 DSR-006/007/024。guard 记录：守卫机制及其适用条件、例外与未知。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "guard_id",
+    "status",
+    "mechanism",
+    "anchors",
+    "applicability",
+    "exceptions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "guard_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "observed",
+        "not_found",
+        "unknown"
+      ]
+    },
+    "mechanism": {
+      "type": "string",
+      "minLength": 1
+    },
+    "anchors": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "applicability": {
+      "type": "string"
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

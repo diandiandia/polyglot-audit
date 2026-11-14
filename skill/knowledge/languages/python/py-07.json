@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "py-07",
+  "title": "Dynamic Typing and Truthiness Traps on Security Checks",
+  "language": "python",
+  "platform_conditions": "CPython 3.x; assert removal occurs whenever the interpreter runs with -O or PYTHONOPTIMIZE set",
+  "security_mechanism": "Python semantics silently weaken several guard idioms. assert is a statement the compiler deletes under -O, so a permission check written as assert disappears entirely in optimized deployments. Truthiness coerces None, 0, '', [] and {} to False, so 'if not user' style checks conflate 'absent' with 'present but empty' and can pass or fail authorization depending on payload shape. == calls __eq__, which attacker-influenced objects can override; a mutable default argument (def check(acl=[])) shares one object across calls, letting an earlier request's state satisfy a later request's check.",
+  "source_sink_clues": {
+    "source": "Deserialized request objects, JSON bodies whose field types the server does not pin (string vs array vs null), and values crossing call boundaries via mutable default arguments.",
+    "sink": "assert used as an authorization/authentication gate; if/while truthiness checks over untrusted collections or IDs on security paths; mutable default arguments holding security state"
+  },
+  "tracking_guards": "Check that authorization outcomes are enforced with explicit comparisons (is None, isinstance, ==/is against an exact expected value) and raised as exceptions rather than assert; check that JSON fields are type-validated before truthiness tests; check default arguments use None sentinels.",
+  "not_candidate_when": "assert guards only internal invariants unreachable from input and deployment never runs with -O, the truthiness check is on a value provably non-empty by construction, or defaults are immutable/None-sentinel and state is per-call.",
+  "synthetic_vulnerable_example": "assert is_admin(user), 'Unauthorized'",
+  "synthetic_safe_example": "if not is_admin(user): raise PermissionError('Unauthorized')",
+  "public_references": [
+    "CWE-617: Reachable Assertion — https://cwe.mitre.org/data/definitions/617.html",
+    "CWE-697: Incorrect Comparison — https://cwe.mitre.org/data/definitions/697.html",
+    "Python documentation: assert statements and -O — https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_py_07",
+      "pattern": "assert\\s+is_admin\\(user\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "py-07"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

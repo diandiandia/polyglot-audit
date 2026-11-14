@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "go-03",
+  "title": "Untrusted Input Triggering Nil Panic in Shared Service",
+  "language": "go",
+  "platform_conditions": "Go 1.x standard library; applies to all build targets (net/http recovers handler panics, but panics in user-spawned goroutines and non-net/http servers terminate the process)",
+  "security_mechanism": "A failed type assertion without the ok form (x := v.(T)) panics; a write to a nil map panics; a nil pointer dereference panics. Unlike exceptions, a panic crosses goroutine boundaries unrecovered: net/http recovers panics inside its own handler goroutine, but any panic in a goroutine the handler spawned, or in a non-net/http service loop (custom TCP servers, gRPC streaming handlers), terminates the whole process. Because the input comes from the request, one malformed payload becomes a remote kill switch for every in-flight request.",
+  "source_sink_clues": {
+    "source": "Request bodies, headers, and decoded JSON/interface{} fields whose type or presence the client controls; missing fields decoded as nil.",
+    "sink": "val := req.Body.(string) style single-value type assertions; writes to possibly-nil maps; index/slice expressions over untrusted indexes; goroutines spawned inside request handling without a recover"
+  },
+  "tracking_guards": "Require the comma-ok assertion form (v, ok := x.(T)) with an explicit ok check before use; require nil-map initialization before writes; require untrusted-index bounds checks or get-with-ok accessors; require either a recover in every spawned goroutine or no goroutines on request paths that process untrusted data.",
+  "not_candidate_when": "All assertions on untrusted values use the comma-ok form, the map is proven non-nil at write sites (initialized in the same function), the server recovers panics around every goroutine it spawns, or the value's type is guaranteed by an upstream decode into a concrete struct.",
+  "synthetic_vulnerable_example": "val := req.Body.(string)",
+  "synthetic_safe_example": "val, ok := req.Body.(string); if !ok { return nil, errors.New(\"invalid\") }",
+  "public_references": [
+    "CWE-755: Improper Handling of Exceptional Conditions — https://cwe.mitre.org/data/definitions/755.html",
+    "CWE-476: NULL Pointer Dereference — https://cwe.mitre.org/data/definitions/476.html",
+    "Go standard library: builtin (type assertions, panic) — https://pkg.go.dev/builtin"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_go_03",
+      "pattern": "req\\.Body\\.\\(string\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "go-03"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

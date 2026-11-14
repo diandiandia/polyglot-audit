@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polyglot-audit.internal/schemas/budget.schema.json",
+  "description": "SWR-019 版本化数据契约；绑定 DSR-006/007/020。budget 记录：分维预算声明（上限、模式、单位、预留、结算与可得性）。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "dimension",
+    "mode",
+    "limit",
+    "settled",
+    "reserved",
+    "unit",
+    "availability"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "dimension": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "enum": [
+        "enforced",
+        "observed",
+        "unavailable"
+      ]
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "settled": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "reserved": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "unit": {
+      "type": "string",
+      "minLength": 1
+    },
+    "availability": {
+      "enum": [
+        "exact",
+        "estimated",
+        "unavailable"
+      ]
+    }
+  }
+}

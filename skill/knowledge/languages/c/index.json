@@ -1,0 +1,62 @@
+[
+  {
+    "id": "c-01",
+    "title": "Out-of-Bounds Memory Access in Buffers",
+    "sink_clue": "strcpy/sprintf/strcat with a fixed-size destination; memcpy/memmove with an attacker-derived n; array indexing a[i] where i is unchecked input",
+    "when_to_open": "When auditing C code: Out-of-Bounds Memory Access in Buffers. Sink: strcpy/sprintf/strcat with a fixed-size destination; memcpy/memmove with an attacker-derived n; array indexing a[i] where i is unchecked input"
+  },
+  {
+    "id": "c-02",
+    "title": "Integer Overflow and Truncation in Allocation",
+    "sink_clue": "malloc/calloc/realloc/alalloca called with a computed size; loop bounds and memcpy sizes derived from the same product",
+    "when_to_open": "When auditing C code: Integer Overflow and Truncation in Allocation. Sink: malloc/calloc/realloc/alalloca called with a computed size; loop bounds and memcpy sizes derived from the same product"
+  },
+  {
+    "id": "c-03",
+    "title": "Use-After-Free and Double-Free in Cleanup Paths",
+    "sink_clue": "free() reached twice for one pointer; dereference or memcpy through a pointer after its free call; re-assignment of a freed pointer into a still-live structure",
+    "when_to_open": "When auditing C code: Use-After-Free and Double-Free in Cleanup Paths. Sink: free() reached twice for one pointer; dereference or memcpy through a pointer after its free call; re-assignment of a freed pointer into a still-live structure"
+  },
+  {
+    "id": "c-04",
+    "title": "Uninitialized Memory Usage and Information Leakage",
+    "sink_clue": "memcpy/send/write of an object that was not fully written; use of a local or malloc'd variable on a path where its initialization call was skipped or partial",
+    "when_to_open": "When auditing C code: Uninitialized Memory Usage and Information Leakage. Sink: memcpy/send/write of an object that was not fully written; use of a local or malloc'd variable on a path where its initialization call was skipped or partial"
+  },
+  {
+    "id": "c-05",
+    "title": "Format String Vulnerability in Output APIs",
+    "sink_clue": "printf/fprintf/snprintf/sprintf/syslog/err* called with a non-literal first (format) argument that carries attacker influence",
+    "when_to_open": "When auditing C code: Format String Vulnerability in Output APIs. Sink: printf/fprintf/snprintf/sprintf/syslog/err* called with a non-literal first (format) argument that carries attacker influence"
+  },
+  {
+    "id": "c-06",
+    "title": "String Termination and Off-by-One Errors",
+    "sink_clue": "strncpy into a fixed buffer followed by strlen/printf/strcpy on that buffer; any strlen on a buffer that is not provably NUL-terminated",
+    "when_to_open": "When auditing C code: String Termination and Off-by-One Errors. Sink: strncpy into a fixed buffer followed by strlen/printf/strcpy on that buffer; any strlen on a buffer that is not provably NUL-terminated"
+  },
+  {
+    "id": "c-07",
+    "title": "Error Path and Return Value Dropping Causing Fail-Open",
+    "sink_clue": "Security validators and fallible resource calls whose return value is not branched on: verify/authenticate helpers, malloc/read/recv/setuid/seteuid/chmod on privilege-relevant paths",
+    "when_to_open": "When auditing C code: Error Path and Return Value Dropping Causing Fail-Open. Sink: Security validators and fallible resource calls whose return value is not branched on: verify/authenticate helpers, malloc/read/recv/setuid/seteuid/chmod on privilege-relevant paths"
+  },
+  {
+    "id": "c-08",
+    "title": "File System Race Conditions and Insecure Temp Files",
+    "sink_clue": "access/stat followed by open/fopen on the same path; mktemp/tempnam/tmpnam; open without O_EXCL|O_NOFOLLOW on attacker-writable directories",
+    "when_to_open": "When auditing C code: File System Race Conditions and Insecure Temp Files. Sink: access/stat followed by open/fopen on the same path; mktemp/tempnam/tmpnam; open without O_EXCL|O_NOFOLLOW on attacker-writable directories"
+  },
+  {
+    "id": "c-09",
+    "title": "Command Execution and Environment Trust",
+    "sink_clue": "system()/popen() with any interpolated content; execv/execl/execvp with attacker-influenced argv or before privilege cleanup",
+    "when_to_open": "When auditing C code: Command Execution and Environment Trust. Sink: system()/popen() with any interpolated content; execv/execl/execvp with attacker-influenced argv or before privilege cleanup"
+  },
+  {
+    "id": "c-10",
+    "title": "Undefined Behavior in Concurrency and Signal Safety",
+    "sink_clue": "Signed overflow arithmetic guarding security checks; reads/writes of shared flags or pointers without atomics or locks; printf/malloc/memcpy and other non-async-signal-safe calls inside signal handlers",
+    "when_to_open": "When auditing C code: Undefined Behavior in Concurrency and Signal Safety. Sink: Signed overflow arithmetic guarding security checks; reads/writes of shared flags or pointers without atomics or locks; printf/malloc/memcpy and other non-async-signal-safe calls inside signal handlers"
+  }
+]

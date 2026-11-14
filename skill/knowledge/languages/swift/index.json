@@ -1,0 +1,62 @@
+[
+  {
+    "id": "swift-01",
+    "title": "Unsafe Pointer Escape and Buffer Bounds",
+    "sink_clue": "withUnsafeBytes { ptr = $0.baseAddress } and any escape of the closure-scoped pointer; bindMemory / assumingMemoryBound on externally sized raw buffers; UnsafeMutablePointer / UnsafeRawBufferPointer arithmetic with input-derived offsets; Unmanaged retain/release imbalance",
+    "when_to_open": "When auditing Swift code: Unsafe Pointer Escape and Buffer Bounds. Sink: withUnsafeBytes { ptr = $0.baseAddress } and any escape of the closure-scoped pointer; bindMemory / assumingMemoryBound on externally sized raw buffers; UnsafeMutablePointer / UnsafeRawBufferPointer arithmetic with input-derived offsets; Unmanaged retain/release imbalance"
+  },
+  {
+    "id": "swift-02",
+    "title": "Objective-C Interop and NSKeyedUnarchiver",
+    "sink_clue": "NSKeyedUnarchiver.unarchiveObject(with:); 'as!' on bridged runtime objects; setValue(_:forKeyPath:) with external keys; NSPredicate(format:)/NSExpression(expressionWithFormat:) with interpolated strings; String(format: externalFormat)",
+    "when_to_open": "When auditing Swift code: Objective-C Interop and NSKeyedUnarchiver. Sink: NSKeyedUnarchiver.unarchiveObject(with:); 'as!' on bridged runtime objects; setValue(_:forKeyPath:) with external keys; NSPredicate(format:)/NSExpression(expressionWithFormat:) with interpolated strings; String(format: externalFormat)"
+  },
+  {
+    "id": "swift-03",
+    "title": "Runtime Traps and Force Unwrapping DoS",
+    "sink_clue": "'!' force unwrap and 'as!' forced downcast on decoded values; 'try!' on parsing calls; array/collection subscripts on untrusted indices; arithmetic on attacker-supplied integers without &+ / &* / checked variants; precondition/fatalError reachable from input; unowned access after await",
+    "when_to_open": "When auditing Swift code: Runtime Traps and Force Unwrapping DoS. Sink: '!' force unwrap and 'as!' forced downcast on decoded values; 'try!' on parsing calls; array/collection subscripts on untrusted indices; arithmetic on attacker-supplied integers without &+ / &* / checked variants; precondition/fatalError reachable from input; unowned access after await"
+  },
+  {
+    "id": "swift-04",
+    "title": "Data Race in Concurrency and Actor Reentrancy",
+    "sink_clue": "State checks separated from the mutation by an await inside an actor; @unchecked Sendable conformance on stateful types; nonisolated(unsafe) on mutable properties; shared vars mutated from multiple Tasks/DispatchQueues without a lock",
+    "when_to_open": "When auditing Swift code: Data Race in Concurrency and Actor Reentrancy. Sink: State checks separated from the mutation by an await inside an actor; @unchecked Sendable conformance on stateful types; nonisolated(unsafe) on mutable properties; shared vars mutated from multiple Tasks/DispatchQueues without a lock"
+  },
+  {
+    "id": "swift-05",
+    "title": "WKWebView JavaScript String Concatenation Injection",
+    "sink_clue": "wkWebView.evaluateJavaScript with an interpolated script string; NSAppleScript(source: externalString).executeAndReturnError; WKScriptMessageHandler message bodies used without validation; custom scheme handlers acting on unvalidated parameters",
+    "when_to_open": "When auditing Swift code: WKWebView JavaScript String Concatenation Injection. Sink: wkWebView.evaluateJavaScript with an interpolated script string; NSAppleScript(source: externalString).executeAndReturnError; WKScriptMessageHandler message bodies used without validation; custom scheme handlers acting on unvalidated parameters"
+  },
+  {
+    "id": "swift-06",
+    "title": "Insecure Storage in UserDefaults and ATS Bypass",
+    "sink_clue": "UserDefaults.standard.set / plist writes of tokens or keys; Keychain queries with kSecAttrAccessibleAlways; URLSessionDelegate accepting every server trust challenge; NSAppTransportSecurity with NSAllowsArbitraryLoads; CommonCrypto calls with ECB mode or a fixed IV",
+    "when_to_open": "When auditing Swift code: Insecure Storage in UserDefaults and ATS Bypass. Sink: UserDefaults.standard.set / plist writes of tokens or keys; Keychain queries with kSecAttrAccessibleAlways; URLSessionDelegate accepting every server trust challenge; NSAppTransportSecurity with NSAllowsArbitraryLoads; CommonCrypto calls with ECB mode or a fixed IV"
+  },
+  {
+    "id": "swift-07",
+    "title": "Path Traversal via URL appendingPathComponent",
+    "sink_clue": "baseDir.appendingPathComponent(userInput) / FileManager contentsOfDirectory and copyItem at the resolved path; symlink-following writes; archive entry extraction without member validation; predictable temp names in shared containers",
+    "when_to_open": "When auditing Swift code: Path Traversal via URL appendingPathComponent. Sink: baseDir.appendingPathComponent(userInput) / FileManager contentsOfDirectory and copyItem at the resolved path; symlink-following writes; archive entry extraction without member validation; predictable temp names in shared containers"
+  },
+  {
+    "id": "swift-08",
+    "title": "Decoding and Type Coercion Inconsistencies",
+    "sink_clue": "try? JSONDecoder().decode on authorization-relevant models; 'as?' chains over JSONSerialization Any output; NSNumber-to-Bool/Int bridges compared in security checks; custom init(from:) with default-value fallbacks; enum Role(rawValue:) ?? .default on role fields",
+    "when_to_open": "When auditing Swift code: Decoding and Type Coercion Inconsistencies. Sink: try? JSONDecoder().decode on authorization-relevant models; 'as?' chains over JSONSerialization Any output; NSNumber-to-Bool/Int bridges compared in security checks; custom init(from:) with default-value fallbacks; enum Role(rawValue:) ?? .default on role fields"
+  },
+  {
+    "id": "swift-09",
+    "title": "String Index and Unicode Normalization Discrepancies",
+    "sink_clue": "NSRange constructed from String.count/utf8.count/NSString.length and used to slice validated content; equality/containment checks without predefinedNormalizationForm (precomposedStringWithCanonicalMapping); Int(truncatingIfNeeded:) / Int(string) on untrusted numerics driving IDs or lengths",
+    "when_to_open": "When auditing Swift code: String Index and Unicode Normalization Discrepancies. Sink: NSRange constructed from String.count/utf8.count/NSString.length and used to slice validated content; equality/containment checks without predefinedNormalizationForm (precomposedStringWithCanonicalMapping); Int(truncatingIfNeeded:) / Int(string) on untrusted numerics driving IDs or lengths"
+  },
+  {
+    "id": "swift-10",
+    "title": "Unbounded Buffer Allocation in Network Streams",
+    "sink_clue": "Data(capacity: remoteSize) / Array(repeating:count:) sized from external lengths; read loops appending into Data/String with no byte budget; decompression without output limits; unbounded request-body reads before the Content-Length cap is enforced",
+    "when_to_open": "When auditing Swift code: Unbounded Buffer Allocation in Network Streams. Sink: Data(capacity: remoteSize) / Array(repeating:count:) sized from external lengths; read loops appending into Data/String with no byte budget; decompression without output limits; unbounded request-body reads before the Content-Length cap is enforced"
+  }
+]

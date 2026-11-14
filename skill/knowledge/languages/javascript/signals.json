@@ -1,0 +1,72 @@
+[
+  {
+    "pattern_id": "sig_js_01",
+    "pattern": "target\\[key\\]\\s*=\\s*source\\[key\\]",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "js-01"
+  },
+  {
+    "pattern_id": "sig_js_02",
+    "pattern": "eval\\(userCode\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "js-02"
+  },
+  {
+    "pattern_id": "sig_js_03",
+    "pattern": "child_process\\.exec\\(`ping",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "js-03"
+  },
+  {
+    "pattern_id": "sig_js_04",
+    "pattern": "element\\.innerHTML\\s*=\\s*userComment",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "js-04"
+  },
+  {
+    "pattern_id": "sig_js_05",
+    "pattern": "token\\s*==\\s*expectedToken",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "js-05"
+  },
+  {
+    "pattern_id": "sig_js_06",
+    "pattern": "fs\\.readFile\\(path\\.resolve\\(",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "js-06"
+  },
+  {
+    "pattern_id": "sig_js_07",
+    "pattern": "\\^.*a-zA-Z.*exec",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "js-07"
+  },
+  {
+    "pattern_id": "sig_js_08",
+    "pattern": "if\\s*\\(!checkAuth\\(req\\)\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "js-08"
+  },
+  {
+    "pattern_id": "sig_js_09",
+    "pattern": "new\\s+Function\\('return\\s*'\\s*\\+\\s*rawJson\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "js-09"
+  },
+  {
+    "pattern_id": "sig_js_10",
+    "pattern": "Math\\.random\\(\\)\\.toString\\(36\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "js-10"
+  }
+]

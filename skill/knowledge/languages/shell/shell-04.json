@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "shell-04",
+  "title": "Predictable Temporary Files in /tmp",
+  "language": "shell",
+  "platform_conditions": "POSIX sh and bash on Linux/macOS; mktemp is available in GNU coreutils, busybox, and macOS, but the legacy mktemp(3) C-call pattern and /tmp/PID naming persist in older install scripts",
+  "security_mechanism": "A name built as /tmp/name.$$ is fully predictable: the PID is visible to other processes through /proc or ps, so a local attacker creates the path first — as a symlink pointing at a sensitive file, or as a file they hold open — and the privileged script's subsequent redirection writes through the symlink or into attacker-readable state. The check-then-use idiom ([ -f $f ] before writing) does not close the window: the check and the open are separate system calls and the attacker swaps the path between them. mktemp closes this because it creates the file atomically with O_EXCL on a randomized name and prints only the name it owns.",
+  "source_sink_clues": {
+    "source": "Local attacker visibility in multi-user /tmp, shared CI workspaces, and setuid or root-run install scripts whose PID and filename layout are observable.",
+    "sink": "Redirection or writes to /tmp paths built from $$, fixed names, or user-influenced components; mktemp invoked with a template lacking X's or on a path the attacker can pre-create; any [ -f ]/[ -e ] test followed by a separate open/write of the same path in a privileged script"
+  },
+  "tracking_guards": "Check temporary files are created only via mktemp (template with at least three trailing X's) inside a directory the script controls, or via mktemp -d for multi-file work; check no user-influenced component enters the temp path; check privileged scripts never write into a world-writable directory by predictable name and avoid test-then-write idioms.",
+  "not_candidate_when": "The temporary name comes from mktemp/TEMPDIR created at runtime with O_EXCL semantics, the script writes inside a private directory (0700 runtime dir, mktemp -d) instead of /tmp, or the target system is single-user with no untrusted local accounts able to pre-create paths.",
+  "synthetic_vulnerable_example": "tmpfile=\"/tmp/test.$$\"; echo data > \"$tmpfile\"",
+  "synthetic_safe_example": "tmpfile=\"$(mktemp /tmp/test.XXXXXX)\"; echo data > \"$tmpfile\"",
+  "public_references": [
+    "CWE-377: Insecure Temporary File — https://cwe.mitre.org/data/definitions/377.html",
+    "CWE-59: Improper Link Resolution Before File Access — https://cwe.mitre.org/data/definitions/59.html",
+    "POSIX mktemp utility specification — https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_shell_04",
+      "pattern": "tmpfile=\\\"/tmp/test\\.\\$\\$\\\"",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "shell-04"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "cpp-07",
+  "title": "Exception Safety and Invariant Incompletion",
+  "language": "cpp",
+  "platform_conditions": "C++11 and later on any conforming toolchain; noexcept violation calls std::terminate per the standard",
+  "security_mechanism": "An exception unwinds a constructor or mutator midway, leaving the object half-updated: members assigned before the throw keep new values while later invariants (an initialized lock, a registered resource) are missing, and any code that catches and continues now operates on an object whose advertised class invariant is false. Declaring a function noexcept and throwing anyway calls std::terminate, aborting the process from inside what should be a recoverable path — a request-reachable crash. Destructors must not let exceptions escape because unwinding already in progress makes a second throw terminate the program.",
+  "source_sink_clues": {
+    "source": "Any operation that can fail at runtime under attacker influence: bad allocations under request load, parse failures on malformed input, IO errors — each raising while an object is mid-mutation.",
+    "sink": "Throwing destructors or noexcept functions that throw; multi-step mutation sequences without rollback (no RAII guard) whose early steps persist when a later step throws"
+  },
+  "tracking_guards": "Check that destructors are noexcept and swallow or log rather than rethrow, that throwing functions are not marked noexcept, and that multi-step mutations use RAII transaction guards or copy-and-swap so the object is either fully updated or untouched (strong exception guarantee).",
+  "not_candidate_when": "The mutating operations are marked noexcept (no unwind can interrupt them), the state is rebuilt from scratch on the error path so no half-state survives, or the exception path exits the process before the object is used again.",
+  "synthetic_vulnerable_example": "~MyResource() noexcept(false) { if (err) throw std::runtime_error(\"fail\"); }",
+  "synthetic_safe_example": "~MyResource() noexcept { log_error(); }",
+  "public_references": [
+    "CWE-703: Improper Check or Handling of Exceptional Conditions — https://cwe.mitre.org/data/definitions/703.html",
+    "CWE-755: Improper Handling of Exceptional Conditions — https://cwe.mitre.org/data/definitions/755.html",
+    "cppreference: noexcept specifier — https://en.cppreference.com/w/cpp/language/noexcept_spec",
+    "C++ Core Guidelines: E error-handling rules — https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_cpp_07",
+      "pattern": "throw\\s+std::runtime_error",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "cpp-07"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

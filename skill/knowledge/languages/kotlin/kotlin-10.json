@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "kotlin-10",
+  "title": "Kotlin Language Traps: copy() Bypassing Validation",
+  "language": "kotlin",
+  "platform_conditions": "Kotlin/JVM language semantics (data classes, smart casts, runCatching, when-exhaustiveness); applies to JVM and Android targets alike",
+  "security_mechanism": "Data classes generate a public copy() that constructs a new instance without running the primary constructor's require()/init checks, so invariants enforced at construction ('role must be USER unless promoted') evaporate on the first copy(role = \"admin\"). Smart casts on shared var properties re-read the field after the check, so another thread's write between 'if (x is Admin)' and the use invalidates the cast's premise. runCatching { }.getOrNull() and '?: default' convert any authorization failure — including deliberate denial exceptions — into a silent null that downstream code may treat as 'unprivileged but valid', and a non-exhaustive when over a sealed hierarchy compiles to a fall-through that leaves unexpected roles at the else branch's (often permissive) behavior.",
+  "source_sink_clues": {
+    "source": "Request-derived user/role objects, deserialized models, and concurrent request threads mutating shared state used by authorization checks.",
+    "sink": "user.copy(role = ...) on objects carrying authorization state; smart casts on shared mutable properties guarding security decisions; runCatching{}.getOrNull() / '?:' defaults around authentication or permission calls; non-exhaustive when on role/state enums"
+  },
+  "tracking_guards": "Check privileged state transitions go through explicit validated functions rather than generated copy(); check security-relevant types are immutable vals (or custom classes without copy) whose init blocks validate; check auth failures propagate as thrown/returned denials instead of being collapsed by runCatching/elvis; check when blocks are exhaustive over the sealed hierarchy or end in a denying else.",
+  "not_candidate_when": "copy() is used on DTOs with no authorization invariants and the privileged transition is gated server-side, the smart cast targets a local immutable value or the property is confined to one thread, or the when covers all cases with a default that denies rather than grants.",
+  "synthetic_vulnerable_example": "val unauthorized = user.copy(role = \"admin\")",
+  "synthetic_safe_example": "fun User.promote(auth: Auth) = ...",
+  "public_references": [
+    "CWE-285: Improper Authorization — https://cwe.mitre.org/data/definitions/285.html",
+    "Kotlin documentation: data classes (generated copy) — https://kotlinlang.org/docs/data-classes.html",
+    "Kotlin documentation: null safety and smart casts — https://kotlinlang.org/docs/null-safety.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_kotlin_10",
+      "pattern": "user\\.copy\\(role\\s*=\\s*\\\"admin\\\"\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "kotlin-10"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

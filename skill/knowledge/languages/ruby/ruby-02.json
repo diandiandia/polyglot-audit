@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "ruby-02",
+  "title": "Dynamic Code Execution and Metaprogramming via send",
+  "language": "ruby",
+  "platform_conditions": "Ruby 3.x standard library; MRI",
+  "security_mechanism": "eval compiles the string as Ruby source in the current binding, and instance_eval runs it with self bound to the receiver, exposing private state and instance variables of that object to the evaluated text. send and public_send invoke any method chosen by name — public_send excludes private methods but every public destructive method (destroy, update, execute) remains reachable — while class_eval can define or overwrite methods on a class and const_get resolves attacker-chosen names to constants, including class objects. Building an ERB template from input is the same primitive one level up: the template's <%= %> sections are Ruby code that ERB executes during render.",
+  "source_sink_clues": {
+    "source": "Request parameters selecting action/method names, template text, or constant/class names used in dispatch.",
+    "sink": "eval / instance_eval / class_eval on dynamic strings; send / public_send / const_get with input-derived names; ERB.new(attacker_text).result"
+  },
+  "tracking_guards": "Require dispatch through a fixed allowlist hash that maps input keys to constant symbols or callables before any send; require templates to be application-owned files with only data dynamic; require eval to see compile-time constant strings only.",
+  "not_candidate_when": "The dispatched name is matched against a fixed allowlist of symbols before send, the evaluated string is a constant, or the ERB template comes from a compile-time file and input only supplies render data.",
+  "synthetic_vulnerable_example": "user.public_send(params[:method], params[:arg])",
+  "synthetic_safe_example": "/* allowlist allowed method names */",
+  "public_references": [
+    "CWE-94: Improper Control of Generation of Code — https://cwe.mitre.org/data/definitions/94.html",
+    "CWE-470: Use of Externally-Controlled Input to Select Classes or Code — https://cwe.mitre.org/data/definitions/470.html",
+    "Ruby stdlib documentation: Object — https://docs.ruby-lang.org/en/3.2/Object.html",
+    "Ruby stdlib documentation: ERB — https://docs.ruby-lang.org/en/3.2/ERB.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_ruby_02",
+      "pattern": "user\\.public_send\\(params\\[:method\\]",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "ruby-02"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

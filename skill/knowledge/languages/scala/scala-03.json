@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "scala-03",
+  "title": "SQL Injection in String Interpolation Queries",
+  "language": "scala",
+  "platform_conditions": "Scala 2.13 / Scala 3 on the JVM; applies to JDBC and database-access libraries built over string interpolation",
+  "security_mechanism": "The s-interpolator performs plain string substitution before the driver sees the text, so s\"SELECT * FROM t WHERE id = $id\" sends the attacker's quote/syntax as statement structure and the database parses it as SQL. The same hole exists inside database-library interpolators when a raw fragment is spliced in: an s-interpolated sub-expression embedded into an sql\"...\" query, or string concatenation for identifiers and ORDER BY clauses, bypasses the parameter binding the library would otherwise apply.",
+  "source_sink_clues": {
+    "source": "Request parameters, sort/column names, and filter values fed into s-interpolated or concatenated query text.",
+    "sink": "statement.execute / prepareStatement on s-interpolated strings; query interpolators receiving raw string fragments; identifier/ORDER BY concatenation"
+  },
+  "tracking_guards": "Check values are bound through the library's parameter mechanism (placeholders, the sql interpolator's binder, PreparedStatement.setString); check identifiers and sort directions come from a fixed allowlist map keyed by validated client values.",
+  "not_candidate_when": "The query uses the database library's parameterized interpolator exclusively, interpolated parts come only from server-side allowlist constants, or the query text is entirely static.",
+  "synthetic_vulnerable_example": "statement.execute(s\"SELECT * FROM t WHERE id = $id\")",
+  "synthetic_safe_example": "sql\"SELECT * FROM t WHERE id = $id\".query[Row]",
+  "public_references": [
+    "CWE-89: Improper Neutralization of Special Elements in SQL Command — https://cwe.mitre.org/data/definitions/89.html",
+    "OWASP SQL Injection Prevention Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html",
+    "Java SE documentation: PreparedStatement — https://docs.oracle.com/javase/8/docs/api/java/sql/PreparedStatement.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_scala_03",
+      "pattern": "statement\\.execute\\(s\\\"SELECT",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "scala-03"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

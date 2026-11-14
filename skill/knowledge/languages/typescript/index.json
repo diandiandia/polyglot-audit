@@ -1,0 +1,62 @@
+[
+  {
+    "id": "ts-01",
+    "title": "Type Erasure: Confusing Compile-Time Type with Runtime Validation",
+    "sink_clue": "'as T' assertions and typed parameters on data that crossed the network boundary without runtime validation feeding authorization, persistence, or business logic",
+    "when_to_open": "When auditing TypeScript code: Type Erasure: Confusing Compile-Time Type with Runtime Validation. Sink: 'as T' assertions and typed parameters on data that crossed the network boundary without runtime validation feeding authorization, persistence, or business logic"
+  },
+  {
+    "id": "ts-02",
+    "title": "Type Escape Hatches at Security Boundaries",
+    "sink_clue": "any / as unknown as T / ! / @ts-ignore on values that feed authentication, authorization, or privilege fields",
+    "when_to_open": "When auditing TypeScript code: Type Escape Hatches at Security Boundaries. Sink: any / as unknown as T / ! / @ts-ignore on values that feed authentication, authorization, or privilege fields"
+  },
+  {
+    "id": "ts-03",
+    "title": "Flawed Type Guards and Discriminated Union Bypass",
+    "sink_clue": "'x is T' guard functions with permissive bodies; switch/match on payload-supplied discriminants gating privileged branches; spread of attacker objects into strongly-typed targets",
+    "when_to_open": "When auditing TypeScript code: Flawed Type Guards and Discriminated Union Bypass. Sink: 'x is T' guard functions with permissive bodies; switch/match on payload-supplied discriminants gating privileged branches; spread of attacker objects into strongly-typed targets"
+  },
+  {
+    "id": "ts-04",
+    "title": "Index Signatures Enabling Prototype Pollution",
+    "sink_clue": "obj[attackerKey] = value on plain objects typed with index signatures; unguarded reads typed T from Record<string, T> feeding security decisions",
+    "when_to_open": "When auditing TypeScript code: Index Signatures Enabling Prototype Pollution. Sink: obj[attackerKey] = value on plain objects typed with index signatures; unguarded reads typed T from Record<string, T> feeding security decisions"
+  },
+  {
+    "id": "ts-05",
+    "title": "Numeric Enum Traps and Unchecked Literal Unions",
+    "sink_clue": "Functions taking enum/literal-union parameters fed from external data; privilege and state checks comparing against enum members",
+    "when_to_open": "When auditing TypeScript code: Numeric Enum Traps and Unchecked Literal Unions. Sink: Functions taking enum/literal-union parameters fed from external data; privilege and state checks comparing against enum members"
+  },
+  {
+    "id": "ts-06",
+    "title": "Decorator-Driven Validation Gaps",
+    "sink_clue": "Validation/authorization decorators on properties or handlers that are trusted as enforced without verifying a runtime pipeline consumes them",
+    "when_to_open": "When auditing TypeScript code: Decorator-Driven Validation Gaps. Sink: Validation/authorization decorators on properties or handlers that are trusted as enforced without verifying a runtime pipeline consumes them"
+  },
+  {
+    "id": "ts-07",
+    "title": "Floating Promise in Security Handlers",
+    "sink_clue": "Discarded Promise results before security decisions and sensitive operations in middleware chains",
+    "when_to_open": "When auditing TypeScript code: Floating Promise in Security Handlers. Sink: Discarded Promise results before security decisions and sensitive operations in middleware chains"
+  },
+  {
+    "id": "ts-08",
+    "title": "Compiler Flag Relaxation Causing Verification Holes",
+    "sink_clue": "Index lookups and dereferences typed non-nullable under relaxed flags, feeding authorization or null-dereference-prone logic",
+    "when_to_open": "When auditing TypeScript code: Compiler Flag Relaxation Causing Verification Holes. Sink: Index lookups and dereferences typed non-nullable under relaxed flags, feeding authorization or null-dereference-prone logic"
+  },
+  {
+    "id": "ts-09",
+    "title": "Compile-Time Access Control Bypass via Runtime Inspection",
+    "sink_clue": "private/readonly fields holding credentials, roles, or invariants that can be read or rewritten from outside the class",
+    "when_to_open": "When auditing TypeScript code: Compile-Time Access Control Bypass via Runtime Inspection. Sink: private/readonly fields holding credentials, roles, or invariants that can be read or rewritten from outside the class"
+  },
+  {
+    "id": "ts-10",
+    "title": "Serialization Boundary Precision Loss on Large Integers",
+    "sink_clue": "JSON.parse of numeric fields used as IDs in authorization, ownership, or deduplication comparisons; Number coercion of bigint/date fields at service boundaries",
+    "when_to_open": "When auditing TypeScript code: Serialization Boundary Precision Loss on Large Integers. Sink: JSON.parse of numeric fields used as IDs in authorization, ownership, or deduplication comparisons; Number coercion of bigint/date fields at service boundaries"
+  }
+]

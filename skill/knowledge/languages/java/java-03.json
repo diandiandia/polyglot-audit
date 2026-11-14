@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "java-03",
+  "title": "XML External Entity Processing in DocumentBuilder",
+  "language": "java",
+  "platform_conditions": "Java SE 8+ (JAXP); the factory defaults differ across JDK releases and container configurations, so the effective settings must be read from code",
+  "security_mechanism": "DocumentBuilderFactory, SAXParserFactory, XMLInputFactory, and TransformerFactory are created with defaults that historically keep DTD processing and external entity resolution enabled: without an explicit setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true) or a null-resolver/attribute set, an attacker-supplied DOCTYPE resolves entities to file:// or http:// targets and the parser inlines the fetched content into the document (local file read, SSRF, and echoed output). Recursive internal entities produce billion-laughs memory expansion independent of external resolution. The relevant setting lives on the factory, so a secure default in one helper does not protect a second factory created elsewhere in the same application.",
+  "source_sink_clues": {
+    "source": "XML documents from clients: SOAP/REST payloads, SAML assertions, uploaded configuration and integration files, webhooks posting XML.",
+    "sink": "DocumentBuilder.parse / SAXParser.parse / XMLStreamReader (XMLInputFactory-created) / Transformer.transform on untrusted documents where the corresponding factory lacks disallow-doctype-decl, external-general-entities, and external-parameter-entities protections"
+  },
+  "tracking_guards": "Check the factory configuration BEFORE parse: setFeature(disallow-doctype-decl, true) or, where DTDs are required, setFeature for external-general/parameter-entities false plus setXIncludeAware(false) and an expansion limit; verify every factory instance in the request path carries the settings, not just one.",
+  "not_candidate_when": "Doctype declarations are prohibited on every factory handling untrusted documents, the XML comes from a trusted internal producer with no DTD by construction, or schema validation with a fixed XSD rejects documents containing DTDs before entity processing.",
+  "synthetic_vulnerable_example": "DocumentBuilder db = dbf.newDocumentBuilder(); db.parse(stream);",
+  "synthetic_safe_example": "dbf.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);",
+  "public_references": [
+    "CWE-611: Improper Restriction of XML External Entity Reference — https://cwe.mitre.org/data/definitions/611.html",
+    "CWE-776: Improper Restriction of Recursive Entity References in DTDs — https://cwe.mitre.org/data/definitions/776.html",
+    "Java SE documentation: DocumentBuilderFactory — https://docs.oracle.com/javase/8/docs/api/javax/xml/parsers/DocumentBuilderFactory.html",
+    "OWASP XML External Entity Prevention Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_java_03",
+      "pattern": "db\\.parse\\(stream\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "java-03"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

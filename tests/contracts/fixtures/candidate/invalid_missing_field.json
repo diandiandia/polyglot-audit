@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "candidate_id": "cand-0002",
+  "issue": "py-02",
+  "source": {"path": "a.py", "line": 1, "symbol": "s", "kind": "param", "control": "x"},
+  "sink": {"path": "b.py", "line": 2, "symbol": "t", "kind": "deserialization", "effect": "rce"},
+  "steps": [],
+  "guard_analysis": "none",
+  "impact_claim": "rce",
+  "open_questions": []
+}

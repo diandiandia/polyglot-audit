@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "task_id": "task-0003",
+  "attempt_id": "att-0003",
+  "kind": "recon",
+  "coverage": [],
+  "records": [],
+  "overflow": [],
+  "raw_log": "should not be here"
+}

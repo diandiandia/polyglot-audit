@@ -1,0 +1,72 @@
+[
+  {
+    "pattern_id": "sig_scala_01",
+    "pattern": "ois\\.readObject\\(\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "scala-01"
+  },
+  {
+    "pattern_id": "sig_scala_02",
+    "pattern": "s\\\"sh -c \\$userInput\\\"\\.!",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "scala-02"
+  },
+  {
+    "pattern_id": "sig_scala_03",
+    "pattern": "statement\\.execute\\(s\\\"SELECT",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "scala-03"
+  },
+  {
+    "pattern_id": "sig_scala_04",
+    "pattern": "implicit\\s+def\\s+toAdmin",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "scala-04"
+  },
+  {
+    "pattern_id": "sig_scala_05",
+    "pattern": "parseInput\\(data\\)\\.get",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "scala-05"
+  },
+  {
+    "pattern_id": "sig_scala_06",
+    "pattern": "Future\\s*\\{\\s*mutableState\\s*\\+=",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "scala-06"
+  },
+  {
+    "pattern_id": "sig_scala_07",
+    "pattern": "scala\\.xml\\.XML\\.load\\(",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "scala-07"
+  },
+  {
+    "pattern_id": "sig_scala_08",
+    "pattern": "LazyList\\.from\\(0\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "scala-08"
+  },
+  {
+    "pattern_id": "sig_scala_09",
+    "pattern": "Source\\.fromFile\\(userPath\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "scala-09"
+  },
+  {
+    "pattern_id": "sig_scala_10",
+    "pattern": "case\\s+class\\s+UserCredentials\\(",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "scala-10"
+  }
+]

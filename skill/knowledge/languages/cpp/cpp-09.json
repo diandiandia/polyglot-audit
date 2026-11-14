@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "cpp-09",
+  "title": "C Memory Operations on Non-Trivial C++ Types",
+  "language": "cpp",
+  "platform_conditions": "C++11 and later on any conforming toolchain; consequences depend on whether the type has virtual functions or owns resources",
+  "security_mechanism": "memcpy/memset/realloc operate on raw bytes, but a C++ object's meaning lives in its constructor-maintained invariants: overwriting an object whose members are std::string or std::vector with memset zeroes replaces their internal pointers with null without freeing, so the next destruction or assignment frees or reads through wild values. On a polymorphic type, memset also overwrites the vptr the compiler stores in the object, so the next virtual call jumps through a null or stale table. realloc moves the block without running any copy constructor, leaving internal self-pointers pointing at the old address. Only trivially copyable types may legally be copied this way.",
+  "source_sink_clues": {
+    "source": "Objects that carry attacker-influenced state (request data in std::string members) and cross C/C++ integration seams where raw byte-level copying is habitual.",
+    "sink": "memcpy/memmove/memset/realloc applied to objects of non-trivially-copyable types (virtual functions, std::string/vector members, user-defined destructors)"
+  },
+  "tracking_guards": "Check that byte-level operations are applied only to trivially copyable types (static_assert(std::is_trivially_copyable_v<T>)), that resetting an object uses assignment (`obj = T{};`) or clear() methods, and that buffers owned by C++ containers are resized by the container API rather than realloc'd.",
+  "not_candidate_when": "The target type is trivially copyable (POD aggregates without virtual functions or owning members) and the copy is legal, the zeroing is immediately followed by full reconstruction before any use, or the object is replaced wholesale via assignment as in the safe example.",
+  "synthetic_vulnerable_example": "memset(&my_obj, 0, sizeof(my_obj));",
+  "synthetic_safe_example": "my_obj = MyClass{}; // Safe copy/move assignment",
+  "public_references": [
+    "CWE-704: Incorrect Type Conversion or Cast — https://cwe.mitre.org/data/definitions/704.html",
+    "CWE-672: Operation on a Resource after Expiration or Release — https://cwe.mitre.org/data/definitions/672.html",
+    "cppreference: TriviallyCopyable — https://en.cppreference.com/w/cpp/named_req/TriviallyCopyable",
+    "C++ Core Guidelines: CP/object-lifecycle rules — https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_cpp_09",
+      "pattern": "memset\\(&my_obj",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "cpp-09"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "id": "scala-06",
+  "title": "Concurrency: Escaping Mutable State in Actor Futures",
+  "language": "scala",
+  "platform_conditions": "Scala 2.13 / Scala 3 standard library (scala.concurrent.Future, scala.actors-successor stacks) on JVM thread pools",
+  "security_mechanism": "Future { ... } submits its thunk to an ExecutionContext and may run on any thread at any interleaving: a closure capturing a var or mutable collection performs unsynchronized reads/writes, so two concurrent requests observe or clobber each other's security-relevant state (session flags, quota counters, ACL caches). The same escape occurs when an Actor's internal state is captured by a Future the handler spawns -- the state leaves the actor's serialized processing guarantee. Blocking calls inside the default ExecutionContext starve its bounded thread pool, delaying or never running scheduled authorization work, and an uncomputed lazy val deadlocks under concurrent first access on synchronized initialization.",
+  "source_sink_clues": {
+    "source": "Concurrent request handlers sharing mutable fields, actor handlers spawning Futures over their own state, and blocking IO inside pooled execution contexts.",
+    "sink": "Future { ... } closures referencing vars/mutable collections or actor state; blocking operations on the default dispatcher; lazy val first-touch under contention"
+  },
+  "tracking_guards": "Check shared state is confined to immutable messages, atomic references, or actor-serialized access with no Future capture; check blocking work runs on a dedicated dispatcher; check lazy vals used on request paths are initialized eagerly or under a non-blocking construction.",
+  "not_candidate_when": "The captured state is immutable or thread-confined per request, the mutation is a single atomic CAS with no compound check, or the Future runs on an isolated single-thread executor guaranteeing serialization.",
+  "synthetic_vulnerable_example": "Future { mutableState += msg }",
+  "synthetic_safe_example": "/* Send immutable messages to self */",
+  "public_references": [
+    "CWE-362: Concurrent Execution using Shared Resource with Improper Synchronization — https://cwe.mitre.org/data/definitions/362.html",
+    "CWE-400: Uncontrolled Resource Consumption — https://cwe.mitre.org/data/definitions/400.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_scala_06",
+      "pattern": "Future\\s*\\{\\s*mutableState\\s*\\+=",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "scala-06"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

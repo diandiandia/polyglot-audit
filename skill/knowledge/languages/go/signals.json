@@ -1,0 +1,72 @@
+[
+  {
+    "pattern_id": "sig_go_01",
+    "pattern": "go\\s+func\\(\\)\\s*\\{\\s*m\\[key\\]",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "go-01"
+  },
+  {
+    "pattern_id": "sig_go_02",
+    "pattern": "valid,\\s*_\\s*:=\\s*verifyToken\\(token\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "go-02"
+  },
+  {
+    "pattern_id": "sig_go_03",
+    "pattern": "req\\.Body\\.\\(string\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "go-03"
+  },
+  {
+    "pattern_id": "sig_go_04",
+    "pattern": "shortIdx\\s*:=\\s*int16\\(idx\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "go-04"
+  },
+  {
+    "pattern_id": "sig_go_05",
+    "pattern": "io\\.ReadAll\\(req\\.Body\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "go-05"
+  },
+  {
+    "pattern_id": "sig_go_06",
+    "pattern": "fmt\\.Sprintf\\(\\\"SELECT.*name\\s*=",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "go-06"
+  },
+  {
+    "pattern_id": "sig_go_07",
+    "pattern": "filepath\\.Join\\(baseDir,\\s*userInput\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "go-07"
+  },
+  {
+    "pattern_id": "sig_go_08",
+    "pattern": "unsafe\\.String\\(",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "go-08"
+  },
+  {
+    "pattern_id": "sig_go_09",
+    "pattern": "InsecureSkipVerify:\\s*true",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "go-09"
+  },
+  {
+    "pattern_id": "sig_go_10",
+    "pattern": "json\\.Unmarshal\\(data,\\s*&adminObj\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "go-10"
+  }
+]

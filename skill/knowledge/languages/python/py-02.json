@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "py-02",
+  "title": "Code and Expression Injection via eval/exec",
+  "language": "python",
+  "platform_conditions": "CPython 3.x standard library; applies on every OS and deployment target",
+  "security_mechanism": "eval/exec compile the attacker-influenced string to Python bytecode and run it with the caller's namespaces; the string is code, so any statement-level capability (imports, attribute traversal, attribute assignment) is available. Passing {'__builtins__': {}} does not sandbox it: literals can reach object dunder chains (().__class__.__bases__[0].__subclasses__()) to recover dangerous types. The same class of flaw appears via str.format when the format string itself is attacker-controlled ('{0.__class__}' traverses attributes) and via templates constructed from input.",
+  "source_sink_clues": {
+    "source": "User-supplied expression strings: query parameters, JSON fields reused as formulas or rules, calculator/policy expressions, attacker-controlled format strings or template text.",
+    "sink": "eval() / exec() / compile() on dynamic strings; __import__ and importlib.import_module with dynamic names; str.format called with an attacker-controlled format string"
+  },
+  "tracking_guards": "Verify the expression is parsed by ast.literal_eval (literals only, no name resolution) or matched against a strict grammar/allowlist of identifiers and operators before evaluation; verify format strings are compile-time constants with only the values dynamic; treat any eval/exec reachable from input as a candidate unless such a structural guard is present.",
+  "not_candidate_when": "The evaluated string is a compile-time constant, the input is strictly validated to a numeric/whitelisted grammar before reaching eval, ast.literal_eval is used instead of eval, or the format string is a constant and only substitution values are dynamic.",
+  "synthetic_vulnerable_example": "result = eval(user_expression)",
+  "synthetic_safe_example": "result = ast.literal_eval(user_expression)",
+  "public_references": [
+    "CWE-94: Improper Control of Generation of Code — https://cwe.mitre.org/data/definitions/94.html",
+    "CWE-95: Eval Injection — https://cwe.mitre.org/data/definitions/95.html",
+    "Python documentation: ast.literal_eval — https://docs.python.org/3/library/ast.html#ast.literal_eval"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_py_02",
+      "pattern": "eval\\(user_expression\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "py-02"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

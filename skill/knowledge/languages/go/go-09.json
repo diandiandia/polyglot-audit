@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "id": "go-09",
+  "title": "Cryptography and TLS Insecure Configuration",
+  "language": "go",
+  "platform_conditions": "Go 1.x standard library (crypto/tls, crypto/subtle, math/rand); applies to all build targets",
+  "security_mechanism": "Setting tls.Config{InsecureSkipVerify: true} disables the entire certificate chain and hostname verification, turning every TLS connection into an active-MITM target; the vet linter flags it precisely because no compensating check exists in the struct. Tokens and keys drawn from math/rand are predictable: the generator is deterministic from a small seed and its outputs leak state. Comparing MACs or signatures with == leaks a timing oracle that crypto/subtle.ConstantTimeCompare exists to prevent; reusing an AEAD nonce (GCM or ChaCha20-Poly1305) with the same key collapses the cipher's security, allowing message forgery after two ciphertexts share a nonce.",
+  "source_sink_clues": {
+    "source": "TLS configurations in client/server code, security values produced by math/rand, authenticator comparisons in handlers, and nonce generation for AEAD encryption.",
+    "sink": "tls.Config{InsecureSkipVerify: true}; math/rand/rand for keys, tokens, or nonces; == / bytes.Equal on MACs or signature digests; AES-GCM/ChaCha20 Seal calls reusing a nonce"
+  },
+  "tracking_guards": "Require InsecureSkipVerify be absent (or documented and compensated with a pinned fingerprint verification in VerifyPeerCertificate); require crypto/rand for security values; require subtle.ConstantTimeCompare/hmac.Equal for authenticator comparison; require nonces from a counter or crypto/rand with per-key uniqueness.",
+  "not_candidate_when": "The skip-verify flag appears only in an explicitly labeled test fixture never executed against production peers, math/rand feeds only non-security sampling, comparison uses subtle/hmac primitives, or nonces are random per message from crypto/rand with negligible collision risk documented for the message volume.",
+  "synthetic_vulnerable_example": "tlsConfig := &tls.Config{InsecureSkipVerify: true}",
+  "synthetic_safe_example": "tlsConfig := &tls.Config{MinVersion: tls.VersionTLS13}",
+  "public_references": [
+    "CWE-295: Improper Certificate Validation — https://cwe.mitre.org/data/definitions/295.html",
+    "CWE-338: Use of Cryptographically Weak Pseudo-Random Number Generator — https://cwe.mitre.org/data/definitions/338.html",
+    "CWE-208: Observable Timing Discrepancy — https://cwe.mitre.org/data/definitions/208.html",
+    "Go standard library: crypto/tls — https://pkg.go.dev/crypto/tls",
+    "Go standard library: crypto/subtle — https://pkg.go.dev/crypto/subtle"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_go_09",
+      "pattern": "InsecureSkipVerify:\\s*true",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "go-09"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "ts-03",
+  "title": "Flawed Type Guards and Discriminated Union Bypass",
+  "language": "typescript",
+  "platform_conditions": "Type-checker behavior only; the guard body is plain JavaScript at runtime wherever the compiled output runs",
+  "security_mechanism": "A user-defined type guard ('x is Admin') is trusted unconditionally by the checker: whatever the body returns becomes the compiler's truth, so a guard that returns true (or tests a field the attacker controls) makes every later access type-correct at compile time and arbitrary at runtime. Discriminated unions have the same failure when the discriminant field (kind/type/role) comes from the payload: the attacker picks the variant, and narrowing selects the privileged branch of a switch written for internal values. Spread of an attacker object into a typed target also carries extra properties silently (excess property checks do not apply to spreads), performing batch assignment under a narrow type.",
+  "source_sink_clues": {
+    "source": "Request payloads and decoded JSON whose shape is decided by the client, then narrowed by guards or discriminant fields.",
+    "sink": "'x is T' guard functions with permissive bodies; switch/match on payload-supplied discriminants gating privileged branches; spread of attacker objects into strongly-typed targets"
+  },
+  "tracking_guards": "Check each type guard body actually validates the fields it asserts (typeof/=== per member), check discriminant values are validated against a fixed set before narrowing drives privilege decisions, and check target objects are built field-by-field from validated input instead of spread.",
+  "not_candidate_when": "The guard performs full field-level validation, the discriminant is computed server-side from validated data, or the narrowed branch is non-privileged and cannot affect authorization state.",
+  "synthetic_vulnerable_example": "function isAdmin(x: any): x is Admin { return true; }",
+  "synthetic_safe_example": "function isAdmin(x: any): x is Admin { return x && x.role === 'admin'; }",
+  "public_references": [
+    "CWE-704: Incorrect Type Conversion or Cast — https://cwe.mitre.org/data/definitions/704.html",
+    "CWE-697: Incorrect Comparison — https://cwe.mitre.org/data/definitions/697.html",
+    "TypeScript Handbook: Narrowing (type predicates) — https://www.typescriptlang.org/docs/handbook/2/narrowing.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_ts_03",
+      "pattern": "function\\s+isAdmin.*x\\s+is\\s+Admin\\s*\\{\\s*return\\s+true;",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "ts-03"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

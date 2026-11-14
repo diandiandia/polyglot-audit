@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "scala-01",
+  "title": "Unsafe Java Deserialization via ObjectInputStream",
+  "language": "scala",
+  "platform_conditions": "Scala 2.13 / Scala 3 standard library on the JVM; inherits Java serialization semantics of the underlying JVM",
+  "security_mechanism": "readObject does not parse data -- it executes Java serialization's reconstruction protocol, invoking readObject/defaultReadObject and readResolve on whatever classes the stream names, so any class on the classpath with gadget behavior becomes reachable from the payload alone. Scala code inherits this wholesale: Java serialization is the default wire format for several Scala remote-messaging and remoting stacks unless explicitly switched to a schema format, and polymorphic JSON binding that encodes a class name ('className'/'type' fields) resolves and instantiates attacker-named types the same way.",
+  "source_sink_clues": {
+    "source": "Network streams, message-queue payloads, caches, and RPC frames that carry Java-serialized bytes or type-tagged JSON.",
+    "sink": "ObjectInputStream.readObject on attacker-influenced streams; remote-message pipelines left on default Java serialization; polymorphic JSON decoders resolving class names from the payload"
+  },
+  "tracking_guards": "Check the stream is protected by a resolving ObjectInputFilter (JEP 290 serial filter or a validating wrapper) with an explicit class allowlist, an integrity check (HMAC) is verified before readObject, or the wire format is schema-based (protobuf/Jackson with type restriction disabled).",
+  "not_candidate_when": "The bytes are produced and consumed within one trust boundary with no network exposure, a serial filter allowlists the exact application classes, or a MAC over the payload is verified before deserialization with a non-readable key.",
+  "synthetic_vulnerable_example": "val obj = ois.readObject()",
+  "synthetic_safe_example": "/* Use Jackson or Protobuf serialization */",
+  "public_references": [
+    "CWE-502: Deserialization of Untrusted Data — https://cwe.mitre.org/data/definitions/502.html",
+    "Java SE documentation: ObjectInputStream — https://docs.oracle.com/javase/8/docs/api/java/io/ObjectInputStream.html",
+    "OWASP Deserialization Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_scala_01",
+      "pattern": "ois\\.readObject\\(\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "scala-01"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

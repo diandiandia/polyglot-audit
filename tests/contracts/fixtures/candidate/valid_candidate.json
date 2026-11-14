@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "candidate_id": "cand-0001",
+  "issue": "py-01",
+  "source": {"path": "app/handlers/upload.py", "line": 8, "symbol": "handle_upload", "kind": "http_body", "control": "request_data['body']"},
+  "sink": {"path": "app/storage/state.py", "line": 10, "symbol": "restore_state", "kind": "deserialization", "effect": "arbitrary object instantiation"},
+  "steps": [
+    {"path": "app/handlers/upload.py", "line": 8, "role": "source", "note": "read raw payload"},
+    {"path": "app/storage/state.py", "line": 10, "role": "sink", "note": "pickle.loads"}
+  ],
+  "guard_analysis": "No input validation on upload path",
+  "impact_claim": "Remote code execution",
+  "open_questions": [],
+  "provenance": {"hunt_tasks": ["task-0001"]}
+}

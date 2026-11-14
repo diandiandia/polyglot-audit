@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "c-02",
+  "title": "Integer Overflow and Truncation in Allocation",
+  "language": "c",
+  "platform_conditions": "C99/C11 on any hosted toolchain; signed overflow is undefined behavior (optimizers may remove the guard), unsigned overflow wraps silently",
+  "security_mechanism": "Allocation sizes are computed in machine integers before malloc sees them: `count * elem_size` on a 32-bit or 64-bit width wraps modulo 2^N, so two large attacker-supplied values multiply to a small total and the allocation succeeds with a fraction of the needed storage. Later writes indexed by the original count then run off the end of the small block. Mixing signed int with size_t truncates or sign-extends: a negative int converted to size_t becomes a huge unsigned value, and a value above INT_MAX reinterpreted after a check written for int passes a check the allocator never applies. Because signed overflow is undefined behavior, a check written after the multiplication can also be optimized away.",
+  "source_sink_clues": {
+    "source": "Counts, element sizes, or lengths taken from protocol fields, file headers, or array/loop parameters that the client controls (e.g. a number-of-items field followed by that many elements).",
+    "sink": "malloc/calloc/realloc/alalloca called with a computed size; loop bounds and memcpy sizes derived from the same product"
+  },
+  "tracking_guards": "Check that the multiplication uses a checked primitive (__builtin_mul_overflow, __builtin_add_overflow, or CERT-recommended pre-division check like `if (elem_size && count > SIZE_MAX / elem_size)`), that the result is held in size_t end to end, and that the count is bounded by an explicit protocol maximum before arithmetic.",
+  "not_candidate_when": "The count is validated against a fixed protocol maximum well below the overflow threshold before any arithmetic, the element size is a compile-time constant and the count is already bounded, or the allocation feeds an internal batch job whose inputs no external party controls.",
+  "synthetic_vulnerable_example": "size_t total = count * elem_size; void *p = malloc(total);",
+  "synthetic_safe_example": "if (__builtin_mul_overflow(count, elem_size, &total)) return -1; void *p = malloc(total);",
+  "public_references": [
+    "CWE-190: Integer Overflow or Wraparound — https://cwe.mitre.org/data/definitions/190.html",
+    "CWE-128: Wrap-around Error — https://cwe.mitre.org/data/definitions/128.html",
+    "CWE-197: Numeric Truncation Error — https://cwe.mitre.org/data/definitions/197.html",
+    "SEI CERT C Coding Standard: INT30-C (unsigned overflow), MEM35-C (allocation size check)"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_c_02",
+      "pattern": "malloc\\(total\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "c-02"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

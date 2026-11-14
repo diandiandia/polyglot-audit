@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "ruby-09",
+  "title": "Class Variable and Open Class State Leakage",
+  "language": "ruby",
+  "platform_conditions": "Ruby 3.x; MRI — class-level state (@@vars, class instance variables) is shared across all threads and requests in the process",
+  "security_mechanism": "Ruby classes are open: any code that loads can reopen a class and redefine a validation or authorization method, silently changing its semantics for the whole application without a call-site change. method_missing dispatch paths expose and route methods the class never declared, and send ignores private/protected visibility, so 'private' is not an access control against send callers. Class-level mutable state — @@class variables and class instance variables — is a single object shared by every request and thread, so per-user security state stored there (current user, ACL, CSRF material) leaks between concurrent requests: one user's authorization satisfies another's check.",
+  "source_sink_clues": {
+    "source": "Concurrent requests sharing process-global state; attacker-influenced dispatch names routed through method_missing/send.",
+    "sink": "Reopening/monkey-patching of auth-relevant methods; method_missing dispatch without allowlist; send reaching private methods; @@class variables and class-level attributes holding per-request identity or authorization state"
+  },
+  "tracking_guards": "Require per-request state to live in Thread.current/fiber-local storage or request-scoped objects, never @@variables; require respond_to_missing? paired with method_missing and an allowlist of routed names; require send targets validated against fixed allowlists; treat redefinition of security methods by loaded libraries as a change to review.",
+  "not_candidate_when": "Class-level variables hold only immutable configuration written once at boot, method_missing routes a fixed allowlist and responds correctly to respond_to_missing?, and dispatched method names are allowlist-checked before send.",
+  "synthetic_vulnerable_example": "class App; @@current_user = user; end",
+  "synthetic_safe_example": "Thread.current[:user] = user",
+  "public_references": [
+    "CWE-470: Use of Externally-Controlled Input to Select Classes or Code — https://cwe.mitre.org/data/definitions/470.html",
+    "CWE-362: Concurrent Execution using Shared Resource with Improper Synchronization — https://cwe.mitre.org/data/definitions/362.html",
+    "Ruby stdlib documentation: Module — https://docs.ruby-lang.org/en/3.2/Module.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_ruby_09",
+      "pattern": "@@current_user\\s*=\\s*user",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "ruby-09"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

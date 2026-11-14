@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "py-10",
+  "title": "Native Extension Buffers and Unbounded Resource Processing",
+  "language": "python",
+  "platform_conditions": "CPython 3.x standard library (ctypes, struct, io, zlib); int/str conversion limit requires Python 3.11+ (sys.set_int_max_str_digits)",
+  "security_mechanism": "ctypes and struct trust caller-declared sizes: a length taken from input drives ctypes.memmove / create_string_buffer / a struct.unpack format, so a mismatch between the declared and real buffer size writes past the allocation or misreads adjacent memory. io's read() with no argument loads the entire stream into memory, zlib/gzip decompress output without an output cap turns a small compressed upload into gigabytes (decompression bomb), and int<->str conversion is quadratic; before Python 3.11's conversion limit an attacker-supplied huge integer makes serialization burn CPU indefinitely.",
+  "source_sink_clues": {
+    "source": "Content-Length or declared sizes from protocol headers, compressed upload bodies, serialized integers, and binary payloads fed to struct/ctypes.",
+    "sink": "ctypes memory APIs sized from input; struct.unpack with input-derived formats; file/socket .read() with no cap; zlib/bz2/lzma decompress without output limits; int(str)/str(int) on attacker-sized values"
+  },
+  "tracking_guards": "Check every input-derived length against a fixed constant before use; check reads use read(n) with n bounded; check decompression is incremental with an output-byte budget; check the interpreter enforces sys.set_int_max_str_digits (3.11+) where attacker integers are converted.",
+  "not_candidate_when": "The transport already caps body size below the guard threshold and that cap is enforced before parsing, buffers are sized from compile-time constants, or decompression output is budgeted.",
+  "synthetic_vulnerable_example": "data = request.raw.read()",
+  "synthetic_safe_example": "data = request.raw.read(1024 * 1024)",
+  "public_references": [
+    "CWE-400: Uncontrolled Resource Consumption — https://cwe.mitre.org/data/definitions/400.html",
+    "CWE-409: Improper Handling of Highly Compressed Data (Data Amplification) — https://cwe.mitre.org/data/definitions/409.html",
+    "CWE-119: Improper Restriction of Operations within the Bounds of a Memory Buffer — https://cwe.mitre.org/data/definitions/119.html",
+    "Python documentation: integer string conversion length limitation — https://docs.python.org/3/library/stdtypes.html#int-max-str-digits"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_py_10",
+      "pattern": "request\\.raw\\.read\\(\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "py-10"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

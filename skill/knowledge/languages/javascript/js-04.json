@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "js-04",
+  "title": "DOM Cross-Site Scripting via innerHTML",
+  "language": "javascript",
+  "platform_conditions": "Browser DOM APIs (HTML documents); server-side rendering pipelines that emit HTML strings share the same sink semantics",
+  "security_mechanism": "Assigning a string to innerHTML, outerHTML, or insertAdjacentHTML, and calling document.write, invoke the HTML parser: script-bearing markup in the string executes in the page origin, and event-handler attributes (onerror, onload) fire without any script permission step. textContent and createElement/textNode insert text nodes and cannot create elements, which is the actual defense. javascript: URLs are a second sink: assigning attacker text to href/src or navigating to it runs the string as code on click. window.postMessage handlers that act on event.data without checking event.origin let any embedding page inject into this sink.",
+  "source_sink_clues": {
+    "source": "User comments, profile fields, URL fragments/hash, postMessage event.data, and DOM values read back from location or storage.",
+    "sink": "element.innerHTML / outerHTML / insertAdjacentHTML assignment; document.write; javascript: URL assignment to href/location; acting on postMessage event.data without an origin check"
+  },
+  "tracking_guards": "Check the insertion point uses textContent or createElement with text nodes; if HTML is required, check it passes a sanitizer that strips script/event handlers before innerHTML; check postMessage handlers validate event.origin against an allowlist; check URL assignments are restricted to http(s) and rejected when the scheme is javascript:.",
+  "not_candidate_when": "The string inserted is static HTML shipped with the app, the value reaches textContent or an escaped template output, the sanitizer runs in the same origin before insertion and is markup-aware, or the postMessage path validates origin and treats data as untrusted text.",
+  "synthetic_vulnerable_example": "element.innerHTML = userComment;",
+  "synthetic_safe_example": "element.textContent = userComment;",
+  "public_references": [
+    "CWE-79: Improper Neutralization of Input During Web Page Generation (Cross-site Scripting) — https://cwe.mitre.org/data/definitions/79.html",
+    "MDN: Element.innerHTML — https://developer.mozilla.org/en-US/docs/Web/API/Element/innerHTML",
+    "OWASP Cross Site Scripting Prevention Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_js_04",
+      "pattern": "element\\.innerHTML\\s*=\\s*userComment",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "js-04"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

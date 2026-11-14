@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "c-05",
+  "title": "Format String Vulnerability in Output APIs",
+  "language": "c",
+  "platform_conditions": "C99/C11 on any hosted toolchain; %n exploitation depends on writable-memory protections (RELRO, W^X) of the linked libc",
+  "security_mechanism": "The printf family takes the format string as an interpreter program: each conversion spec reads its argument from the varargs stack by position, and the callee has no way to know how many arguments were actually passed. When the format string is attacker-controlled, %x/%p walk past the real arguments and dump stack memory (%-leak), while %n writes the number of emitted bytes so far to the address found on the stack, converting a log or echo line into an arbitrary write primitive. syslog(LOG_INFO, user_input) has the same defect because syslog formats its message argument.",
+  "source_sink_clues": {
+    "source": "Any string printed, logged, or echoed: request paths and user agents fed into printf, argv echoed back, protocol identifiers passed to syslog or snprintf as the format argument.",
+    "sink": "printf/fprintf/snprintf/sprintf/syslog/err* called with a non-literal first (format) argument that carries attacker influence"
+  },
+  "tracking_guards": "Check that every call passes a compile-time literal format (printf(\"%s\", input)), that -Wformat-security / -Wformat=2 is enabled so non-literal formats fail the build, and that any dynamic-template need is met by a fixed-format construction rather than concatenation.",
+  "not_candidate_when": "The format argument is a compile-time string literal, the non-literal string is provably built from constants with no attacker influence, or the call is on a build/configuration path (compiler-internal tooling) that never receives external input.",
+  "synthetic_vulnerable_example": "printf(user_supplied_str);",
+  "synthetic_safe_example": "printf(\"%s\", user_supplied_str);",
+  "public_references": [
+    "CWE-134: Use of Externally-Controlled Format String — https://cwe.mitre.org/data/definitions/134.html",
+    "man7.org: printf(3) — https://man7.org/linux/man-pages/man3/printf.3.html",
+    "SEI CERT C Coding Standard: FIO30-C (exclude user input from format strings)"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_c_05",
+      "pattern": "printf\\([a-zA-Z_]",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "c-05"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

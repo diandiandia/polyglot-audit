@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "scala-02",
+  "title": "Command Injection via scala.sys.process Interpolator",
+  "language": "scala",
+  "platform_conditions": "Scala 2.13 / Scala 3 standard library (scala.sys.process, scala.tools reflection) on the JVM",
+  "security_mechanism": "scala.sys.process converts a plain String into a shell command line: the string form (\"cmd\".!) hands the text to the platform shell, so an interpolated value containing ';' or '|' becomes a second command. Building the string with an interpolator (s\"sh -c $x\") is exactly the dangerous form, while Seq(\"cmd\", arg) constructs an argv vector with no shell involved. On the code-execution side, the reflection ToolBox (scala.tools.reflect.ToolBox) compiles and evaluates a source string, and a script-engine eval in Scala/JVM syntax executes it identically.",
+  "source_sink_clues": {
+    "source": "Request parameters, filenames, or configuration values interpolated into process command strings or reflection-evaluated source text.",
+    "sink": "String-typed scala.sys.process builders (\"...\".! / .!! / Process(\"...\")) with interpolation; ToolBox.eval; ScriptEngine.eval on attacker text"
+  },
+  "tracking_guards": "Check the process is built from Seq(executable, args...) with a fixed executable path and the dynamic value as one element; check '--' or equivalent option-terminators precede attacker arguments; check no ToolBox/eval path is reachable from input.",
+  "not_candidate_when": "The command is a constant with no interpolation, the dynamic value is validated against a strict grammar (numeric/identifier) before use, or the call takes the Seq argv form.",
+  "synthetic_vulnerable_example": "s\"sh -c $userInput\".!",
+  "synthetic_safe_example": "Seq(\"/bin/safe\", userInput).!",
+  "public_references": [
+    "CWE-78: Improper Neutralization of Special Elements used in an OS Command — https://cwe.mitre.org/data/definitions/78.html",
+    "CWE-94: Improper Control of Generation of Code — https://cwe.mitre.org/data/definitions/94.html",
+    "Scala standard library: scala.sys.process (no stable deep-link cited)"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_scala_02",
+      "pattern": "s\\\"sh -c \\$userInput\\\"\\.!",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "scala-02"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

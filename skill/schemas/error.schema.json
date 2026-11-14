@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polyglot-audit.internal/schemas/error.schema.json",
+  "description": "SWR-012 版本化数据契约；绑定 DSR-006/007/022。error 记录：结构化错误（错误码、消息、可重试性与细节）。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "code",
+    "message",
+    "retryable",
+    "details"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "code": {
+      "type": "string",
+      "minLength": 1
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "details": {
+      "type": "object"
+    }
+  }
+}

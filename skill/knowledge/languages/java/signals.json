@@ -1,0 +1,72 @@
+[
+  {
+    "pattern_id": "sig_java_01",
+    "pattern": "ois\\.readObject\\(",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "java-01"
+  },
+  {
+    "pattern_id": "sig_java_02",
+    "pattern": "ctx\\.lookup\\(userInput\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "java-02"
+  },
+  {
+    "pattern_id": "sig_java_03",
+    "pattern": "db\\.parse\\(stream\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "java-03"
+  },
+  {
+    "pattern_id": "sig_java_04",
+    "pattern": "stmt\\.executeQuery\\(.*SELECT",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "java-04"
+  },
+  {
+    "pattern_id": "sig_java_05",
+    "pattern": "new\\s+File\\(baseDir,\\s*entry\\.getName\\(\\)\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "java-05"
+  },
+  {
+    "pattern_id": "sig_java_06",
+    "pattern": "Runtime\\.getRuntime\\(\\)\\.exec\\(",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "java-06"
+  },
+  {
+    "pattern_id": "sig_java_07",
+    "pattern": "public\\s+class\\s+UserServlet.*private\\s+String\\s+currentUser",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "java-07"
+  },
+  {
+    "pattern_id": "sig_java_08",
+    "pattern": "if\\s*\\(roleId1\\s*==\\s*roleId2\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "java-08"
+  },
+  {
+    "pattern_id": "sig_java_09",
+    "pattern": "Random\\s+r\\s*=\\s*new\\s+Random\\(\\);",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "java-09"
+  },
+  {
+    "pattern_id": "sig_java_10",
+    "pattern": "request\\.getRequestURI\\(\\)\\.startsWith",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "java-10"
+  }
+]

@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "scala-07",
+  "title": "XML External Entity Processing in scala.xml.XML",
+  "language": "scala",
+  "platform_conditions": "Scala 2.13 / Scala 3 standard library (scala.xml) on the JVM; delegates to the JVM SAX parser underneath",
+  "security_mechanism": "scala.xml.XML.load and loadString parse with defaults that resolve external entities, so a document declaring an entity with a file:// or http:// system identifier makes the parser fetch and inline its contents -- local file read and SSRF from the payload, with the inlined data echoed back through downstream rendering. Recursive internal entities amplify a tiny document into memory exhaustion. The related Scala-only sink is XML literals in code: interpolating an attacker string into XML literal syntax emits it unescaped into the parsed tree, injecting elements or text into the produced document.",
+  "source_sink_clues": {
+    "source": "XML documents posted by clients, configuration feeds fetched from peers, and string values interpolated into XML literals.",
+    "sink": "scala.xml.XML.load / loadString / withSAXParser on untrusted documents; XML literal construction with interpolated values"
+  },
+  "tracking_guards": "Check parsing goes through a factory with external entities and DTDs disabled (SAXParserFactory features external-general-entities=false, disallow-doctype-decl=true) rather than the scala.xml convenience entry points; check XML literal content is escaped or built from validated nodes.",
+  "not_candidate_when": "The XML comes from a trusted internal producer that never emits DTDs, parsing runs with entity resolution explicitly disabled, or interpolated values are escaped/encoded before entering literal markup.",
+  "synthetic_vulnerable_example": "val xml = scala.xml.XML.load(inputStream)",
+  "synthetic_safe_example": "val parser = saxParserFactory.newSAXParser(); parser.parse(...)",
+  "public_references": [
+    "CWE-611: Improper Restriction of XML External Entity Reference — https://cwe.mitre.org/data/definitions/611.html",
+    "CWE-776: Improper Restriction of Recursive Entity References in DTDs — https://cwe.mitre.org/data/definitions/776.html",
+    "OWASP XML External Entity Prevention Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_scala_07",
+      "pattern": "scala\\.xml\\.XML\\.load\\(",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "scala-07"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

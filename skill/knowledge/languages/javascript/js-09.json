@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "js-09",
+  "title": "Unsafe Deserialization and Reviver Misuse",
+  "language": "javascript",
+  "platform_conditions": "ECMAScript 2020 semantics in Node.js runtime; XML entity behavior depends on the parser in use",
+  "security_mechanism": "Historically, JavaScript 'deserialization' meant evaluating the payload -- new Function('return ' + text) or eval -- which executes embedded code verbatim. JSON.parse itself never executes code, but its reviver argument is called for every key with attacker-chosen key/value pairs, so a reviver that dispatches on key names into constructors or setters turns the payload into a constructor/property-assignment gadget chain. Server-side XML parsers invoked with entity processing enabled resolve external entities, giving file read and SSRF with the payload alone.",
+  "source_sink_clues": {
+    "source": "Request bodies, stored blobs, cross-service messages, and XML/config documents received from peers or uploads.",
+    "sink": "new Function / eval used to reconstruct objects from text; JSON.parse with a reviver that assigns or constructs from attacker keys; XML parsers with entity expansion enabled"
+  },
+  "tracking_guards": "Check data-only payloads are read with plain JSON.parse and a schema validator rather than evaluation; check the reviver is a constant function that never calls constructors or writes to objects by attacker-supplied key; check XML parsing disables DTD/entity resolution.",
+  "not_candidate_when": "The payload is parsed with JSON.parse and validated against a schema before use, the reviver only filters/prunes known keys with fixed logic, or the XML producer is a trusted internal service that never emits DTDs.",
+  "synthetic_vulnerable_example": "const data = (new Function('return ' + rawJson))();",
+  "synthetic_safe_example": "const data = JSON.parse(rawJson);",
+  "public_references": [
+    "CWE-502: Deserialization of Untrusted Data — https://cwe.mitre.org/data/definitions/502.html",
+    "CWE-611: Improper Restriction of XML External Entity Reference — https://cwe.mitre.org/data/definitions/611.html",
+    "OWASP Deserialization Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_js_09",
+      "pattern": "new\\s+Function\\('return\\s*'\\s*\\+\\s*rawJson\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "js-09"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

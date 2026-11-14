@@ -1,0 +1,62 @@
+[
+  {
+    "id": "cpp-01",
+    "title": "Dangling Reference and Iterator Invalidation",
+    "sink_clue": "Read or copy through a std::string_view/std::span bound to a temporary or destroyed string; iterator/pointer/reference used after push_back/insert/erase on the container; lambda reference capture invoked after the captured scope returned",
+    "when_to_open": "When auditing C++ code: Dangling Reference and Iterator Invalidation. Sink: Read or copy through a std::string_view/std::span bound to a temporary or destroyed string; iterator/pointer/reference used after push_back/insert/erase on the container; lambda reference capture invoked after the captured scope returned"
+  },
+  {
+    "id": "cpp-02",
+    "title": "Asynchronous Lifetime and Coroutine Data Race",
+    "sink_clue": "std::thread(...).detach() or stored callback capturing `this`; shared_from_this()/weak_ptr misuse; coroutine lambdas taking reference parameters and referencing locals across co_await",
+    "when_to_open": "When auditing C++ code: Asynchronous Lifetime and Coroutine Data Race. Sink: std::thread(...).detach() or stored callback capturing `this`; shared_from_this()/weak_ptr misuse; coroutine lambdas taking reference parameters and referencing locals across co_await"
+  },
+  {
+    "id": "cpp-03",
+    "title": "Container and Raw Buffer Out-of-Bounds",
+    "sink_clue": "operator[] on vector/deque/string/map with an unchecked index; data()/c_str() plus an external length handed to memcpy or a C API",
+    "when_to_open": "When auditing C++ code: Container and Raw Buffer Out-of-Bounds. Sink: operator[] on vector/deque/string/map with an unchecked index; data()/c_str() plus an external length handed to memcpy or a C API"
+  },
+  {
+    "id": "cpp-04",
+    "title": "Size Computation Overflow in Container Allocation",
+    "sink_clue": "vector::reserve/resize, new T[n], make_unique<T[]>(n), or any allocator call whose argument is a product or sum of attacker values",
+    "when_to_open": "When auditing C++ code: Size Computation Overflow in Container Allocation. Sink: vector::reserve/resize, new T[n], make_unique<T[]>(n), or any allocator call whose argument is a product or sum of attacker values"
+  },
+  {
+    "id": "cpp-05",
+    "title": "Unsafe Type Casting and Type Confusion",
+    "sink_clue": "static_cast / reinterpret_cast / C-style cast to a derived or unrelated pointer type on data whose dynamic type is attacker-influenced; union member reads of a different active member",
+    "when_to_open": "When auditing C++ code: Unsafe Type Casting and Type Confusion. Sink: static_cast / reinterpret_cast / C-style cast to a derived or unrelated pointer type on data whose dynamic type is attacker-influenced; union member reads of a different active member"
+  },
+  {
+    "id": "cpp-06",
+    "title": "Ownership and Deletion Mismatch",
+    "sink_clue": "delete applied to a new[] pointer; two owners freeing one raw pointer; shared_ptr constructed from a raw pointer already owned elsewhere",
+    "when_to_open": "When auditing C++ code: Ownership and Deletion Mismatch. Sink: delete applied to a new[] pointer; two owners freeing one raw pointer; shared_ptr constructed from a raw pointer already owned elsewhere"
+  },
+  {
+    "id": "cpp-07",
+    "title": "Exception Safety and Invariant Incompletion",
+    "sink_clue": "Throwing destructors or noexcept functions that throw; multi-step mutation sequences without rollback (no RAII guard) whose early steps persist when a later step throws",
+    "when_to_open": "When auditing C++ code: Exception Safety and Invariant Incompletion. Sink: Throwing destructors or noexcept functions that throw; multi-step mutation sequences without rollback (no RAII guard) whose early steps persist when a later step throws"
+  },
+  {
+    "id": "cpp-08",
+    "title": "Uninitialized Members and Padding Information Leak",
+    "sink_clue": "memcpy/send/serialize over sizeof(obj) of a default-constructed object; any read of a member that no constructor initialized",
+    "when_to_open": "When auditing C++ code: Uninitialized Members and Padding Information Leak. Sink: memcpy/send/serialize over sizeof(obj) of a default-constructed object; any read of a member that no constructor initialized"
+  },
+  {
+    "id": "cpp-09",
+    "title": "C Memory Operations on Non-Trivial C++ Types",
+    "sink_clue": "memcpy/memmove/memset/realloc applied to objects of non-trivially-copyable types (virtual functions, std::string/vector members, user-defined destructors)",
+    "when_to_open": "When auditing C++ code: C Memory Operations on Non-Trivial C++ Types. Sink: memcpy/memmove/memset/realloc applied to objects of non-trivially-copyable types (virtual functions, std::string/vector members, user-defined destructors)"
+  },
+  {
+    "id": "cpp-10",
+    "title": "Polymorphism and Destructor Traps",
+    "sink_clue": "delete through a base pointer with a non-virtual destructor; virtual calls in constructors/destructors; Base = Derived assignments that slice; implicit conversions into security-relevant parameter types",
+    "when_to_open": "When auditing C++ code: Polymorphism and Destructor Traps. Sink: delete through a base pointer with a non-virtual destructor; virtual calls in constructors/destructors; Base = Derived assignments that slice; implicit conversions into security-relevant parameter types"
+  }
+]

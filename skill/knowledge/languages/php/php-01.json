@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "php-01",
+  "title": "Type Juggling and Loose Comparison Bypasses",
+  "language": "php",
+  "platform_conditions": "PHP 8.x default configuration; PHP 8 tightened string<->int comparisons, but two numeric strings still compare numerically, so '0e'-prefixed digest collisions persist",
+  "security_mechanism": "PHP's == converts operands before comparing: two numeric strings are compared as numbers, so any md5/sha1 digest of the form '0e' followed by all digits (magic hashes, e.g. md5('240610708') == '0e462097431906509030567485623617') equals every other such digest because both cast to float 0. in_array() and array_search() default to loose comparison unless the third $strict argument is true, and switch() matches loosely, so membership/role checks pass on unexpected values. On PHP 7, passing an array to strcmp()/strlen() raises a warning and returns NULL, which == treats as equal to 0, letting an attacker-supplied array bypass the check (PHP 8 throws a TypeError instead).",
+  "source_sink_clues": {
+    "source": "Request-supplied digests, tokens, role/flag parameters, and array-vs-scalar parameter shapes (a[]= style) that flow into comparison constructs.",
+    "sink": "=== vs == distinctions aside: == / != on authenticators; in_array / array_search without $strict=true; switch matching attacker-controlled scalars; strcmp/strlen receiving attacker-chosen argument types"
+  },
+  "tracking_guards": "Require hash_equals() or password_verify() for every authenticator comparison; require in_array(..., true) strict mode on security paths; require gettype()/is_string() checks before functions that expect scalars; prefer === / !== everywhere an authentication outcome is decided.",
+  "not_candidate_when": "Operands are provably the same internal type by construction (both server-generated integers), the comparison is === / !==, digest comparison already goes through hash_equals/password_verify, or in_array is strict=true and feeds a non-security decision.",
+  "synthetic_vulnerable_example": "if ($password_hash == '0e123456789') { login(); }",
+  "synthetic_safe_example": "if (hash_equals($password_hash, $expected)) { login(); }",
+  "public_references": [
+    "CWE-697: Incorrect Comparison — https://cwe.mitre.org/data/definitions/697.html",
+    "PHP manual: hash_equals — https://www.php.net/manual/en/function.hash-equals.php",
+    "PHP manual: comparison operators table — https://www.php.net/manual/en/language.operators.comparison.php"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_php_01",
+      "pattern": "\\$password_hash\\s*==\\s*'0e",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "php-01"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

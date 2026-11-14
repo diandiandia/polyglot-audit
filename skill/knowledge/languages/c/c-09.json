@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "c-09",
+  "title": "Command Execution and Environment Trust",
+  "language": "c",
+  "platform_conditions": "POSIX process semantics (fork/exec, /bin/sh via system/popen); PATH resolution and env inheritance are Unix-specific behaviors",
+  "security_mechanism": "system() and popen() hand the string to /bin/sh -c, so shell syntax in the input starts additional commands. exec-family calls avoid the shell but inherit two trust channels from their caller: PATH lookup — execvp/execvp-style calls resolve a bare command name against the current PATH, which a less-privileged child or the invoking user may have re-pointed — and the environment block, whose LD_PRELOAD/IFS values the spawned program may honor. Privilege-drop ordering is the third channel: if the code execs or opens files before dropping privileges (or drops only the effective uid while the saved uid remains root), the child inherits privileges the input may steer.",
+  "source_sink_clues": {
+    "source": "Request or protocol data that reaches the command string or argv, plus the inherited process environment when the caller runs privileged.",
+    "sink": "system()/popen() with any interpolated content; execv/execl/execvp with attacker-influenced argv or before privilege cleanup"
+  },
+  "tracking_guards": "Prefer execve with an absolute executable path and a constructed argv over system(); check that the environment passed to exec is sanitized (fixed minimal envp) when dropping privileges, that privilege irreversibly drops (setuid(getuid()) plus saved-id clearing) before any exec or file open, and that argv elements cannot be interpreted as options by the target program.",
+  "not_candidate_when": "The command string is entirely constant with no external input, argv is a fixed program path with only allowlisted arguments, or the process has already dropped all privileges and the child cannot influence anything the parent trusts.",
+  "synthetic_vulnerable_example": "system(user_command);",
+  "synthetic_safe_example": "execve(\"/bin/trusted\", argv, envp);",
+  "public_references": [
+    "CWE-78: Improper Neutralization of Special Elements used in an OS Command — https://cwe.mitre.org/data/definitions/78.html",
+    "CWE-426: Untrusted Search Path — https://cwe.mitre.org/data/definitions/426.html",
+    "man7.org: system(3) — https://man7.org/linux/man-pages/man3/system.3.html",
+    "SEI CERT C Coding Standard: ENV33-C (no system() when an exec family call suffices), ENV03-C (sanitize environment)"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_c_09",
+      "pattern": "system\\(user_command\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "c-09"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

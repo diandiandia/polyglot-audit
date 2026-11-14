@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polyglot-audit.internal/schemas/rating.schema.json",
+  "description": "SWR-011 版本化数据契约；绑定 DSR-006/007/028。rating 记录：影响×可利用性定级矩阵、单档人工调整与紧迫度重算。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "impact",
+    "exploitability",
+    "factor_reasons",
+    "calculated_severity",
+    "calculated_urgency",
+    "final_severity",
+    "final_urgency"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "impact": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4
+    },
+    "exploitability": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4
+    },
+    "factor_reasons": {
+      "type": "object",
+      "required": [
+        "impact_why",
+        "exploitability_why"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "impact_why": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exploitability_why": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "calculated_severity": {
+      "enum": [
+        "Critical",
+        "High",
+        "Medium",
+        "Low",
+        "Info"
+      ]
+    },
+    "calculated_urgency": {
+      "enum": [
+        "P0",
+        "P1",
+        "P2",
+        "P3"
+      ]
+    },
+    "final_severity": {
+      "enum": [
+        "Critical",
+        "High",
+        "Medium",
+        "Low",
+        "Info"
+      ]
+    },
+    "final_urgency": {
+      "enum": [
+        "P0",
+        "P1",
+        "P2",
+        "P3"
+      ]
+    },
+    "validation_priority": {
+      "enum": [
+        "V1",
+        "V2",
+        "V3"
+      ]
+    },
+    "adjustment": {
+      "type": "object",
+      "required": [
+        "operator",
+        "reason",
+        "direction"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "operator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "direction": {
+          "enum": [
+            "up",
+            "down"
+          ]
+        }
+      }
+    }
+  }
+}

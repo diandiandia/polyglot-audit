@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "shell-03",
+  "title": "Option Injection via Unfiltered Flags",
+  "language": "shell",
+  "platform_conditions": "POSIX sh and bash on Linux/macOS; '--' end-of-options convention follows the POSIX Utility Syntax Guidelines, which not every third-party utility implements",
+  "security_mechanism": "Most POSIX utilities parse an operand that begins with '-' as an option, so an attacker who controls a filename or argument can turn data into flags: a file named '-n' or '--output' passed unguarded to cat, sort or cp changes the invoked behavior instead of being read. Without '--', there is no syntax boundary between the option region and operands, and utilities that do support '--' still differ on which options consume the next word. Glob expansion has the same shape: a pattern supplied by the user that matches nothing stays literal (nullglob off), and xargs without -0 splits its input on quotes and whitespace, letting a crafted filename inject entirely new arguments.",
+  "source_sink_clues": {
+    "source": "Untrusted filenames (uploads, archive members, directory listings of shared paths), user-chosen argument values in wrappers, and output of tools piped into xargs.",
+    "sink": "Utility invocations where an input-derived value follows the command name with no '--' separator: cat/sort/head/cp/mv/kill, tar with input-derived flags, xargs without -0 or -d, git/curl wrapper scripts forwarding user arguments"
+  },
+  "tracking_guards": "Check a literal '--' precedes every input-derived operand; check xargs uses -0 (with find -print0 / sort -z) or -d '\\n'; check input-derived values are prefixed or validated to reject a leading '-' (case $arg in -*) reject); check glob results are iterated with quoted \"$@\" so each match is one operand.",
+  "not_candidate_when": "The operand is validated against a grammar that cannot start with '-' (numeric IDs, absolute paths built server-side), '--' is already present before the operand and the target utility implements it, or xargs -0 pairs with NUL-delimited producers so injection through quoting is impossible.",
+  "synthetic_vulnerable_example": "cat $user_file_param",
+  "synthetic_safe_example": "cat -- \"$user_file_param\"",
+  "public_references": [
+    "CWE-88: Argument Injection or Modification — https://cwe.mitre.org/data/definitions/88.html",
+    "CWE-78: Improper Neutralization of Special Elements used in an OS Command — https://cwe.mitre.org/data/definitions/78.html",
+    "POSIX Utility Syntax Guidelines — https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_shell_03",
+      "pattern": "cat\\s+\\$user_file_param",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "shell-03"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

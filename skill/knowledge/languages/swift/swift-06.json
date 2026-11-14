@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "id": "swift-06",
+  "title": "Insecure Storage in UserDefaults and ATS Bypass",
+  "language": "swift",
+  "platform_conditions": "iOS/macOS SDK (Foundation UserDefaults, Security Keychain Services, App Transport Security in URLSession/NSAppTransportSecurity)",
+  "security_mechanism": "UserDefaults writes an unencrypted plist inside the app container (or shared with an app group); on jailbroken devices, from iTunes/iCloud backups, and via any container read primitive the file is recoverable, so tokens and credentials stored there are dumped offline. Keychain items are encrypted at rest, but the accessibility level matters: kSecAttrAccessibleAlways / WhenUnlockedThisDeviceOnly-vs-Always tradeoffs determine whether the item migrates to backups or other devices and when it is readable. On the transport side, URLSessionDelegate methods (urlSession(_:didReceive:completionHandler:)) that call completionHandler(.useCredential, URLCredential(trust:)) unconditionally accept any presented certificate, disabling server authentication; NSAppTransportSecurity exceptions (NSAllowsArbitraryLoads) re-enable cleartext and weak TLS for the whole app.",
+  "source_sink_clues": {
+    "source": "The credential material itself plus any network position able to present a substitute certificate once validation is disabled.",
+    "sink": "UserDefaults.standard.set / plist writes of tokens or keys; Keychain queries with kSecAttrAccessibleAlways; URLSessionDelegate accepting every server trust challenge; NSAppTransportSecurity with NSAllowsArbitraryLoads; CommonCrypto calls with ECB mode or a fixed IV"
+  },
+  "tracking_guards": "Check secrets go to Keychain with a device-only accessibility level (kSecAttrAccessibleWhenUnlockedThisDeviceOnly or better) instead of UserDefaults; check server trust challenges evaluate the trust object (SecTrustEvaluateWithError) and only pin to expected keys; check Info.plist contains no NSAllowsArbitraryLoads in release; check CommonCrypto specifies GCM/CBC with random IV and correct buffer sizes.",
+  "not_candidate_when": "Only non-sensitive preferences are stored in UserDefaults, the Keychain item's accessibility restricts it to this device and unlocked use, the ATS exception is scoped to a documented non-sensitive domain, or the trust delegate rejects challenges it cannot verify against pinned keys.",
+  "synthetic_vulnerable_example": "UserDefaults.standard.set(secretToken, forKey: \"token\")",
+  "synthetic_safe_example": "/* use Keychain Services */",
+  "public_references": [
+    "CWE-312: Cleartext Storage of Sensitive Information — https://cwe.mitre.org/data/definitions/312.html",
+    "CWE-295: Improper Certificate Validation — https://cwe.mitre.org/data/definitions/295.html",
+    "Apple developer documentation: Keychain Services — https://developer.apple.com/documentation/security/keychain_services",
+    "Apple developer documentation: UserDefaults — https://developer.apple.com/documentation/foundation/userdefaults",
+    "Apple developer documentation: URLSessionDelegate — https://developer.apple.com/documentation/foundation/urlsessiondelegate"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_swift_06",
+      "pattern": "UserDefaults\\.standard\\.set\\(secretToken",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "swift-06"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

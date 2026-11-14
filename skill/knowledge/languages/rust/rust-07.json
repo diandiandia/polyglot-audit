@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "rust-07",
+  "title": "Deserialization and Untrusted Parser Assumptions",
+  "language": "rust",
+  "platform_conditions": "Any Rust toolchain; applies to serde-based formats (serde_json, postcard-style length-prefixed codecs) on all targets",
+  "security_mechanism": "Deserializers trust the document's own structure claims: a length prefix in the input is honored as the allocation size, a self-referential nesting depth recurses until the stack is exhausted (serde_json's recursion limit exists precisely because the input can nest arbitrarily), and unknown fields are dropped silently, so a peer can smuggle fields the schema authors never audited. Untagged (internally-tagged) enums deserialize by trying variants against the same payload, meaning one attacker-supplied object can be interpreted as a different variant than the sender intended — a type-confusion decision made on attacker data.",
+  "source_sink_clues": {
+    "source": "Any externally produced serialized bytes: API request bodies, peer-to-peer protocol messages, config files from untrusted origin.",
+    "sink": "serde_json::from_reader/from_slice/from_str (and equivalent codec deserializers) on peer data with deep nesting, length-prefixed allocations, or untagged enum targets"
+  },
+  "tracking_guards": "Check that the deserializer enforces a nesting/recursion limit and a total input size cap, that length-prefix-driven allocation is validated against the real remaining bytes, that target structs deny unknown fields (deny_unknown_fields) where the extra keys could change semantics, and that untagged enums are avoided or tagged explicitly for security-relevant messages.",
+  "not_candidate_when": "The input size is capped before parsing and nesting is bounded by the deserializer's limit, unknown fields are rejected or provably inert, enums are externally tagged (or validated after parse), and the payload producer is inside the same trust domain.",
+  "synthetic_vulnerable_example": "let obj: ComplexEnum = serde_json::from_reader(reader)?;",
+  "synthetic_safe_example": "let obj: ComplexEnum = serde_json::from_reader(reader.take(64 * 1024))?; // size-capped reader",
+  "public_references": [
+    "CWE-502: Deserialization of Untrusted Data — https://cwe.mitre.org/data/definitions/502.html",
+    "CWE-674: Uncontrolled Recursion — https://cwe.mitre.org/data/definitions/674.html",
+    "CWE-400: Uncontrolled Resource Consumption — https://cwe.mitre.org/data/definitions/400.html",
+    "serde docs: untagged enums and unknown fields — https://serde.rs/attr-deny-unknown-fields.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_rust_07",
+      "pattern": "serde_json::from_reader\\(reader\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "rust-07"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

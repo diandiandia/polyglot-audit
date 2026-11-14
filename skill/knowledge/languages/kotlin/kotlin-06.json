@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "id": "kotlin-06",
+  "title": "SQL Injection via String Template in rawQuery",
+  "language": "kotlin",
+  "platform_conditions": "Android runtime (API level 1+ for SQLiteDatabase.rawQuery and execSQL)",
+  "security_mechanism": "SQLiteDatabase.rawQuery and execSQL execute the statement text as given; a Kotlin string template ('... WHERE id = \\'$id\\'') splices the value into the SQL before the database parser sees it, so a value containing a quote or SQL syntax changes the statement structure. Local SQLite injection is not limited to one app's rows: providers and databases often hold cross-user or synced data, and injection in a query feeding CursorAdapter/content-provider results leaks rows the caller should not read. The '?' placeholder + selectionArgs form binds the value out-of-band and cannot alter the parse.",
+  "source_sink_clues": {
+    "source": "Deep-link parameters, Intent extras, content-provider URIs, or IPC values from other apps that reach the query through uri.lastPathSegment or query parameters.",
+    "sink": "db.rawQuery / db.execSQL / SQLiteQueryBuilder query built with Kotlin string templates or concatenation instead of selectionArgs"
+  },
+  "tracking_guards": "Check the statement uses the placeholder form (rawQuery(sql with '?', arrayOf(value)) or SQLiteQueryBuilder with selectionArgs); identifiers that cannot be bound (column names, ORDER BY) must come from a fixed allowlist; for ContentProvider openFile/query, check uri.lastPathSegment is validated against an allowlist or pattern before being spliced into a path or query.",
+  "not_candidate_when": "The value travels in selectionArgs (placeholder binding), the interpolated part is a server/app-internal constant chosen from an allowlist, or the input is strictly validated to a narrow grammar (integer ID) before reaching the query.",
+  "synthetic_vulnerable_example": "db.rawQuery(\"SELECT * FROM items WHERE id = '$id'\", null)",
+  "synthetic_safe_example": "db.rawQuery(\"SELECT * FROM items WHERE id = ?\", arrayOf(id))",
+  "public_references": [
+    "CWE-89: Improper Neutralization of Special Elements in SQL Command — https://cwe.mitre.org/data/definitions/89.html",
+    "Android developer documentation: SQLiteDatabase — https://developer.android.com/reference/android/database/sqlite/SQLiteDatabase.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_kotlin_06",
+      "pattern": "rawQuery\\(\\\"SELECT.*\\$id",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "kotlin-06"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

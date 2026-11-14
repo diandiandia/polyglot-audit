@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "php-07",
+  "title": "Cross-Site Scripting via Unescaped echo",
+  "language": "php",
+  "platform_conditions": "PHP 7.4/8.x; htmlspecialchars escapes single quotes only with ENT_QUOTES (default flags leave them raw), and default_charset is UTF-8 since PHP 5.6 — escaping breaks when the output document charset differs",
+  "security_mechanism": "echo/print place the bytes into the HTML response verbatim, so markup in the input becomes live document structure. htmlspecialchars() with default flags escapes < > & and double quotes but not single quotes, so values landing inside single-quoted attributes (onmouseover='...') still execute; with a non-UTF-8 document charset, multi-byte sequences can consume the quote character and defeat the escaping. header('Location: '. $input) refuses to emit CR/LF since PHP 5.1.2, so the surviving defect there is the unvalidated open redirect — an attacker URL that launderes phishing and OAuth-style flows through the trusted origin.",
+  "source_sink_clues": {
+    "source": "Reflected query parameters, stored user content rendered into pages, and redirect target parameters.",
+    "sink": "echo/print of unescaped request data; htmlspecialchars calls without ENT_QUOTES or with a charset mismatched to the document; header('Location: '.attacker_url)"
+  },
+  "tracking_guards": "Require htmlspecialchars($v, ENT_QUOTES, 'UTF-8') (flags explicit) for HTML body context and context-appropriate encoding elsewhere (urlencode in URLs, attribute-safe encoding in quoted attributes); require redirect targets validated against a fixed host allowlist or constrained to site-relative paths.",
+  "not_candidate_when": "Output is escaped with ENT_QUOTES under a charset that matches the document, the response is non-HTML (JSON served with an explicit application/json Content-Type), or redirect targets are site-relative or allowlisted after validation.",
+  "synthetic_vulnerable_example": "echo '<div class=\"comment\">' . $_GET['comment'] . '</div>';",
+  "synthetic_safe_example": "echo htmlspecialchars($_GET['comment'], ENT_QUOTES, 'UTF-8');",
+  "public_references": [
+    "CWE-79: Improper Neutralization of Input During Web Page Generation — https://cwe.mitre.org/data/definitions/79.html",
+    "CWE-601: URL Redirection to Untrusted Site — https://cwe.mitre.org/data/definitions/601.html",
+    "PHP manual: htmlspecialchars — https://www.php.net/manual/en/function.htmlspecialchars.php",
+    "OWASP Cross Site Scripting Prevention Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_php_07",
+      "pattern": "echo.*_GET\\['comment'\\]",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "php-07"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

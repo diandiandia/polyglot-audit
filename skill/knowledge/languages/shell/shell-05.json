@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "shell-05",
+  "title": "Insecure PATH Inheritance and Environment Trust",
+  "language": "shell",
+  "platform_conditions": "POSIX sh and bash on Linux/macOS; bash skips BASH_ENV and sourced functions under setuid invocation, but root shell contexts without -p still honor inherited PATH, IFS and exported functions",
+  "security_mechanism": "An unqualified command name is resolved by walking $PATH left to right at call time, so in a privileged context an attacker-controlled PATH entry placed first supplies a substitute executable that runs with the script's privileges. The same trust surface includes IFS (inherited through some older shells' environments, changing every unquoted expansion), BASH_ENV/ENV (pointing bash/sh at an attacker-writable startup file that executes before the script body), LD_PRELOAD and _dyld_* variables, and exported function definitions, which a child bash imports and can therefore replace a utility's behavior wholesale.",
+  "source_sink_clues": {
+    "source": "Environment inherited from an untrusted caller: setuid or sudo-invoked scripts, CI runners triggered by untrusted pull requests, cron/systemd jobs whose environment an attacker can influence, and any wrapper invoked with env or a user-modified PATH.",
+    "sink": "Unqualified command names (tar, grep, awk, helper scripts) executed in a privileged script without a pinned PATH; scripts that read BASH_ENV/ENV-honored startup files; shells started with inherited exported functions; use of IFS from the environment"
+  },
+  "tracking_guards": "Check the script pins PATH to a fixed list of root-owned directories at the top (PATH=/usr/bin:/bin; export PATH) and invokes security-critical binaries by absolute path; check setuid scripts use setpriv/env -i or bash -p so inherited env is dropped; check IFS is reset explicitly (IFS=$' \\t\\n'); check exported functions are unset (-f) before privilege-sensitive work.",
+  "not_candidate_when": "PATH is pinned to a constant, root-owned list before the first command and security-relevant binaries are called by absolute path, the script only ever runs from a trusted operator environment (interactive root shell, locked-down CI image) where no untrusted party can set variables, or the script runs under env -i / bash -p so the inherited environment is empty by construction.",
+  "synthetic_vulnerable_example": "cleanup_script_unqualified",
+  "synthetic_safe_example": "/usr/local/bin/cleanup_script_safe",
+  "public_references": [
+    "CWE-426: Untrusted Search Path — https://cwe.mitre.org/data/definitions/426.html",
+    "CWE-427: Uncontrolled Search Path Element — https://cwe.mitre.org/data/definitions/427.html",
+    "CWE-78: Improper Neutralization of Special Elements used in an OS Command — https://cwe.mitre.org/data/definitions/78.html",
+    "Bash Reference Manual: Bash Variables (PATH, BASH_ENV, PS4) — https://www.gnu.org/software/bash/manual/html_node/Bash-Variables.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_shell_05",
+      "pattern": "cleanup_script_unqualified",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "shell-05"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

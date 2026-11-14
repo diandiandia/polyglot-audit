@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "c-04",
+  "title": "Uninitialized Memory Usage and Information Leakage",
+  "language": "c",
+  "platform_conditions": "C99/C11 on any hosted toolchain; padding-byte exposure depends on the platform ABI's struct alignment rules",
+  "security_mechanism": "Automatic (stack) variables and malloc'd blocks start as whatever bytes were already in memory; reading them yields values from a previous stack frame or freed allocation. Two harms follow: logic computed on uninitialized fields is attacker-shiftable (a flag or length read as garbage may pass a check), and serializing a partially initialized struct — including ABI padding bytes the compiler inserts between members — copies stale heap or stack contents into output the attacker receives. Tools see the source-level type, not the padding, so memcpy(out, &d, sizeof(d)) leaks more than the declared fields.",
+  "source_sink_clues": {
+    "source": "Short reads and partially-filled buffers (read/recv returning fewer bytes than requested), error paths that skip initialization, and response serialization of stack or heap objects.",
+    "sink": "memcpy/send/write of an object that was not fully written; use of a local or malloc'd variable on a path where its initialization call was skipped or partial"
+  },
+  "tracking_guards": "Check that stack aggregates are zero-initialized at declaration (`= {0}` or memset before first use), that malloc'd buffers are initialized before read or checked against calloc, and that every short-read path (read/recv return < requested) writes or discards the unfilled tail before the buffer is used or sent.",
+  "not_candidate_when": "The object is fully initialized on every path reaching the use (including the error path), the buffer is only consumed internally and never serialized or compared, or the copied region excludes padding and uninitialized members by construction (field-by-field copy).",
+  "synthetic_vulnerable_example": "struct Data d; memcpy(out, &d, sizeof(d));",
+  "synthetic_safe_example": "struct Data d = {0}; memcpy(out, &d, sizeof(d));",
+  "public_references": [
+    "CWE-457: Use of Uninitialized Variable — https://cwe.mitre.org/data/definitions/457.html",
+    "CWE-908: Use of Uninitialized Resource — https://cwe.mitre.org/data/definitions/908.html",
+    "SEI CERT C Coding Standard: EXP33-C (no reads of uninitialized memory), MSC04-C (padding leaks)"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_c_04",
+      "pattern": "struct\\s+Data\\s+d;",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "c-04"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

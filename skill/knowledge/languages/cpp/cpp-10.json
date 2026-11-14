@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "id": "cpp-10",
+  "title": "Polymorphism and Destructor Traps",
+  "language": "cpp",
+  "platform_conditions": "C++11 and later on any conforming toolchain; UB shows up as wrong destructor or leaked/vtable-corrupted object rather than an exception",
+  "security_mechanism": "`delete b` where b is Base* but the object is Derived invokes undefined behavior when Base's destructor is not virtual: the compiler emits a call to ~Base with no dispatch, so Derived's members (owned strings, file handles) are never destroyed and the deallocation size passed to the allocator can mismatch the Derived block. Virtual calls during construction and destruction dispatch only to the currently-constructing level, so an overridden hook silently does nothing or runs base logic while the derived state is not yet alive. Copy assignment to a Base-typed value slices the Derived part off, and a non-explicit converting constructor lets a value of one type reach a security check as another (e.g. Token(string) converting a raw attacker string into a validated token implicitly).",
+  "source_sink_clues": {
+    "source": "Polymorphic objects built from attacker-selected types (plugin and handler registries, deserialized type tags) and values converted implicitly across API boundaries.",
+    "sink": "delete through a base pointer with a non-virtual destructor; virtual calls in constructors/destructors; Base = Derived assignments that slice; implicit conversions into security-relevant parameter types"
+  },
+  "tracking_guards": "Check that every polymorphic base class declares a virtual destructor, that ownership transfer uses unique_ptr<Base> (which still requires the virtual dtor), that no virtual function is invoked from a constructor or destructor body, and that converting constructors and conversion operators on security-relevant types are explicit.",
+  "not_candidate_when": "The base class has a virtual destructor so deletion dispatches correctly, the hierarchy is final/non-polymorphic with no derived types, the type is deleted through its own concrete pointer, or the converting constructor is explicit and every call site passes the validated type deliberately.",
+  "synthetic_vulnerable_example": "Base *b = new Derived(); delete b;",
+  "synthetic_safe_example": "class Base { public: virtual ~Base() = default; };",
+  "public_references": [
+    "CWE-404: Improper Resource Shutdown or Release — https://cwe.mitre.org/data/definitions/404.html",
+    "CWE-704: Incorrect Type Conversion or Cast — https://cwe.mitre.org/data/definitions/704.html",
+    "cppreference: virtual destructor — https://en.cppreference.com/w/cpp/language/destructor",
+    "cppreference: explicit — https://en.cppreference.com/w/cpp/language/explicit",
+    "C++ Core Guidelines: C.127 (virtual destructor for base classes) — https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_cpp_10",
+      "pattern": "delete\\s+b;",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "cpp-10"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

@@ -1,0 +1,72 @@
+[
+  {
+    "pattern_id": "sig_csharp_01",
+    "pattern": "BinaryFormatter.*Deserialize\\(",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "csharp-01"
+  },
+  {
+    "pattern_id": "sig_csharp_02",
+    "pattern": "SqlCommand.*SELECT.*\\{name\\}",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "csharp-02"
+  },
+  {
+    "pattern_id": "sig_csharp_03",
+    "pattern": "doc\\.Load\\(xmlStream\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "csharp-03"
+  },
+  {
+    "pattern_id": "sig_csharp_04",
+    "pattern": "Process\\.Start\\(.*UseShellExecute",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "csharp-04"
+  },
+  {
+    "pattern_id": "sig_csharp_05",
+    "pattern": "Path\\.Combine\\(\\\"/base/dir\\\"",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "csharp-05"
+  },
+  {
+    "pattern_id": "sig_csharp_06",
+    "pattern": "\\[FromForm\\]\\s*User\\s+entity",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "csharp-06"
+  },
+  {
+    "pattern_id": "sig_csharp_07",
+    "pattern": "Html\\.Raw\\(Model\\.UserBio\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "csharp-07"
+  },
+  {
+    "pattern_id": "sig_csharp_08",
+    "pattern": "new\\s+Random\\(\\);.*rnd\\.Next\\(",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "csharp-08"
+  },
+  {
+    "pattern_id": "sig_csharp_09",
+    "pattern": "stackalloc\\s+byte\\[userLength\\]",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "csharp-09"
+  },
+  {
+    "pattern_id": "sig_csharp_10",
+    "pattern": "new\\s+Regex\\(pattern\\);",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "csharp-10"
+  }
+]

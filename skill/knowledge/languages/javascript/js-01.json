@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "js-01",
+  "title": "Prototype Pollution in Recursive Object Merging",
+  "language": "javascript",
+  "platform_conditions": "ECMAScript 2020 semantics in Node.js runtime; identical in browsers wherever recursive merge or path assignment runs",
+  "security_mechanism": "Ordinary objects inherit from Object.prototype, and plain assignment to __proto__ or to a path ending in constructor.prototype does not create an own property -- it re-points the prototype chain or walks to Function.prototype. A recursive merge (or a dot/bracket path setter) that copies attacker keys without filtering therefore lets JSON like {\"__proto__\":{\"isAdmin\":true}} change what every later object in the process inherits. Property lookups on unrelated objects then find attacker-chosen values, which frequently flips security-relevant option flags (isAdmin, privileged, safeMode) that guards read indirectly.",
+  "source_sink_clues": {
+    "source": "Request bodies, JSON payloads, query strings, or any nested object parsed from attacker-controlled input that reaches a deep-merge, defaults-fill, or path-based set operation.",
+    "sink": "Recursive merge helpers writing target[key] = value for attacker keys (especially __proto__ and constructor); lodash-style set/assign with path strings; obj[attackerPath] = value on plain objects"
+  },
+  "tracking_guards": "Check the merge skips or hard-freezes the dangerous keys (__proto__, constructor, prototype) before assignment, uses Object.create(null) targets or a Map instead of plain objects, or parses with a JSON reviver that drops inherited keys; assignment through defineProperty alone is not a guard unless the key check is also present.",
+  "not_candidate_when": "The merged keys come from a fixed server-side schema and unknown keys are rejected before the merge, the target is an Object.create(null) dictionary immune to prototype writes, or the input is a top-level copy (Object.assign / spread) whose keys can never be nested paths.",
+  "synthetic_vulnerable_example": "target[key] = source[key]; // key is __proto__",
+  "synthetic_safe_example": "if (key !== '__proto__' && key !== 'constructor') target[key] = source[key];",
+  "public_references": [
+    "CWE-1321: Improperly Controlled Modification of Dynamically-Determined Object Attributes — https://cwe.mitre.org/data/definitions/1321.html",
+    "OWASP Prototype Pollution Prevention Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html",
+    "MDN: Object.prototype.__proto__ — https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/proto"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_js_01",
+      "pattern": "target\\[key\\]\\s*=\\s*source\\[key\\]",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "js-01"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

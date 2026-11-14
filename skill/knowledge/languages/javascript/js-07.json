@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "js-07",
+  "title": "Event Loop Blocking and Catastrophic Regex (ReDoS)",
+  "language": "javascript",
+  "platform_conditions": "Node.js runtime single-threaded event loop; also applies to browser main threads sharing the same regex engine behavior",
+  "security_mechanism": "JavaScript runs request handlers on one event loop thread: a single long-running synchronous call stalls every concurrent request. Regex patterns with nested quantifiers over overlapping alternations (e.g. /^([a-zA-Z0-9]+)*$/) backtrack exponentially on a crafted near-match input, so one 50-byte string can pin the loop for minutes -- and there is no built-in match timeout in V8. The same unbounded-work shape appears in synchronous CPU loops and in Buffer.alloc(attackerLength): the allocation is zero-filled synchronously, while Buffer.allocUnsafe returns uninitialized memory that can leak process-internal bytes into responses.",
+  "source_sink_clues": {
+    "source": "User-supplied subject strings matched against fixed patterns, attacker-supplied patterns (search features), declared lengths/sizes in protocol headers driving allocations.",
+    "sink": "RegExp .exec/.test/.match on untrusted input with nested-quantifier patterns; long synchronous loops in request handlers; Buffer.alloc or Buffer.allocUnsafe sized from input"
+  },
+  "tracking_guards": "Check subject length is capped before matching and patterns avoid nested quantifiers over overlapping classes; check a worker thread or a timeout-wrapped execution isolates untrusted matches; check allocations use fixed or validated maximum sizes and Buffer.alloc (not allocUnsafe) for response-visible buffers.",
+  "not_candidate_when": "The pattern is linear (no nested quantifiers) and inputs are length-bounded, the match runs in a worker pool with a deadline, or the buffer size is a compile-time constant independent of input.",
+  "synthetic_vulnerable_example": "const match = /^([a-zA-Z0-9]+)*$/.exec(userInput);",
+  "synthetic_safe_example": "/* use linear regex or set timeouts */",
+  "public_references": [
+    "CWE-1333: Inefficient Regular Expression Complexity — https://cwe.mitre.org/data/definitions/1333.html",
+    "CWE-400: Uncontrolled Resource Consumption — https://cwe.mitre.org/data/definitions/400.html",
+    "Node.js documentation: Buffer.alloc / allocUnsafe — https://nodejs.org/api/buffer.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_js_07",
+      "pattern": "\\^.*a-zA-Z.*exec",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "js-07"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

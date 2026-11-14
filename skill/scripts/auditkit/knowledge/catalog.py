@@ -1,0 +1,114 @@
+"""Knowledge catalog loader, card indexing, and base language resolution.
+
+Implements DSR-038 / DSR-041 / DSR-042 / SD-02 / DR-014:
+- Loads language cards, signals, and indices from skill/knowledge/languages/<lang>/.
+- Resolves composite base language indices:
+  - TypeScript includes JavaScript index.
+  - C++ includes C index.
+  - Kotlin/Scala includes Java index (JVM platforms).
+"""
+
+# 需求追踪 (Requirement Traceability)
+# ---------------------------------------------------------------------------
+# 上层需求: docs/design/SOFTWARE_DEVELOPMENT_REQUIREMENTS.md §2
+# 设计依据: docs/design/SOFTWARE_DESIGN.md
+# SWR-002  15×10 语言卡片目录：来源、适用条件、合成正反例；目录是引导不是围栏
+#   绑定实现: DSR-038, DSR-077
+# SWR-003  平台条件化基座语言：TypeScript 加载 JavaScript；Kotlin/Scala 的 Java 索引仅对 JVM 目标适用
+#   绑定实现: DSR-038, DSR-041, DSR-042
+# 状态以统一测试结论为准；未实测能力保持 unknown（设计原则 8：能观测的不靠声明）。
+#
+
+from __future__ import annotations
+import glob
+import json
+import os
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+from auditkit.inventory.languages import get_base_languages
+
+
+class KnowledgeCatalog:
+    """Loads and serves language vulnerability cards and indices."""
+
+    def __init__(self, knowledge_root: str | Path) -> None:
+        self.knowledge_root = Path(os.path.realpath(os.path.abspath(knowledge_root)))
+        self.languages_dir = self.knowledge_root / "languages"
+        self._cards_cache: Dict[str, Dict[str, Any]] = {}
+        self._indices_cache: Dict[str, List[Dict[str, Any]]] = {}
+        self._signals_cache: Dict[str, List[Dict[str, Any]]] = {}
+
+    def get_language_index(self, lang: str) -> List[Dict[str, Any]]:
+        """Return 10-item index for a language."""
+        if lang in self._indices_cache:
+            return self._indices_cache[lang]
+
+        index_file = self.languages_dir / lang / "index.json"
+        if not index_file.exists():
+            return []
+
+        with open(index_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            self._indices_cache[lang] = data
+            return data
+
+    def get_applicable_indices(self, lang: str, is_jvm: bool = True) -> Tuple[List[str], List[str]]:
+        """Return primary language lines and base language lines for prompt packet."""
+        primary_items = self.get_language_index(lang)
+        primary_lines = [
+            f"- {item['id']}: {item['title']} (Sink: {item.get('sink_clue', 'N/A')})"
+            for item in primary_items
+        ]
+
+        base_langs = get_base_languages(lang, platform_is_jvm=is_jvm)
+        base_lines: List[str] = []
+        for base in base_langs:
+            base_items = self.get_language_index(base)
+            for item in base_items:
+                base_lines.append(f"- [{base.upper()}] {item['id']}: {item['title']}")
+
+        return primary_lines, base_lines
+
+    def get_card(self, card_id: str) -> Optional[Dict[str, Any]]:
+        """Load card by ID (e.g. py-01, c-03)."""
+        if card_id in self._cards_cache:
+            return self._cards_cache[card_id]
+
+        # Scan card files
+        for card_path in glob.glob(str(self.languages_dir / "*" / f"{card_id}.json")):
+            with open(card_path, "r", encoding="utf-8") as f:
+                card = json.load(f)
+                self._cards_cache[card_id] = card
+                return card
+
+        return None
+
+    def get_all_cards_for_language(self, lang: str) -> List[Dict[str, Any]]:
+        """Load all 10 cards for a language."""
+        cards = []
+        lang_dir = self.languages_dir / lang
+        if not lang_dir.exists():
+            return []
+
+        for card_path in sorted(glob.glob(str(lang_dir / "*.json"))):
+            fname = os.path.basename(card_path)
+            if fname in ("index.json", "signals.json"):
+                continue
+            with open(card_path, "r", encoding="utf-8") as f:
+                cards.append(json.load(f))
+        return cards
+
+    def get_signals_for_language(self, lang: str) -> List[Dict[str, Any]]:
+        """Return regex signal rules defined for language."""
+        if lang in self._signals_cache:
+            return self._signals_cache[lang]
+
+        sig_file = self.languages_dir / lang / "signals.json"
+        if not sig_file.exists():
+            return []
+
+        with open(sig_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            self._signals_cache[lang] = data
+            return data

@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "id": "java-09",
+  "title": "Cryptography and Weak PRNG Misuse",
+  "language": "java",
+  "platform_conditions": "Java SE 8+ standard library (java.util.Random, java.security.SecureRandom, javax.crypto.Cipher, javax.net.ssl); applies on all target operating systems",
+  "security_mechanism": "java.util.Random is a 48-bit LCG seeded from nanotime; outputs reveal state and the seed space is small enough to brute force, so tokens, reset codes, or keys from nextInt are reconstructable from a few observations. Cipher.getInstance(\"AES\") requests the (deprecated) default transformation, which resolves to AES/ECB/PKCS5Padding — ECB leaks plaintext equality block-wise; a developer-supplied static IV in CBC makes ciphertexts deterministic. An X509TrustManager whose checkServerTrusted is empty and a HostnameVerifier that returns true accept any certificate, silently turning TLS into plaintext; comparing digests with Arrays.equals/== leaks a timing oracle that MessageDigest.isEqual (constant-time since JDK 6u17) exists to prevent.",
+  "source_sink_clues": {
+    "source": "Security values produced in code: session tokens, reset codes, keys, MAC tags, and the crypto/TLS configuration chosen by the developer.",
+    "sink": "new Random() / Math.random() feeding security values; Cipher.getInstance(\"AES\") or explicit ECB or a fixed IV; TrustManager implementations with empty check methods and HostnameVerifier returning true; ==/Arrays.equals on MessageDigest outputs"
+  },
+  "tracking_guards": "Require SecureRandom for security values; require explicit transformations (AES/GCM/NoPadding or AES/CBC/PKCS5Padding) with a fresh random IV per message; require TrustManager/HostnameVerifier implementations to actually validate chains and hostnames; require MessageDigest.isEqual for authenticator comparison.",
+  "not_candidate_when": "Random feeds only non-security purposes, the transformation names the full mode with a per-message random IV, the TrustManager is a documented test-only class excluded from production builds, or comparisons already run through MessageDigest.isEqual.",
+  "synthetic_vulnerable_example": "Random r = new Random(); int token = r.nextInt();",
+  "synthetic_safe_example": "SecureRandom sr = new SecureRandom(); byte[] token = new byte[32]; sr.nextBytes(token);",
+  "public_references": [
+    "CWE-338: Use of Cryptographically Weak Pseudo-Random Number Generator — https://cwe.mitre.org/data/definitions/338.html",
+    "CWE-327: Use of a Broken or Risky Cryptographic Algorithm — https://cwe.mitre.org/data/definitions/327.html",
+    "CWE-295: Improper Certificate Validation — https://cwe.mitre.org/data/definitions/295.html",
+    "CWE-208: Observable Timing Discrepancy — https://cwe.mitre.org/data/definitions/208.html",
+    "Java SE documentation: Cipher — https://docs.oracle.com/javase/8/docs/api/javax/crypto/Cipher.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_java_09",
+      "pattern": "Random\\s+r\\s*=\\s*new\\s+Random\\(\\);",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "java-09"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0",
+  "finding_id": "F-0002",
+  "candidate_refs": ["cand-0001"],
+  "verdict": "rejected",
+  "provenance": {"hunt_tasks": ["task-0001"], "verify_tasks": []}
+}

@@ -1,0 +1,62 @@
+[
+  {
+    "id": "kotlin-01",
+    "title": "Java Interop Null-Safety Gaps Leading to Panic",
+    "sink_clue": "'!!' non-null assertions on platform types, implicit assignment of platform types to non-null Kotlin types, and lateinit property reads on attacker-influenced paths",
+    "when_to_open": "When auditing Kotlin code: Java Interop Null-Safety Gaps Leading to Panic. Sink: '!!' non-null assertions on platform types, implicit assignment of platform types to non-null Kotlin types, and lateinit property reads on attacker-influenced paths"
+  },
+  {
+    "id": "kotlin-02",
+    "title": "Android Exported Component Intent Redirection",
+    "sink_clue": "startActivity/getParcelableExtra(\"forward\")-style forwarding to startActivity(), startActivityForResult(), sendBroadcast(), bindService(); PendingIntent.getActivity/getBroadcast with a non-immutable (FLAG_IMMUTABLE missing) wrapped Intent",
+    "when_to_open": "When auditing Kotlin code: Android Exported Component Intent Redirection. Sink: startActivity/getParcelableExtra(\"forward\")-style forwarding to startActivity(), startActivityForResult(), sendBroadcast(), bindService(); PendingIntent.getActivity/getBroadcast with a non-immutable (FLAG_IMMUTABLE missing) wrapped Intent"
+  },
+  {
+    "id": "kotlin-03",
+    "title": "Unsafe Deserialization in Intent Extras",
+    "sink_clue": "intent.getSerializableExtra / getParcelableExtra without class validation; Bundle.getSerializable on attacker-supplied bundles; reflective bundle-to-object binding that bypasses constructors",
+    "when_to_open": "When auditing Kotlin code: Unsafe Deserialization in Intent Extras. Sink: intent.getSerializableExtra / getParcelableExtra without class validation; Bundle.getSerializable on attacker-supplied bundles; reflective bundle-to-object binding that bypasses constructors"
+  },
+  {
+    "id": "kotlin-04",
+    "title": "WebView Javascript Interface and File Scheme Hazards",
+    "sink_clue": "webView.addJavascriptInterface(bridge, \"name\") combined with settings.javaScriptEnabled = true; settings.allowFileAccess / allowFileAccessFromFileURLs / allowUniversalAccessFromFileURLs = true; webView.loadUrl with an unvalidated remote URL",
+    "when_to_open": "When auditing Kotlin code: WebView Javascript Interface and File Scheme Hazards. Sink: webView.addJavascriptInterface(bridge, \"name\") combined with settings.javaScriptEnabled = true; settings.allowFileAccess / allowFileAccessFromFileURLs / allowUniversalAccessFromFileURLs = true; webView.loadUrl with an unvalidated remote URL"
+  },
+  {
+    "id": "kotlin-05",
+    "title": "Coroutine Concurrency and Shared Mutable State",
+    "sink_clue": "GlobalScope.launch / GlobalScope.async; reads and writes of shared vars or collections inside coroutines without Mutex/actor/confined dispatcher; check-then-act sequences separated by a suspension point (withContext, delay, network calls)",
+    "when_to_open": "When auditing Kotlin code: Coroutine Concurrency and Shared Mutable State. Sink: GlobalScope.launch / GlobalScope.async; reads and writes of shared vars or collections inside coroutines without Mutex/actor/confined dispatcher; check-then-act sequences separated by a suspension point (withContext, delay, network calls)"
+  },
+  {
+    "id": "kotlin-06",
+    "title": "SQL Injection via String Template in rawQuery",
+    "sink_clue": "db.rawQuery / db.execSQL / SQLiteQueryBuilder query built with Kotlin string templates or concatenation instead of selectionArgs",
+    "when_to_open": "When auditing Kotlin code: SQL Injection via String Template in rawQuery. Sink: db.rawQuery / db.execSQL / SQLiteQueryBuilder query built with Kotlin string templates or concatenation instead of selectionArgs"
+  },
+  {
+    "id": "kotlin-07",
+    "title": "Process Execution via String Template Commands",
+    "sink_clue": "Runtime.getRuntime().exec with a template or concatenated string, ProcessBuilder with a single shell string, and any exec wrapped in 'sh -c' or 'su -c'",
+    "when_to_open": "When auditing Kotlin code: Process Execution via String Template Commands. Sink: Runtime.getRuntime().exec with a template or concatenated string, ProcessBuilder with a single shell string, and any exec wrapped in 'sh -c' or 'su -c'"
+  },
+  {
+    "id": "kotlin-08",
+    "title": "Insecure Storage and Hardcoded Cryptographic Keys",
+    "sink_clue": "prefs.edit().putString(\"token\", ...) for secrets; hardcoded key strings/byte arrays passed to SecretKeySpec; Cipher.getInstance(\"AES\") or any ECB transformation; writes to external storage",
+    "when_to_open": "When auditing Kotlin code: Insecure Storage and Hardcoded Cryptographic Keys. Sink: prefs.edit().putString(\"token\", ...) for secrets; hardcoded key strings/byte arrays passed to SecretKeySpec; Cipher.getInstance(\"AES\") or any ECB transformation; writes to external storage"
+  },
+  {
+    "id": "kotlin-09",
+    "title": "TLS and TrustManager Bypass in Network Callbacks",
+    "sink_clue": "sslSocketFactory(untrustedFactory, trustAllManager) / hostnameVerifier { _, _ -> true } / X509TrustManager with empty checkServerTrusted / SSLSocketFactory created from a null-trust SSLContext; cleartext http:// endpoints enabled via usesCleartextTraffic or an ATS-style networkSecurityConfig exception",
+    "when_to_open": "When auditing Kotlin code: TLS and TrustManager Bypass in Network Callbacks. Sink: sslSocketFactory(untrustedFactory, trustAllManager) / hostnameVerifier { _, _ -> true } / X509TrustManager with empty checkServerTrusted / SSLSocketFactory created from a null-trust SSLContext; cleartext http:// endpoints enabled via usesCleartextTraffic or an ATS-style networkSecurityConfig exception"
+  },
+  {
+    "id": "kotlin-10",
+    "title": "Kotlin Language Traps: copy() Bypassing Validation",
+    "sink_clue": "user.copy(role = ...) on objects carrying authorization state; smart casts on shared mutable properties guarding security decisions; runCatching{}.getOrNull() / '?:' defaults around authentication or permission calls; non-exhaustive when on role/state enums",
+    "when_to_open": "When auditing Kotlin code: Kotlin Language Traps: copy() Bypassing Validation. Sink: user.copy(role = ...) on objects carrying authorization state; smart casts on shared mutable properties guarding security decisions; runCatching{}.getOrNull() / '?:' defaults around authentication or permission calls; non-exhaustive when on role/state enums"
+  }
+]

@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "id": "c-08",
+  "title": "File System Race Conditions and Insecure Temp Files",
+  "language": "c",
+  "platform_conditions": "POSIX filesystem semantics (Linux, macOS, other Unix); on Windows the same class appears via share modes rather than symlink races",
+  "security_mechanism": "access() answers a question about the path, and open() acts on whatever object the path names at a later instant: between the two calls an attacker who can write the directory replaces the file with a symlink, so the privilege decision made by access() is applied to an object the attacker chose (TOCTOU). mktemp-style name construction makes the target predictable, letting the attacker pre-create it or win the race routinely rather than occasionally. Opening without O_EXCL and following symlinks by default converts the race into arbitrary file creation, truncation, or disclosure in privileged directories.",
+  "source_sink_clues": {
+    "source": "Directories an attacker can write (world-writable temp dirs, spool and upload paths) and file names arriving from requests that are re-checked and later reopened.",
+    "sink": "access/stat followed by open/fopen on the same path; mktemp/tempnam/tmpnam; open without O_EXCL|O_NOFOLLOW on attacker-writable directories"
+  },
+  "tracking_guards": "Check that privileged code opens with O_CREAT|O_EXCL (and O_NOFOLLOW where the name may be attacker-planted), that no access()/stat() check gates a later open of the same path (act on the fd instead: fstat, fchmod, fchown), and that temp files come from mkstemp with 0600 mode.",
+  "not_candidate_when": "The file lives in a directory only the process user can write (0700), the check-and-use pair operates on an already-open fd rather than a re-resolved path, or names come from mkstemp/O_EXCL so the race cannot be won by pre-creation.",
+  "synthetic_vulnerable_example": "if (access(f, W_OK) == 0) fd = open(f, O_WRONLY);",
+  "synthetic_safe_example": "fd = open(f, O_WRONLY | O_CREAT | O_EXCL, 0600);",
+  "public_references": [
+    "CWE-367: Time-of-check Time-of-use (TOCTOU) Race Condition — https://cwe.mitre.org/data/definitions/367.html",
+    "CWE-377: Insecure Temporary File — https://cwe.mitre.org/data/definitions/377.html",
+    "CWE-59: Improper Link Resolution Before File Access — https://cwe.mitre.org/data/definitions/59.html",
+    "man7.org: open(2) — https://man7.org/linux/man-pages/man2/open.2.html",
+    "SEI CERT C Coding Standard: FIO01-C (identify files via fd), POS30-C (mktemp)"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_c_08",
+      "pattern": "access\\(.*W_OK\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "c-08"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

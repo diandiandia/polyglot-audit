@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0",
+  "finding_id": "F-0004",
+  "candidate_refs": [],
+  "verdict": "unverified",
+  "evidence_level": "E3",
+  "unverified_reason": "deployment facts missing",
+  "provenance": {"hunt_tasks": [], "verify_tasks": []}
+}

@@ -1,0 +1,891 @@
+[
+  {
+    "api": "strcpy/sprintf/strcat with a fixed-size destination; memcpy/memmove with an attacker-derived n; array indexing a[i] where i is unchecked input",
+    "language": "c",
+    "card_id": "c-01",
+    "doc_url": "https://cwe.mitre.org/data/definitions/120.html"
+  },
+  {
+    "api": "malloc/calloc/realloc/alalloca called with a computed size; loop bounds and memcpy sizes derived from the same product",
+    "language": "c",
+    "card_id": "c-02",
+    "doc_url": "https://cwe.mitre.org/data/definitions/190.html"
+  },
+  {
+    "api": "free() reached twice for one pointer; dereference or memcpy through a pointer after its free call; re-assignment of a freed pointer into a still-live structure",
+    "language": "c",
+    "card_id": "c-03",
+    "doc_url": "https://cwe.mitre.org/data/definitions/416.html"
+  },
+  {
+    "api": "memcpy/send/write of an object that was not fully written; use of a local or malloc'd variable on a path where its initialization call was skipped or partial",
+    "language": "c",
+    "card_id": "c-04",
+    "doc_url": "https://cwe.mitre.org/data/definitions/457.html"
+  },
+  {
+    "api": "printf/fprintf/snprintf/sprintf/syslog/err* called with a non-literal first (format) argument that carries attacker influence",
+    "language": "c",
+    "card_id": "c-05",
+    "doc_url": "https://cwe.mitre.org/data/definitions/134.html"
+  },
+  {
+    "api": "strncpy into a fixed buffer followed by strlen/printf/strcpy on that buffer; any strlen on a buffer that is not provably NUL-terminated",
+    "language": "c",
+    "card_id": "c-06",
+    "doc_url": "https://cwe.mitre.org/data/definitions/170.html"
+  },
+  {
+    "api": "Security validators and fallible resource calls whose return value is not branched on: verify/authenticate helpers, malloc/read/recv/setuid/seteuid/chmod on privilege-relevant paths",
+    "language": "c",
+    "card_id": "c-07",
+    "doc_url": "https://cwe.mitre.org/data/definitions/252.html"
+  },
+  {
+    "api": "access/stat followed by open/fopen on the same path; mktemp/tempnam/tmpnam; open without O_EXCL|O_NOFOLLOW on attacker-writable directories",
+    "language": "c",
+    "card_id": "c-08",
+    "doc_url": "https://cwe.mitre.org/data/definitions/367.html"
+  },
+  {
+    "api": "system()/popen() with any interpolated content; execv/execl/execvp with attacker-influenced argv or before privilege cleanup",
+    "language": "c",
+    "card_id": "c-09",
+    "doc_url": "https://cwe.mitre.org/data/definitions/78.html"
+  },
+  {
+    "api": "Signed overflow arithmetic guarding security checks; reads/writes of shared flags or pointers without atomics or locks; printf/malloc/memcpy and other non-async-signal-safe calls inside signal handlers",
+    "language": "c",
+    "card_id": "c-10",
+    "doc_url": "https://man7.org/linux/man-pages/man7/signal-safety.7.html"
+  },
+  {
+    "api": "Read or copy through a std::string_view/std::span bound to a temporary or destroyed string; iterator/pointer/reference used after push_back/insert/erase on the container; lambda reference capture invoked after the captured scope returned",
+    "language": "cpp",
+    "card_id": "cpp-01",
+    "doc_url": "https://en.cppreference.com/w/cpp/string/basic_string_view"
+  },
+  {
+    "api": "std::thread(...).detach() or stored callback capturing `this`; shared_from_this()/weak_ptr misuse; coroutine lambdas taking reference parameters and referencing locals across co_await",
+    "language": "cpp",
+    "card_id": "cpp-02",
+    "doc_url": "https://en.cppreference.com/w/cpp/memory/enable_shared_from_this"
+  },
+  {
+    "api": "operator[] on vector/deque/string/map with an unchecked index; data()/c_str() plus an external length handed to memcpy or a C API",
+    "language": "cpp",
+    "card_id": "cpp-03",
+    "doc_url": "https://en.cppreference.com/w/cpp/container/vector/operator_at"
+  },
+  {
+    "api": "vector::reserve/resize, new T[n], make_unique<T[]>(n), or any allocator call whose argument is a product or sum of attacker values",
+    "language": "cpp",
+    "card_id": "cpp-04",
+    "doc_url": "https://en.cppreference.com/w/cpp/container/vector/reserve"
+  },
+  {
+    "api": "static_cast / reinterpret_cast / C-style cast to a derived or unrelated pointer type on data whose dynamic type is attacker-influenced; union member reads of a different active member",
+    "language": "cpp",
+    "card_id": "cpp-05",
+    "doc_url": "https://en.cppreference.com/w/cpp/language/static_cast"
+  },
+  {
+    "api": "delete applied to a new[] pointer; two owners freeing one raw pointer; shared_ptr constructed from a raw pointer already owned elsewhere",
+    "language": "cpp",
+    "card_id": "cpp-06",
+    "doc_url": "https://en.cppreference.com/w/cpp/memory/unique_ptr"
+  },
+  {
+    "api": "Throwing destructors or noexcept functions that throw; multi-step mutation sequences without rollback (no RAII guard) whose early steps persist when a later step throws",
+    "language": "cpp",
+    "card_id": "cpp-07",
+    "doc_url": "https://en.cppreference.com/w/cpp/language/noexcept_spec"
+  },
+  {
+    "api": "memcpy/send/serialize over sizeof(obj) of a default-constructed object; any read of a member that no constructor initialized",
+    "language": "cpp",
+    "card_id": "cpp-08",
+    "doc_url": "https://en.cppreference.com/w/cpp/language/default_initialization"
+  },
+  {
+    "api": "memcpy/memmove/memset/realloc applied to objects of non-trivially-copyable types (virtual functions, std::string/vector members, user-defined destructors)",
+    "language": "cpp",
+    "card_id": "cpp-09",
+    "doc_url": "https://en.cppreference.com/w/cpp/named_req/TriviallyCopyable"
+  },
+  {
+    "api": "delete through a base pointer with a non-virtual destructor; virtual calls in constructors/destructors; Base = Derived assignments that slice; implicit conversions into security-relevant parameter types",
+    "language": "cpp",
+    "card_id": "cpp-10",
+    "doc_url": "https://en.cppreference.com/w/cpp/language/destructor"
+  },
+  {
+    "api": "BinaryFormatter.Deserialize / UnsafeDeserialize on attacker-influenced streams; NetDataContractSerializer and LosFormatter with the same payload shapes; JSON/XML deserializers configured with a type-resolution callback",
+    "language": "csharp",
+    "card_id": "csharp-01",
+    "doc_url": "https://learn.microsoft.com/en-us/dotnet/standard/serialization/binaryformatter-security-guide"
+  },
+  {
+    "api": "SqlCommand / NpgsqlCommand.CommandText (or the provider's raw-SQL API) assigned from an interpolated or concatenated string, then ExecuteReader/ExecuteNonQuery/ExecuteScalar",
+    "language": "csharp",
+    "card_id": "csharp-02",
+    "doc_url": "https://learn.microsoft.com/en-us/dotnet/api/system.data.sqlclient.sqlcommand"
+  },
+  {
+    "api": "XmlDocument.Load/LoadXml, XmlTextReader/XmlReader created with DtdProcessing.Parse or a non-null XmlResolver, XslCompiledTransform.Load with enableScript=true, all fed untrusted XML",
+    "language": "csharp",
+    "card_id": "csharp-03",
+    "doc_url": "https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html"
+  },
+  {
+    "api": "Process.Start(ProcessStartInfo with UseShellExecute=true) or interpolated arguments; Assembly.Load / Assembly.LoadFrom with dynamic names; Type.GetType plus Activator.CreateInstance / MethodInfo.Invoke",
+    "language": "csharp",
+    "card_id": "csharp-04",
+    "doc_url": "https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.process.start"
+  },
+  {
+    "api": "Path.Combine(baseDir, attackerPath) whose result feeds File/Directory/StreamReader APIs; ZipFile.ExtractToFile(entry, Path.Combine(dest, entry.FullName)) on untrusted archives",
+    "language": "csharp",
+    "card_id": "csharp-05",
+    "doc_url": "https://learn.microsoft.com/en-us/dotnet/api/system.io.path.combine"
+  },
+  {
+    "api": "Action parameters bound directly to entity types ([FromForm] User entity, User entity) followed by DbContext.Add/Update or direct persistence; controller classes whose [Authorize]/[ValidateAntiForgeryToken] attributes are re-declared and thereby overridden",
+    "language": "csharp",
+    "card_id": "csharp-06"
+  },
+  {
+    "api": "@Html.Raw(...), new HtmlString(...), [MarkupString]-decorated Blazor fields, and direct @model-to-IHtmlContent assignments rendered into a page",
+    "language": "csharp",
+    "card_id": "csharp-07",
+    "doc_url": "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html"
+  },
+  {
+    "api": "new Random() feeding security values; Aes/DESCryptoServiceProvider configured with CipherMode.ECB or a constant IV; certificate-validation callbacks that return true; == / SequenceEqual on digests or MACs",
+    "language": "csharp",
+    "card_id": "csharp-08",
+    "doc_url": "https://learn.microsoft.com/en-us/dotnet/api/system.security.cryptography.randomnumbergenerator"
+  },
+  {
+    "api": "stackalloc byte[userLength] (or stackalloc Span with input length); Marshal.Copy/Marshal.PtrToStructure with input-derived counts; pointer arithmetic inside unsafe blocks over externally sized buffers",
+    "language": "csharp",
+    "card_id": "csharp-09",
+    "doc_url": "https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/operators/stackalloc"
+  },
+  {
+    "api": "Regex.Match/IsMatch/Replace on instances without a matchTimeout; reads and collections grown from request data with no cap; async void handlers on request paths; checked-arithmetic-free comparisons guarding sizes",
+    "language": "csharp",
+    "card_id": "csharp-10",
+    "doc_url": "https://learn.microsoft.com/en-us/dotnet/api/system.text.regularexpressions.regex.matchtimeout"
+  },
+  {
+    "api": "go func() { ... m[key] = val }() on a built-in map; unsynchronized reads of shared state guarding authorization or session decisions; check-then-act sequences split across goroutines",
+    "language": "go",
+    "card_id": "go-01",
+    "doc_url": "https://go.dev/ref/mem"
+  },
+  {
+    "api": "valid, _ := verifyToken(token); err := ... with := re-declaration shadowing an outer err; if err == nil checks placed after the variable was reassigned; authorization flows that treat a zero-value session or claims struct as valid",
+    "language": "go",
+    "card_id": "go-02",
+    "doc_url": "https://pkg.go.dev/errors"
+  },
+  {
+    "api": "val := req.Body.(string) style single-value type assertions; writes to possibly-nil maps; index/slice expressions over untrusted indexes; goroutines spawned inside request handling without a recover",
+    "language": "go",
+    "card_id": "go-03",
+    "doc_url": "https://pkg.go.dev/builtin"
+  },
+  {
+    "api": "int16(idx) / int32(idx) / uint(n) conversions applied to strconv results or lengths; arithmetic on mixed int/uint operands feeding allocations, slices, or access-control comparisons",
+    "language": "go",
+    "card_id": "go-04",
+    "doc_url": "https://pkg.go.dev/strconv"
+  },
+  {
+    "api": "io.ReadAll(req.Body) / io/ioutil.ReadAll with no LimitReader; http.Server{...} without ReadHeaderTimeout/ReadTimeout/IdleTimeout; make([]byte, n) with n from input; per-request goroutines or channels with no bound",
+    "language": "go",
+    "card_id": "go-05",
+    "doc_url": "https://pkg.go.dev/net/http"
+  },
+  {
+    "api": "exec.Command(\"sh\", \"-c\", <formatted string>) or unguarded argv elements; db.Query/QueryRow with fmt.Sprintf-built SQL; text/template execution of user data; template.HTML(x) casts feeding html/template output",
+    "language": "go",
+    "card_id": "go-06",
+    "doc_url": "https://pkg.go.dev/os/exec"
+  },
+  {
+    "api": "filepath.Join(baseDir, userInput) feeding os.Open/ReadFile or archive extraction targets; http.FileServer/http.Dir over directories that contain or receive attacker-influenced symlinks; zip/tar entry extraction using f.Name unvalidated",
+    "language": "go",
+    "card_id": "go-07",
+    "doc_url": "https://pkg.go.dev/path/filepath"
+  },
+  {
+    "api": "unsafe.String / unsafe.Slice with input-derived pointer/length; unsafe.Pointer arithmetic between Go and C buffers; reflect with unsafe.Pointer to forge values",
+    "language": "go",
+    "card_id": "go-08",
+    "doc_url": "https://pkg.go.dev/unsafe"
+  },
+  {
+    "api": "tls.Config{InsecureSkipVerify: true}; math/rand/rand for keys, tokens, or nonces; == / bytes.Equal on MACs or signature digests; AES-GCM/ChaCha20 Seal calls reusing a nonce",
+    "language": "go",
+    "card_id": "go-09",
+    "doc_url": "https://pkg.go.dev/crypto/tls"
+  },
+  {
+    "api": "json.Unmarshal into structs holding security-relevant fields (roles/flags) without DisallowUnknownFields; numeric IDs decoded via interface{} into float64; authorization decisions on net/url-parsed values; http.Client requests that follow redirects from untrusted responses",
+    "language": "go",
+    "card_id": "go-10",
+    "doc_url": "https://pkg.go.dev/encoding/json"
+  },
+  {
+    "api": "ObjectInputStream.readObject / readUnshared on attacker-influenced streams; XMLDecoder.readObject; JSON/YAML deserializers configured with polymorphic type resolution from the payload",
+    "language": "java",
+    "card_id": "java-01",
+    "doc_url": "https://docs.oracle.com/javase/8/docs/api/java/io/ObjectInputStream.html"
+  },
+  {
+    "api": "InitialContext.lookup(userInput) and variants of javax.naming.Context methods; ValueExpression/ELProcessor.eval with dynamic expressions; ScriptEngine.eval on attacker-influenced strings",
+    "language": "java",
+    "card_id": "java-02",
+    "doc_url": "https://docs.oracle.com/javase/8/docs/api/javax/naming/InitialContext.html"
+  },
+  {
+    "api": "DocumentBuilder.parse / SAXParser.parse / XMLStreamReader (XMLInputFactory-created) / Transformer.transform on untrusted documents where the corresponding factory lacks disallow-doctype-decl, external-general-entities, and external-parameter-entities protections",
+    "language": "java",
+    "card_id": "java-03",
+    "doc_url": "https://docs.oracle.com/javase/8/docs/api/javax/xml/parsers/DocumentBuilderFactory.html"
+  },
+  {
+    "api": "Statement.executeQuery/executeUpdate with concatenated SQL; EntityManager.createQuery/createNativeQuery with string concatenation; any raw-SQL helper composing ORDER BY or identifier fragments from input",
+    "language": "java",
+    "card_id": "java-04",
+    "doc_url": "https://docs.oracle.com/javase/tutorial/jdbc/basics/prepared.html"
+  },
+  {
+    "api": "new File(baseDir, userInput) / Paths.get(baseDir, userInput) feeding file APIs; ZipInputStream.getNextEntry with entry.getName used as the extraction target unvalidated",
+    "language": "java",
+    "card_id": "java-05",
+    "doc_url": "https://docs.oracle.com/javase/8/docs/api/java/nio/file/Path.html"
+  },
+  {
+    "api": "Runtime.exec / ProcessBuilder.start with shell-composed strings; Class.forName with a dynamic name followed by reflection; URLClassLoader with attacker-influenced URLs",
+    "language": "java",
+    "card_id": "java-06",
+    "doc_url": "https://docs.oracle.com/javase/8/docs/api/java/lang/Runtime.html"
+  },
+  {
+    "api": "Mutable instance fields in HttpServlet/Filter/singletons holding request or identity data; shared SimpleDateFormat/HashMap instances used from request threads; check-then-act sequences on instance state",
+    "language": "java",
+    "card_id": "java-07",
+    "doc_url": "https://docs.oracle.com/javase/8/docs/api/java/text/SimpleDateFormat.html"
+  },
+  {
+    "api": "== / != on Integer/Long wrappers guarding authorization; String.split-derived arrays indexed or counted for access decisions; int arithmetic (sums, multiplies) whose result feeds bounds or quota checks",
+    "language": "java",
+    "card_id": "java-08",
+    "doc_url": "https://docs.oracle.com/javase/8/docs/api/java/lang/Integer.html"
+  },
+  {
+    "api": "new Random() / Math.random() feeding security values; Cipher.getInstance(\"AES\") or explicit ECB or a fixed IV; TrustManager implementations with empty check methods and HostnameVerifier returning true; ==/Arrays.equals on MessageDigest outputs",
+    "language": "java",
+    "card_id": "java-09",
+    "doc_url": "https://docs.oracle.com/javase/8/docs/api/javax/crypto/Cipher.html"
+  },
+  {
+    "api": "Security filters making allow/deny decisions on HttpServletRequest.getRequestURI() / getRequestURL() string prefixes; URL/URI comparisons guarding redirects or fetches; URL.openConnection on attacker-influenced URLs; forward/redirect targets validated only on the original path",
+    "language": "java",
+    "card_id": "java-10",
+    "doc_url": "https://docs.oracle.com/javase/8/docs/api/java/net/URL.html"
+  },
+  {
+    "api": "unsafe { slice::from_raw_parts / from_raw_parts_mut } with an external length; transmute; MaybeUninit::assume_init; get_unchecked(_mut); Vec::set_len",
+    "language": "rust",
+    "card_id": "rust-01",
+    "doc_url": "https://doc.rust-lang.org/std/slice/fn.from_raw_parts.html"
+  },
+  {
+    "api": "CString/CStr::as_ptr results used after the owner dropped; Box::from_raw / Vec::from_raw_parts on pointers whose allocation method or count mismatches; extern \"C\" function signatures with non-repr(C) struct parameters",
+    "language": "rust",
+    "card_id": "rust-02",
+    "doc_url": "https://doc.rust-lang.org/std/ffi/struct.CString.html"
+  },
+  {
+    "api": "unwrap()/expect() on input-derived Result/Option; slice/array indexing and str range slicing with external indexes; RefCell double borrow; unbounded recursion on external data",
+    "language": "rust",
+    "card_id": "rust-03",
+    "doc_url": "https://doc.rust-lang.org/std/panic/fn.catch_unwind.html"
+  },
+  {
+    "api": "`as` casts between integer types on input-derived values; unchecked arithmetic (a + b, a * b) whose result feeds allocation, indexing, or copy length",
+    "language": "rust",
+    "card_id": "rust-04",
+    "doc_url": "https://doc.rust-lang.org/std/convert/trait.TryFrom.html"
+  },
+  {
+    "api": "unsafe impl Send/Sync for types containing raw pointers or non-atomic state; static mut access; atomics with incorrect Ordering guarding other data; Mutex-adjacent check-then-act sequences across .await",
+    "language": "rust",
+    "card_id": "rust-05",
+    "doc_url": "https://doc.rust-lang.org/nomicon/send-and-sync.html"
+  },
+  {
+    "api": "Vec::with_capacity / String::with_capacity sized from input; read_to_end on untrusted streams; unbounded channel/task creation; decompression into memory without an output budget",
+    "language": "rust",
+    "card_id": "rust-06",
+    "doc_url": "https://doc.rust-lang.org/std/vec/struct.Vec.html#method.with_capacity"
+  },
+  {
+    "api": "serde_json::from_reader/from_slice/from_str (and equivalent codec deserializers) on peer data with deep nesting, length-prefixed allocations, or untagged enum targets",
+    "language": "rust",
+    "card_id": "rust-07",
+    "doc_url": "https://serde.rs/attr-deny-unknown-fields.html"
+  },
+  {
+    "api": "std::process::Command::new with an attacker-influenced program or argument; Path::join / PathBuf::push with input followed by file operations; archive entry paths extracted as-is",
+    "language": "rust",
+    "card_id": "rust-08",
+    "doc_url": "https://doc.rust-lang.org/std/process/struct.Command.html"
+  },
+  {
+    "api": "== / != / assert_eq! on digests, MACs, and signature byte slices used to grant access; nonce reuse across encryptions; secrets stored in non-wiped buffers; disabled certificate verification",
+    "language": "rust",
+    "card_id": "rust-09",
+    "doc_url": "https://docs.rs/subtle/latest/subtle/trait.ConstantTimeEq.html"
+  },
+  {
+    "api": "unsafe { ptr::read / ptr::copy_nonoverlapping } followed by manual mem::forget; Drop implementations assuming they always run; Pin projections that move pinned data; invariants restored only in explicit (not drop-guard) code paths",
+    "language": "rust",
+    "card_id": "rust-10",
+    "doc_url": "https://doc.rust-lang.org/std/ptr/fn.read.html"
+  },
+  {
+    "api": "pickle.loads / pickle.load / marshal.loads / shelve.open on attacker-influenced bytes; yaml.load without an explicit SafeLoader",
+    "language": "python",
+    "card_id": "py-01",
+    "doc_url": "https://docs.python.org/3/library/pickle.html"
+  },
+  {
+    "api": "eval() / exec() / compile() on dynamic strings; __import__ and importlib.import_module with dynamic names; str.format called with an attacker-controlled format string",
+    "language": "python",
+    "card_id": "py-02",
+    "doc_url": "https://docs.python.org/3/library/ast.html#ast.literal_eval"
+  },
+  {
+    "api": "subprocess.run/call/check_output/Popen with shell=True; os.system; os.popen",
+    "language": "python",
+    "card_id": "py-03",
+    "doc_url": "https://docs.python.org/3/library/subprocess.html"
+  },
+  {
+    "api": "os.path.join(base, attacker_path) whose result reaches open/read/write; tarfile/zipfile extractall on untrusted archives; tempfile.mktemp",
+    "language": "python",
+    "card_id": "py-04",
+    "doc_url": "https://docs.python.org/3/library/os.path.html#os.path.join"
+  },
+  {
+    "api": "cursor.execute / cursor.executemany / connection cursor text built with f-string, %, .format, or concatenation",
+    "language": "python",
+    "card_id": "py-05",
+    "doc_url": "https://peps.python.org/pep-0249/"
+  },
+  {
+    "api": "xml.etree.ElementTree.fromstring/parse, xml.sax.parse/parseString, xml.dom.minidom.parseString on untrusted documents; re.match/search with attacker-influenced pattern or unbounded subject",
+    "language": "python",
+    "card_id": "py-06",
+    "doc_url": "https://docs.python.org/3/library/xml.html#xml-vulnerabilities"
+  },
+  {
+    "api": "assert used as an authorization/authentication gate; if/while truthiness checks over untrusted collections or IDs on security paths; mutable default arguments holding security state",
+    "language": "python",
+    "card_id": "py-07",
+    "doc_url": "https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement"
+  },
+  {
+    "api": "urllib.request.urlopen / Request.build_opener fetch of an attacker-influenced URL; ssl contexts created with CERT_NONE or check_hostname=False; security decisions based on urllib.parse output without canonicalization",
+    "language": "python",
+    "card_id": "py-08",
+    "doc_url": "https://docs.python.org/3/library/urllib.request.html"
+  },
+  {
+    "api": "random.choice/random.random/randint feeding tokens or keys; hashlib.md5/sha1 used for password storage; == / != comparisons of digests or MAC tags",
+    "language": "python",
+    "card_id": "py-09",
+    "doc_url": "https://docs.python.org/3/library/secrets.html"
+  },
+  {
+    "api": "ctypes memory APIs sized from input; struct.unpack with input-derived formats; file/socket .read() with no cap; zlib/bz2/lzma decompress without output limits; int(str)/str(int) on attacker-sized values",
+    "language": "python",
+    "card_id": "py-10",
+    "doc_url": "https://docs.python.org/3/library/stdtypes.html#int-max-str-digits"
+  },
+  {
+    "api": "Recursive merge helpers writing target[key] = value for attacker keys (especially __proto__ and constructor); lodash-style set/assign with path strings; obj[attackerPath] = value on plain objects",
+    "language": "javascript",
+    "card_id": "js-01",
+    "doc_url": "https://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html"
+  },
+  {
+    "api": "eval(), new Function(), string-form setTimeout/setInterval, vm.runInNewContext/runInThisContext on untrusted text, dynamic require() / import() with attacker-controlled specifiers",
+    "language": "javascript",
+    "card_id": "js-02",
+    "doc_url": "https://nodejs.org/api/vm.html"
+  },
+  {
+    "api": "child_process.exec / execSync with template strings; spawn / execFile with shell:true; argv elements starting with '-' taken from input",
+    "language": "javascript",
+    "card_id": "js-03",
+    "doc_url": "https://nodejs.org/api/child_process.html"
+  },
+  {
+    "api": "element.innerHTML / outerHTML / insertAdjacentHTML assignment; document.write; javascript: URL assignment to href/location; acting on postMessage event.data without an origin check",
+    "language": "javascript",
+    "card_id": "js-04",
+    "doc_url": "https://developer.mozilla.org/en-US/docs/Web/API/Element/innerHTML"
+  },
+  {
+    "api": "== / != on security-decision values; truthiness checks over parser-produced arrays; parseInt / Number validation feeding authorization; == on 64-bit identifiers",
+    "language": "javascript",
+    "card_id": "js-05",
+    "doc_url": "https://nodejs.org/api/crypto.html"
+  },
+  {
+    "api": "path.resolve / path.join over attacker input feeding fs.readFile, fs.createReadStream, fs.writeFile, fs.unlink, or archive member extraction",
+    "language": "javascript",
+    "card_id": "js-06",
+    "doc_url": "https://nodejs.org/api/path.html"
+  },
+  {
+    "api": "RegExp .exec/.test/.match on untrusted input with nested-quantifier patterns; long synchronous loops in request handlers; Buffer.alloc or Buffer.allocUnsafe sized from input",
+    "language": "javascript",
+    "card_id": "js-07",
+    "doc_url": "https://nodejs.org/api/buffer.html"
+  },
+  {
+    "api": "async guard invoked without await in a conditional; floating Promises before sensitive operations; empty .catch handlers on auth paths; check-then-act sequences spanning an await",
+    "language": "javascript",
+    "card_id": "js-08",
+    "doc_url": "https://nodejs.org/api/process.html"
+  },
+  {
+    "api": "new Function / eval used to reconstruct objects from text; JSON.parse with a reviver that assigns or constructs from attacker keys; XML parsers with entity expansion enabled",
+    "language": "javascript",
+    "card_id": "js-09",
+    "doc_url": "https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html"
+  },
+  {
+    "api": "Math.random() feeding token/key/nonce generation; crypto.createHash('md5'/'sha1') for credentials; deprecated weak cipher construction in crypto.createCipheriv",
+    "language": "javascript",
+    "card_id": "js-10",
+    "doc_url": "https://nodejs.org/api/crypto.html"
+  },
+  {
+    "api": "'as T' assertions and typed parameters on data that crossed the network boundary without runtime validation feeding authorization, persistence, or business logic",
+    "language": "typescript",
+    "card_id": "ts-01",
+    "doc_url": "https://www.typescriptlang.org/docs/handbook/2/narrowing.html"
+  },
+  {
+    "api": "any / as unknown as T / ! / @ts-ignore on values that feed authentication, authorization, or privilege fields",
+    "language": "typescript",
+    "card_id": "ts-02",
+    "doc_url": "https://www.typescriptlang.org/docs/handbook/2/everyday-types.html"
+  },
+  {
+    "api": "'x is T' guard functions with permissive bodies; switch/match on payload-supplied discriminants gating privileged branches; spread of attacker objects into strongly-typed targets",
+    "language": "typescript",
+    "card_id": "ts-03",
+    "doc_url": "https://www.typescriptlang.org/docs/handbook/2/narrowing.html"
+  },
+  {
+    "api": "obj[attackerKey] = value on plain objects typed with index signatures; unguarded reads typed T from Record<string, T> feeding security decisions",
+    "language": "typescript",
+    "card_id": "ts-04",
+    "doc_url": "https://www.typescriptlang.org/docs/handbook/2/objects.html"
+  },
+  {
+    "api": "Functions taking enum/literal-union parameters fed from external data; privilege and state checks comparing against enum members",
+    "language": "typescript",
+    "card_id": "ts-05",
+    "doc_url": "https://www.typescriptlang.org/docs/handbook/enums.html"
+  },
+  {
+    "api": "Validation/authorization decorators on properties or handlers that are trusted as enforced without verifying a runtime pipeline consumes them",
+    "language": "typescript",
+    "card_id": "ts-06",
+    "doc_url": "https://www.typescriptlang.org/docs/handbook/decorators.html"
+  },
+  {
+    "api": "Discarded Promise results before security decisions and sensitive operations in middleware chains",
+    "language": "typescript",
+    "card_id": "ts-07",
+    "doc_url": "https://www.typescriptlang.org/docs/handbook/compiler-options.html"
+  },
+  {
+    "api": "Index lookups and dereferences typed non-nullable under relaxed flags, feeding authorization or null-dereference-prone logic",
+    "language": "typescript",
+    "card_id": "ts-08",
+    "doc_url": "https://www.typescriptlang.org/docs/handbook/compiler-options.html"
+  },
+  {
+    "api": "private/readonly fields holding credentials, roles, or invariants that can be read or rewritten from outside the class",
+    "language": "typescript",
+    "card_id": "ts-09",
+    "doc_url": "https://www.typescriptlang.org/docs/handbook/2/classes.html"
+  },
+  {
+    "api": "JSON.parse of numeric fields used as IDs in authorization, ownership, or deduplication comparisons; Number coercion of bigint/date fields at service boundaries",
+    "language": "typescript",
+    "card_id": "ts-10",
+    "doc_url": "https://www.typescriptlang.org/docs/handbook/2/everyday-types.html"
+  },
+  {
+    "api": "'!!' non-null assertions on platform types, implicit assignment of platform types to non-null Kotlin types, and lateinit property reads on attacker-influenced paths",
+    "language": "kotlin",
+    "card_id": "kotlin-01",
+    "doc_url": "https://kotlinlang.org/docs/java-interop.html"
+  },
+  {
+    "api": "startActivity/getParcelableExtra(\"forward\")-style forwarding to startActivity(), startActivityForResult(), sendBroadcast(), bindService(); PendingIntent.getActivity/getBroadcast with a non-immutable (FLAG_IMMUTABLE missing) wrapped Intent",
+    "language": "kotlin",
+    "card_id": "kotlin-02",
+    "doc_url": "https://developer.android.com/privacy-and-security/security-tips"
+  },
+  {
+    "api": "intent.getSerializableExtra / getParcelableExtra without class validation; Bundle.getSerializable on attacker-supplied bundles; reflective bundle-to-object binding that bypasses constructors",
+    "language": "kotlin",
+    "card_id": "kotlin-03",
+    "doc_url": "https://developer.android.com/privacy-and-security/security-tips"
+  },
+  {
+    "api": "webView.addJavascriptInterface(bridge, \"name\") combined with settings.javaScriptEnabled = true; settings.allowFileAccess / allowFileAccessFromFileURLs / allowUniversalAccessFromFileURLs = true; webView.loadUrl with an unvalidated remote URL",
+    "language": "kotlin",
+    "card_id": "kotlin-04",
+    "doc_url": "https://developer.android.com/reference/android/webkit/WebView.html"
+  },
+  {
+    "api": "GlobalScope.launch / GlobalScope.async; reads and writes of shared vars or collections inside coroutines without Mutex/actor/confined dispatcher; check-then-act sequences separated by a suspension point (withContext, delay, network calls)",
+    "language": "kotlin",
+    "card_id": "kotlin-05",
+    "doc_url": "https://kotlinlang.org/docs/coroutines-overview.html"
+  },
+  {
+    "api": "db.rawQuery / db.execSQL / SQLiteQueryBuilder query built with Kotlin string templates or concatenation instead of selectionArgs",
+    "language": "kotlin",
+    "card_id": "kotlin-06",
+    "doc_url": "https://developer.android.com/reference/android/database/sqlite/SQLiteDatabase.html"
+  },
+  {
+    "api": "Runtime.getRuntime().exec with a template or concatenated string, ProcessBuilder with a single shell string, and any exec wrapped in 'sh -c' or 'su -c'",
+    "language": "kotlin",
+    "card_id": "kotlin-07",
+    "doc_url": "https://docs.oracle.com/javase/8/docs/api/java/lang/ProcessBuilder.html"
+  },
+  {
+    "api": "prefs.edit().putString(\"token\", ...) for secrets; hardcoded key strings/byte arrays passed to SecretKeySpec; Cipher.getInstance(\"AES\") or any ECB transformation; writes to external storage",
+    "language": "kotlin",
+    "card_id": "kotlin-08",
+    "doc_url": "https://developer.android.com/training/articles/keystore.html"
+  },
+  {
+    "api": "sslSocketFactory(untrustedFactory, trustAllManager) / hostnameVerifier { _, _ -> true } / X509TrustManager with empty checkServerTrusted / SSLSocketFactory created from a null-trust SSLContext; cleartext http:// endpoints enabled via usesCleartextTraffic or an ATS-style networkSecurityConfig exception",
+    "language": "kotlin",
+    "card_id": "kotlin-09",
+    "doc_url": "https://developer.android.com/training/articles/security-config.html"
+  },
+  {
+    "api": "user.copy(role = ...) on objects carrying authorization state; smart casts on shared mutable properties guarding security decisions; runCatching{}.getOrNull() / '?:' defaults around authentication or permission calls; non-exhaustive when on role/state enums",
+    "language": "kotlin",
+    "card_id": "kotlin-10",
+    "doc_url": "https://kotlinlang.org/docs/data-classes.html"
+  },
+  {
+    "api": "ObjectInputStream.readObject on attacker-influenced streams; remote-message pipelines left on default Java serialization; polymorphic JSON decoders resolving class names from the payload",
+    "language": "scala",
+    "card_id": "scala-01",
+    "doc_url": "https://docs.oracle.com/javase/8/docs/api/java/io/ObjectInputStream.html"
+  },
+  {
+    "api": "String-typed scala.sys.process builders (\"...\".! / .!! / Process(\"...\")) with interpolation; ToolBox.eval; ScriptEngine.eval on attacker text",
+    "language": "scala",
+    "card_id": "scala-02"
+  },
+  {
+    "api": "statement.execute / prepareStatement on s-interpolated strings; query interpolators receiving raw string fragments; identifier/ORDER BY concatenation",
+    "language": "scala",
+    "card_id": "scala-03",
+    "doc_url": "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
+  },
+  {
+    "api": "implicit def / Conversion givens defined on security-relevant types; implicit ExecutionContext selection for privileged work; == comparisons across unrelated types in decision logic",
+    "language": "scala",
+    "card_id": "scala-04"
+  },
+  {
+    "api": "Option.get / .head / Try.get / .apply on parsed values; non-exhaustive match on input-driven variants; fail-open default branches in authorization matches",
+    "language": "scala",
+    "card_id": "scala-05"
+  },
+  {
+    "api": "Future { ... } closures referencing vars/mutable collections or actor state; blocking operations on the default dispatcher; lazy val first-touch under contention",
+    "language": "scala",
+    "card_id": "scala-06"
+  },
+  {
+    "api": "scala.xml.XML.load / loadString / withSAXParser on untrusted documents; XML literal construction with interpolated values",
+    "language": "scala",
+    "card_id": "scala-07",
+    "doc_url": "https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html"
+  },
+  {
+    "api": "LazyList.from(...)/memoized chains over request data; stream/frame reads sized from wire headers without caps; unbounded mailbox receive; .r regex over untrusted strings",
+    "language": "scala",
+    "card_id": "scala-08"
+  },
+  {
+    "api": "scala.io.Source.fromURL / fromFile over attacker-influenced strings; JVM File/Paths operations over archive entry names",
+    "language": "scala",
+    "card_id": "scala-09",
+    "doc_url": "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html"
+  },
+  {
+    "api": "scala.util.Random for security values; case class toString / productElement access exposing secret fields into logs and responses; == / != over digest arrays",
+    "language": "scala",
+    "card_id": "scala-10",
+    "doc_url": "https://docs.oracle.com/javase/8/docs/api/java/security/MessageDigest.html"
+  },
+  {
+    "api": "=== vs == distinctions aside: == / != on authenticators; in_array / array_search without $strict=true; switch matching attacker-controlled scalars; strcmp/strlen receiving attacker-chosen argument types",
+    "language": "php",
+    "card_id": "php-01",
+    "doc_url": "https://www.php.net/manual/en/function.hash-equals.php"
+  },
+  {
+    "api": "unserialize() on attacker-controlled data; is_dir/file_exists/fopen/file_get_contents and friends receiving phar:// paths",
+    "language": "php",
+    "card_id": "php-02",
+    "doc_url": "https://www.php.net/manual/en/function.unserialize.php"
+  },
+  {
+    "api": "include/require with a dynamic path; file_get_contents/fopen on an attacker string while allow_url_fopen is on; move_uploaded_file into an attacker-influenced location",
+    "language": "php",
+    "card_id": "php-03",
+    "doc_url": "https://www.php.net/manual/en/function.include.php"
+  },
+  {
+    "api": "system / exec / shell_exec / passthru / proc_open / backticks; eval; $fn() and call_user_func with input-derived names; mail() fifth argument",
+    "language": "php",
+    "card_id": "php-04",
+    "doc_url": "https://www.php.net/manual/en/function.escapeshellarg.php"
+  },
+  {
+    "api": "$pdo->query / $pdo->exec / mysqli_query on interpolated strings; query builders receiving concatenated fragments for ORDER BY / LIMIT / column names",
+    "language": "php",
+    "card_id": "php-05",
+    "doc_url": "https://www.php.net/manual/en/security.database.sql-injection.php"
+  },
+  {
+    "api": "extract() on superglobals; parse_str() without a destination array; security checks reading variables name-matched to request keys via $_REQUEST; code trusting $_FILES name/type fields",
+    "language": "php",
+    "card_id": "php-06",
+    "doc_url": "https://www.php.net/manual/en/function.extract.php"
+  },
+  {
+    "api": "echo/print of unescaped request data; htmlspecialchars calls without ENT_QUOTES or with a charset mismatched to the document; header('Location: '.attacker_url)",
+    "language": "php",
+    "card_id": "php-07",
+    "doc_url": "https://www.php.net/manual/en/function.htmlspecialchars.php"
+  },
+  {
+    "api": "md5/sha1 applied to passwords; rand/mt_rand/uniqid feeding security tokens; == / != comparisons of digests or MACs; missing session_regenerate_id() after authentication state changes",
+    "language": "php",
+    "card_id": "php-08",
+    "doc_url": "https://www.php.net/manual/en/function.password-hash.php"
+  },
+  {
+    "api": "simplexml_load_string / DOMDocument::loadXML with LIBXML_NOENT; SoapClient constructed with an input URL; curl transfers with input URLs and unrestricted protocol/redirect options",
+    "language": "php",
+    "card_id": "php-09",
+    "doc_url": "https://www.php.net/manual/en/function.simplexml-load-string.php"
+  },
+  {
+    "api": "Loose == / != tests of strpos results on security gates; @-suppressed calls whose results feed checks; (int)/intval coercion before authorization decisions; preg_match validators not compared with === 1",
+    "language": "php",
+    "card_id": "php-10",
+    "doc_url": "https://www.php.net/manual/en/function.strpos.php"
+  },
+  {
+    "api": "Marshal.load on untrusted bytes; YAML.load (Psych 3.x) without safe_load/permitted_classes; JSON.parse with create_additions: true",
+    "language": "ruby",
+    "card_id": "ruby-01",
+    "doc_url": "https://docs.ruby-lang.org/en/3.2/Marshal.html"
+  },
+  {
+    "api": "eval / instance_eval / class_eval on dynamic strings; send / public_send / const_get with input-derived names; ERB.new(attacker_text).result",
+    "language": "ruby",
+    "card_id": "ruby-02",
+    "doc_url": "https://docs.ruby-lang.org/en/3.2/Object.html"
+  },
+  {
+    "api": "Kernel#open(attacker_string); IO.read(attacker_string); system / exec / backticks / %x; IO.popen and Open3 calls with a single shell string",
+    "language": "ruby",
+    "card_id": "ruby-03",
+    "doc_url": "https://docs.ruby-lang.org/en/3.2/Kernel.html"
+  },
+  {
+    "api": "Condition/fragment APIs taking interpolated strings (where(\"... #{...}\"), order(\"... #{...}\")), and raw driver execute calls built by concatenation",
+    "language": "ruby",
+    "card_id": "ruby-04",
+    "doc_url": "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
+  },
+  {
+    "api": "Model update interfaces fed the raw params hash (update(params[:user]), attributes=), and query condition interfaces receiving raw nested params values",
+    "language": "ruby",
+    "card_id": "ruby-05",
+    "doc_url": "https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html"
+  },
+  {
+    "api": "=~ / match on security gates using ^...$ or $-anchored patterns; Regexp.new with input-derived patterns; to_sym on external input used for lookups",
+    "language": "ruby",
+    "card_id": "ruby-06",
+    "doc_url": "https://docs.ruby-lang.org/en/3.2/Regexp.html"
+  },
+  {
+    "api": "html_safe / raw() applied to input-derived strings; unescaped interpolation into attribute contexts; javascript:-scheme URLs placed into href/src attributes",
+    "language": "ruby",
+    "card_id": "ruby-07",
+    "doc_url": "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html"
+  },
+  {
+    "api": "Pathname#join / File.join / File.read with attacker components; Dir.glob with input-derived patterns; archive extraction loops; hard-coded temporary file names",
+    "language": "ruby",
+    "card_id": "ruby-08",
+    "doc_url": "https://docs.ruby-lang.org/en/3.2/Pathname.html"
+  },
+  {
+    "api": "Reopening/monkey-patching of auth-relevant methods; method_missing dispatch without allowlist; send reaching private methods; @@class variables and class-level attributes holding per-request identity or authorization state",
+    "language": "ruby",
+    "card_id": "ruby-09",
+    "doc_url": "https://docs.ruby-lang.org/en/3.2/Module.html"
+  },
+  {
+    "api": "rand / Random.new feeding security values; == / != comparisons of tokens or MACs; Timeout.timeout wrapping multi-step security operations",
+    "language": "ruby",
+    "card_id": "ruby-10",
+    "doc_url": "https://docs.ruby-lang.org/en/3.2/SecureRandom.html"
+  },
+  {
+    "api": "withUnsafeBytes { ptr = $0.baseAddress } and any escape of the closure-scoped pointer; bindMemory / assumingMemoryBound on externally sized raw buffers; UnsafeMutablePointer / UnsafeRawBufferPointer arithmetic with input-derived offsets; Unmanaged retain/release imbalance",
+    "language": "swift",
+    "card_id": "swift-01"
+  },
+  {
+    "api": "NSKeyedUnarchiver.unarchiveObject(with:); 'as!' on bridged runtime objects; setValue(_:forKeyPath:) with external keys; NSPredicate(format:)/NSExpression(expressionWithFormat:) with interpolated strings; String(format: externalFormat)",
+    "language": "swift",
+    "card_id": "swift-02",
+    "doc_url": "https://developer.apple.com/documentation/foundation/nskeyedunarchiver"
+  },
+  {
+    "api": "'!' force unwrap and 'as!' forced downcast on decoded values; 'try!' on parsing calls; array/collection subscripts on untrusted indices; arithmetic on attacker-supplied integers without &+ / &* / checked variants; precondition/fatalError reachable from input; unowned access after await",
+    "language": "swift",
+    "card_id": "swift-03"
+  },
+  {
+    "api": "State checks separated from the mutation by an await inside an actor; @unchecked Sendable conformance on stateful types; nonisolated(unsafe) on mutable properties; shared vars mutated from multiple Tasks/DispatchQueues without a lock",
+    "language": "swift",
+    "card_id": "swift-04"
+  },
+  {
+    "api": "wkWebView.evaluateJavaScript with an interpolated script string; NSAppleScript(source: externalString).executeAndReturnError; WKScriptMessageHandler message bodies used without validation; custom scheme handlers acting on unvalidated parameters",
+    "language": "swift",
+    "card_id": "swift-05",
+    "doc_url": "https://developer.apple.com/documentation/webkit/wkwebview"
+  },
+  {
+    "api": "UserDefaults.standard.set / plist writes of tokens or keys; Keychain queries with kSecAttrAccessibleAlways; URLSessionDelegate accepting every server trust challenge; NSAppTransportSecurity with NSAllowsArbitraryLoads; CommonCrypto calls with ECB mode or a fixed IV",
+    "language": "swift",
+    "card_id": "swift-06",
+    "doc_url": "https://developer.apple.com/documentation/security/keychain_services"
+  },
+  {
+    "api": "baseDir.appendingPathComponent(userInput) / FileManager contentsOfDirectory and copyItem at the resolved path; symlink-following writes; archive entry extraction without member validation; predictable temp names in shared containers",
+    "language": "swift",
+    "card_id": "swift-07",
+    "doc_url": "https://developer.apple.com/documentation/foundation/filemanager"
+  },
+  {
+    "api": "try? JSONDecoder().decode on authorization-relevant models; 'as?' chains over JSONSerialization Any output; NSNumber-to-Bool/Int bridges compared in security checks; custom init(from:) with default-value fallbacks; enum Role(rawValue:) ?? .default on role fields",
+    "language": "swift",
+    "card_id": "swift-08"
+  },
+  {
+    "api": "NSRange constructed from String.count/utf8.count/NSString.length and used to slice validated content; equality/containment checks without predefinedNormalizationForm (precomposedStringWithCanonicalMapping); Int(truncatingIfNeeded:) / Int(string) on untrusted numerics driving IDs or lengths",
+    "language": "swift",
+    "card_id": "swift-09",
+    "doc_url": "https://developer.apple.com/documentation/foundation/nsrange"
+  },
+  {
+    "api": "Data(capacity: remoteSize) / Array(repeating:count:) sized from external lengths; read loops appending into Data/String with no byte budget; decompression without output limits; unbounded request-body reads before the Content-Length cap is enforced",
+    "language": "swift",
+    "card_id": "swift-10"
+  },
+  {
+    "api": "Unquoted $var, ${var}, $(cmd) or ${arr[*]} expansions feeding destructive or security-relevant commands (rm -rf, chown, chmod, kill, cp, mv, installer invocations)",
+    "language": "shell",
+    "card_id": "shell-01",
+    "doc_url": "https://www.gnu.org/software/bash/manual/html_node/Word-Splitting.html"
+  },
+  {
+    "api": "eval of dynamic strings; sh -c \"$x\"; source/. of externally chosen paths; ${!var} with an externally influenced name; arithmetic evaluation of input-derived expressions; trap \"...$var...\"; curl|sh and eval \"$(curl ...)\" pipelines",
+    "language": "shell",
+    "card_id": "shell-02",
+    "doc_url": "https://www.gnu.org/software/bash/manual/html_node/Quoting.html"
+  },
+  {
+    "api": "Utility invocations where an input-derived value follows the command name with no '--' separator: cat/sort/head/cp/mv/kill, tar with input-derived flags, xargs without -0 or -d, git/curl wrapper scripts forwarding user arguments",
+    "language": "shell",
+    "card_id": "shell-03",
+    "doc_url": "https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
+  },
+  {
+    "api": "Redirection or writes to /tmp paths built from $$, fixed names, or user-influenced components; mktemp invoked with a template lacking X's or on a path the attacker can pre-create; any [ -f ]/[ -e ] test followed by a separate open/write of the same path in a privileged script",
+    "language": "shell",
+    "card_id": "shell-04",
+    "doc_url": "https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
+  },
+  {
+    "api": "Unqualified command names (tar, grep, awk, helper scripts) executed in a privileged script without a pinned PATH; scripts that read BASH_ENV/ENV-honored startup files; shells started with inherited exported functions; use of IFS from the environment",
+    "language": "shell",
+    "card_id": "shell-05",
+    "doc_url": "https://www.gnu.org/software/bash/manual/html_node/Bash-Variables.html"
+  },
+  {
+    "api": "Verification-then-act sequences (checksum/signature check followed by install, chmod/chown, service start) in scripts lacking set -euo pipefail at the top, or where '|| true', unguarded cd, or 'local x=$(cmd)' neutralizes a failure on the security-relevant step",
+    "language": "shell",
+    "card_id": "shell-06",
+    "doc_url": "https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
+  },
+  {
+    "api": "declare -n / local -n with input-derived names; declare \"$name=$value\"; printf -v \"$name\"; read into input-derived names; assignments to non-local names inside functions on security paths; export/export -f of secret-bearing or security-relevant names",
+    "language": "shell",
+    "card_id": "shell-07",
+    "doc_url": "https://www.gnu.org/software/bash/manual/html_node/Shell-Parameter-Expansion.html"
+  },
+  {
+    "api": "Secrets interpolated into command arguments (curl -H, wget --header, client CLI flags), scripts running with set -x/-v or a PS4 containing command substitution, export of secret variables, and here-doc/here-string bodies carrying credentials",
+    "language": "shell",
+    "card_id": "shell-08",
+    "doc_url": "https://www.gnu.org/software/bash/manual/html_node/Bash-Variables.html"
+  },
+  {
+    "api": "rm -rf, mv, cp, chmod -R, chown -R executed on expansions without a non-empty assertion; tar/unzip extraction of untrusted archives without member validation; recursive permission operations over directories containing attacker-planted symlinks; unquoted for-loops over filenames",
+    "language": "shell",
+    "card_id": "shell-09",
+    "doc_url": "https://www.gnu.org/software/bash/manual/html_node/Shell-Parameter-Expansion.html"
+  },
+  {
+    "api": "ssh host \"...$var...\"; sed/awk invocations with interpolated program text; here-docs whose delimiter is unquoted; string concatenation into SQL statements, JSON payloads, or python -c/- <<EOF script bodies",
+    "language": "shell",
+    "card_id": "shell-10",
+    "doc_url": "https://www.gnu.org/software/bash/manual/html_node/Quoting.html"
+  }
+]

@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "csharp-02",
+  "title": "SQL Injection via ADO.NET String Interpolation",
+  "language": "csharp",
+  "platform_conditions": ".NET Framework 4.x and modern .NET with ADO.NET providers (SqlClient, Npgsql, MySqlConnector, Microsoft.Data.Sqlite)",
+  "security_mechanism": "The ADO.NET parameter mechanism (SqlParameterCollection) ships values to the server out-of-band so they can never alter statement structure. C# string interpolation ($\"...\", concatenation, string.Format) composes the user value into CommandText before the provider parses it, so a single quote or SQL token inside the value is interpreted as statement syntax. The same flaw reaches raw-SQL helpers of ORMs and any SqlCommand built from an interpolated string, including stored-procedure invocation through Exec/EXECUTE composed at runtime.",
+  "source_sink_clues": {
+    "source": "Request route/query/body fields, filter and sort names from the client, and any value concatenated into CommandText.",
+    "sink": "SqlCommand / NpgsqlCommand.CommandText (or the provider's raw-SQL API) assigned from an interpolated or concatenated string, then ExecuteReader/ExecuteNonQuery/ExecuteScalar"
+  },
+  "tracking_guards": "Verify every dynamic value travels as a SqlParameter with @name placeholders in the text (AddWithValue or explicit SqlParameter objects); for identifiers that cannot be parameterized (column names, sort direction) require an allowlist dictionary mapping client keys to fixed SQL fragments rather than quoting the client string.",
+  "not_candidate_when": "All values bind through SqlParameter objects, the only interpolated fragments come from a fixed server-side mapping (never raw client text), or the CommandText is a compile-time constant with parameters.",
+  "synthetic_vulnerable_example": "SqlCommand cmd = new SqlCommand($\"SELECT * FROM Users WHERE Name = '{name}'\");",
+  "synthetic_safe_example": "SqlCommand cmd = new SqlCommand(\"SELECT * FROM Users WHERE Name = @name\"); cmd.Parameters.AddWithValue(\"@name\", name);",
+  "public_references": [
+    "CWE-89: Improper Neutralization of Special Elements used in an SQL Command — https://cwe.mitre.org/data/definitions/89.html",
+    "Microsoft: SqlCommand class (parameters) — https://learn.microsoft.com/en-us/dotnet/api/system.data.sqlclient.sqlcommand",
+    "OWASP SQL Injection Prevention Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_csharp_02",
+      "pattern": "SqlCommand.*SELECT.*\\{name\\}",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "csharp-02"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

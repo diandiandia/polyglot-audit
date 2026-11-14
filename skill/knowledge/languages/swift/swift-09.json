@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "swift-09",
+  "title": "String Index and Unicode Normalization Discrepancies",
+  "language": "swift",
+  "platform_conditions": "Swift runtime string semantics (String, Unicode normalization, NSString bridging); applies wherever Swift runs; NSRange/NSString specifics come from the Foundation framework on Apple platforms and swift-corelibs-foundation elsewhere",
+  "security_mechanism": "Swift String indexes characters (grapheme clusters) while NSString.length counts UTF-16 code units and utf8.count counts bytes, so the same string has three different lengths; slicing a String with an NSRange computed from utf8.count or NSString.length selects the wrong region or crashes, and validation that checked one representation can be applied to another in the security decision. Unicode normalization makes distinct byte sequences equal-looking and equal-looking sequences distinct: a username or identifier in NFC vs NFD form, or containing a confusable character, can pass a blocklist check as 'different' and collide with a privileged account downstream, or bypass a duplicate-name check. Integer conversions complete the class: Int(truncatingIfNeeded:) silently drops high bits and Int('4294967297') traps, so an attacker-supplied numeric string either aborts the process or wraps into a different ID.",
+  "source_sink_clues": {
+    "source": "User identifiers, filenames, and numeric strings from requests or payloads that contain multi-byte graphemes, combining characters, or values outside the target integer range.",
+    "sink": "NSRange constructed from String.count/utf8.count/NSString.length and used to slice validated content; equality/containment checks without predefinedNormalizationForm (precomposedStringWithCanonicalMapping); Int(truncatingIfNeeded:) / Int(string) on untrusted numerics driving IDs or lengths"
+  },
+  "tracking_guards": "Check range math uses one consistent representation (String.Index ranges, or utf16 offsets with String.UTF16View end-to-end); check identifiers are normalized to a single form (NFC via precomposedStringWithCanonicalMapping) before comparison and uniqueness checks; check numeric strings parse with bounded Int.init and range validation, never truncatingIfNeeded.",
+  "not_candidate_when": "The validated strings are pure ASCII so all representations agree, normalization is applied before every comparison so confusables collapse deterministically, or the numeric conversion is range-checked with a handled failure instead of truncating.",
+  "synthetic_vulnerable_example": "let range = NSRange(location: 0, length: 10)",
+  "synthetic_safe_example": "/* validate using Swift Native Index */",
+  "public_references": [
+    "CWE-190: Integer Overflow or Wraparound — https://cwe.mitre.org/data/definitions/190.html",
+    "CWE-176: Dependence on Encoding and Representation (string representation mismatch)",
+    "Apple developer documentation: NSRange — https://developer.apple.com/documentation/foundation/nsrange"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_swift_09",
+      "pattern": "NSRange\\(location:\\s*0,\\s*length:\\s*10\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "swift-09"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

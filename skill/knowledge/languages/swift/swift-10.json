@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "swift-10",
+  "title": "Unbounded Buffer Allocation in Network Streams",
+  "language": "swift",
+  "platform_conditions": "Swift runtime semantics (Data, streams); applies wherever Swift runs, including iOS/macOS clients and server-side Swift services",
+  "security_mechanism": "Data(capacity:) reserves the requested capacity up front, so a length taken from a header ('content-length', a protocol length prefix) turns a few attacker bytes into a multi-gigabyte allocation — the memory commit fails or the process is OOM-killed before any data arrives. read loops that append into Data without a cap have the same effect for compressed or chunked bodies, and a decompression step (zlib/Compression framework) multiplies the amplification. On server-side Swift the blocking variant is CPU: a synchronous read or a large JSON decode on the event-loop thread stalls every concurrent connection while the allocation/parse completes.",
+  "source_sink_clues": {
+    "source": "Declared lengths in protocol headers, chunked/compressed bodies, and length prefixes in binary payloads from clients.",
+    "sink": "Data(capacity: remoteSize) / Array(repeating:count:) sized from external lengths; read loops appending into Data/String with no byte budget; decompression without output limits; unbounded request-body reads before the Content-Length cap is enforced"
+  },
+  "tracking_guards": "Check every input-derived length is compared to a fixed constant before allocation; check reads accumulate incrementally with a total-byte budget that aborts the connection; check decompression tracks output size and stops at the limit; check the framework's body-size limit is configured for server frameworks rather than left at 'unlimited'.",
+  "not_candidate_when": "The transport layer already rejects bodies above a small cap before the handler runs and that cap is enforced on every path, the allocation size is a compile-time constant, or the stream is consumed incrementally with an enforced output budget.",
+  "synthetic_vulnerable_example": "var buf = Data(capacity: remoteSize)",
+  "synthetic_safe_example": "guard remoteSize <= MAX_LIMIT else { return }; var buf = Data(capacity: remoteSize)",
+  "public_references": [
+    "CWE-400: Uncontrolled Resource Consumption — https://cwe.mitre.org/data/definitions/400.html",
+    "CWE-770: Allocation of Resources Without Limits or Throttling — https://cwe.mitre.org/data/definitions/770.html",
+    "CWE-409: Improper Handling of Highly Compressed Data (Data Amplification) — https://cwe.mitre.org/data/definitions/409.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_swift_10",
+      "pattern": "Data\\(capacity:\\s*remoteSize\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "swift-10"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

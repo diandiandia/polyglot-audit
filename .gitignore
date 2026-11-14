@@ -1,0 +1,14 @@
+# Python 运行产物
+__pycache__/
+*.pyc
+*.pyo
+
+# 测试运行产生的记录与报告（可由测试重新生成）
+tests/performance/records/
+tests/holdout/reports/
+tests/model_eval/records/
+
+# 临时与运行产物
+.tmp-*
+*.log
+events.db

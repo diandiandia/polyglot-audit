@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "id": "ruby-04",
+  "title": "SQL Injection via String Interpolation in Queries",
+  "language": "ruby",
+  "platform_conditions": "Ruby 3.x; database adapters and query interfaces (database drivers, ActiveRecord-style fragment APIs) parameterize bound values but interpolate SQL fragments verbatim",
+  "security_mechanism": "Query interfaces accept both bound values and raw SQL fragments; inside a fragment, #{} is evaluated by Ruby before the database sees the string, so a quote or SQL keyword in the value becomes statement structure. Identifier and keyword positions (ORDER BY column, GROUP BY, limit/offset fragments) cannot be parameterized at all, so code routinely interpolates sort keys and column names there even when values elsewhere are bound — making sort/filter parameters the usual injection point. Placeholders (? or named binds) hand values to the adapter out-of-band, so bound values cannot alter the parse.",
+  "source_sink_clues": {
+    "source": "Request parameters for search terms, sort keys, filter fields, column names and pagination values that reach fragment construction.",
+    "sink": "Condition/fragment APIs taking interpolated strings (where(\"... #{...}\"), order(\"... #{...}\")), and raw driver execute calls built by concatenation"
+  },
+  "tracking_guards": "Require placeholders for every value; require identifier parts to be resolved through a fixed allowlist hash mapping client keys to column names (or the adapter's identifier quoting); require Integer() casting for limit/offset before interpolation.",
+  "not_candidate_when": "Values are bound through placeholders, interpolated identifier parts come from a fixed server-side allowlist, or numeric fields are cast with Integer() before reaching the fragment.",
+  "synthetic_vulnerable_example": "User.where(\"name = '#{params[:name]}'\")",
+  "synthetic_safe_example": "User.where(\"name = ?\", params[:name])",
+  "public_references": [
+    "CWE-89: Improper Neutralization of Special Elements used in an SQL Command — https://cwe.mitre.org/data/definitions/89.html",
+    "OWASP SQL Injection Prevention Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_ruby_04",
+      "pattern": "User\\.where\\(\\\"name = '#\\{params",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "ruby-04"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

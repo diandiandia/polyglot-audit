@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polyglot-audit.internal/schemas/usage.schema.json",
+  "description": "SWR-020 版本化数据契约；绑定 DSR-006/007/033。usage 记录：宿主来源的用量数据及其 exact/estimated/unavailable 可得性。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "attempt_id",
+    "dimension",
+    "availability",
+    "unit",
+    "source"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "attempt_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "dimension": {
+      "type": "string",
+      "minLength": 1
+    },
+    "availability": {
+      "enum": [
+        "exact",
+        "estimated",
+        "unavailable"
+      ]
+    },
+    "value": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "unit": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reason": {
+      "type": "string"
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "ts-10",
+  "title": "Serialization Boundary Precision Loss on Large Integers",
+  "language": "typescript",
+  "platform_conditions": "IEEE-754 double semantics of the JavaScript runtime (Number); applies wherever JSON payloads cross into the compiled JS",
+  "security_mechanism": "JSON.parse returns any and converts every number to a 64-bit double, so 64-bit identifiers (snowflake IDs, Discord/GitHub object IDs, 64-bit epochs) lose precision above 2^53: two different IDs parse to the same Number, and an authorization check or ownership comparison then matches the wrong record -- an attacker picks an ID that rounds onto the victim's. Date round-trips shift by timezone/millis rules and bigint fields silently become Number (lossy) or string (type confusion) depending on the serializer, so the value compared at the guard is not the value the client sent.",
+  "source_sink_clues": {
+    "source": "JSON request/response bodies, third-party API payloads, and event streams carrying 64-bit numeric identifiers or timestamps.",
+    "sink": "JSON.parse of numeric fields used as IDs in authorization, ownership, or deduplication comparisons; Number coercion of bigint/date fields at service boundaries"
+  },
+  "tracking_guards": "Check 64-bit IDs are transported and compared as strings or BigInt end to end (JSON big-integer serialization), check parsed payloads pass a schema that pins ID fields to string type, and check Date fields round-trip through explicit ISO string parsing rather than numeric coercion.",
+  "not_candidate_when": "IDs are already strings on the wire, the numeric range is provably below 2^53 by schema, or the compared value is regenerated server-side rather than taken from the payload.",
+  "synthetic_vulnerable_example": "const id = JSON.parse(jsonPayload).id;",
+  "synthetic_safe_example": "const id = BigInt(JSONBig.parse(jsonPayload).id);",
+  "public_references": [
+    "CWE-190: Integer Overflow or Wraparound — https://cwe.mitre.org/data/definitions/190.html",
+    "CWE-704: Incorrect Type Conversion or Cast — https://cwe.mitre.org/data/definitions/704.html",
+    "TypeScript Handbook: Narrowing / Everyday Types (Number limits) — https://www.typescriptlang.org/docs/handbook/2/everyday-types.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_ts_10",
+      "pattern": "JSON\\.parse\\(jsonPayload\\)\\.id",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "ts-10"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

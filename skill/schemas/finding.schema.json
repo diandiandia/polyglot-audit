@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polyglot-audit.internal/schemas/finding.schema.json",
+  "description": "SWR-025 版本化数据契约；绑定 DSR-006/007/010/073。finding 记录：确认/待验证/驳回/未验证发现的字段契约；run_id 由服务端在落卷时盖章，用于跨 run 引用拒绝。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "finding_id",
+    "candidate_refs",
+    "verdict",
+    "evidence_level",
+    "provenance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "finding_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "candidate_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "verdict": {
+      "enum": [
+        "confirmed",
+        "needs_validation",
+        "rejected",
+        "unverified"
+      ]
+    },
+    "evidence_level": {
+      "enum": [
+        "E1",
+        "E2"
+      ]
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "hunt_tasks",
+        "verify_tasks"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "hunt_tasks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "verify_tasks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "verify_attempt_id": {
+          "type": "string"
+        }
+      }
+    },
+    "title": {
+      "type": "string"
+    },
+    "issue": {
+      "type": "string"
+    },
+    "languages": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "source": {
+      "type": "object"
+    },
+    "sink": {
+      "type": "object"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "guards": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "attacker": {
+      "type": "string"
+    },
+    "preconditions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "rating": {
+      "type": "object"
+    },
+    "remediation": {
+      "type": "object"
+    },
+    "variants": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "validation_plan": {
+      "type": "string"
+    },
+    "counter_evidence": {
+      "type": "object"
+    },
+    "unverified_reason": {
+      "type": "string"
+    },
+    "variant_search": {
+      "type": "object"
+    },
+    "second_opinion": {
+      "type": "object"
+    }
+  }
+}

@@ -1,0 +1,72 @@
+[
+  {
+    "pattern_id": "sig_ruby_01",
+    "pattern": "Marshal\\.load\\(params\\[:state\\]\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "ruby-01"
+  },
+  {
+    "pattern_id": "sig_ruby_02",
+    "pattern": "user\\.public_send\\(params\\[:method\\]",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "ruby-02"
+  },
+  {
+    "pattern_id": "sig_ruby_03",
+    "pattern": "open\\(\\\"\\|\\\"\\s*\\+\\s*params",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "ruby-03"
+  },
+  {
+    "pattern_id": "sig_ruby_04",
+    "pattern": "User\\.where\\(\\\"name = '#\\{params",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "ruby-04"
+  },
+  {
+    "pattern_id": "sig_ruby_05",
+    "pattern": "User\\.update\\(params\\[:user\\]\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "ruby-05"
+  },
+  {
+    "pattern_id": "sig_ruby_06",
+    "pattern": "url\\s*=~\\s*\\/\\^https",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "ruby-06"
+  },
+  {
+    "pattern_id": "sig_ruby_07",
+    "pattern": "user_bio\\.html_safe",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "ruby-07"
+  },
+  {
+    "pattern_id": "sig_ruby_08",
+    "pattern": "Pathname\\.new\\('/safe/dir'\\)\\.join",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "ruby-08"
+  },
+  {
+    "pattern_id": "sig_ruby_09",
+    "pattern": "@@current_user\\s*=\\s*user",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "ruby-09"
+  },
+  {
+    "pattern_id": "sig_ruby_10",
+    "pattern": "rand\\(100000\\.\\.999999\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "ruby-10"
+  }
+]

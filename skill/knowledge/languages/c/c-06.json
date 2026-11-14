@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "c-06",
+  "title": "String Termination and Off-by-One Errors",
+  "language": "c",
+  "platform_conditions": "C99/C11 on any hosted toolchain; consequences depend on how the surrounding code consumes non-NUL-terminated buffers",
+  "security_mechanism": "strncpy copies at most n bytes and pads with NUL bytes only if the source is shorter; when strlen(src) >= n it copies exactly n bytes and writes no terminator, leaving dst an unterminated char array. A later strlen/printf/strcpy on dst runs off the end into adjacent memory — both an overread (leaking whatever follows, e.g. a secret in a neighbouring buffer) and an overread-driven overflow when a copy is made from it. The same arithmetic produces off-by-one conditions: buffers sized len instead of len+1, loops that write buf[len] as the terminator into an array declared [len].",
+  "source_sink_clues": {
+    "source": "Strings whose length the attacker controls: usernames, paths, header values, protocol strings that reach a fixed-size copy and are later treated as C strings.",
+    "sink": "strncpy into a fixed buffer followed by strlen/printf/strcpy on that buffer; any strlen on a buffer that is not provably NUL-terminated"
+  },
+  "tracking_guards": "Check that the byte after a strncpy result is explicitly NUL-written (dst[sizeof(dst)-1] = '\\0'), that truncation itself is detected (source length compared before copy), or that snprintf with sizeof(dst) replaces the strncpy; verify no strlen/read is applied to a buffer whose termination depends on the copy.",
+  "not_candidate_when": "The buffer is explicitly terminated after every strncpy on all paths, the source is bounded by a length check that guarantees room for the terminator, or the copied region is used with explicit lengths only (never as a C string).",
+  "synthetic_vulnerable_example": "strncpy(buf, src, sizeof(buf));",
+  "synthetic_safe_example": "snprintf(buf, sizeof(buf), \"%s\", src);",
+  "public_references": [
+    "CWE-170: Improper Null Termination — https://cwe.mitre.org/data/definitions/170.html",
+    "CWE-193: Off-by-one Error — https://cwe.mitre.org/data/definitions/193.html",
+    "CWE-125: Out-of-bounds Read — https://cwe.mitre.org/data/definitions/125.html",
+    "SEI CERT C Coding Standard: STR32-C (null-terminate byte strings), STR31-C (bounds before string ops)"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_c_06",
+      "pattern": "strncpy\\(",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "c-06"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

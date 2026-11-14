@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "id": "kotlin-04",
+  "title": "WebView Javascript Interface and File Scheme Hazards",
+  "language": "kotlin",
+  "platform_conditions": "Android runtime (API level 1+ for WebView; @JavascriptInterface-annotated bridge methods are enforced from API 17+, which is why pre-17 bridges expose every public method)",
+  "security_mechanism": "addJavascriptInterface publishes a Java/Kotlin object into every frame of the page as window.<name>, and any JavaScript running in the WebView can call its public methods; from API 17+ only @JavascriptInterface methods are reachable, but on older levels ALL public methods — including inherited Class reflection helpers — are invokable. When setJavaScriptEnabled is combined with allowFileAccess/setAllowFileAccessFromFileURLs or setAllowUniversalAccessFromFileURLs, script in a file:// context can read the app's private files and issue same-origin-free requests. Loading an attacker-influenced URL (open redirect, user content, MITM on http) then gives the attacker's script the native bridge as a primitive.",
+  "source_sink_clues": {
+    "source": "Remote web content loaded into the WebView (user URLs, attacker-modified responses, injected iframe content) and anything that content can induce the bridge to do.",
+    "sink": "webView.addJavascriptInterface(bridge, \"name\") combined with settings.javaScriptEnabled = true; settings.allowFileAccess / allowFileAccessFromFileURLs / allowUniversalAccessFromFileURLs = true; webView.loadUrl with an unvalidated remote URL"
+  },
+  "tracking_guards": "Check the bridge object exposes only @JavascriptInterface-annotated methods that validate their arguments and never return secrets or accept file paths; check file access switches are disabled (allowFileAccess=false, both FromFileURLs flags=false) and content is loaded over https from an allowlisted host; check setWebContentsDebuggingEnabled is off in release builds.",
+  "not_candidate_when": "The WebView loads only bundled local help content with JavaScript disabled, or the bridge methods are inert (pure UI callbacks validating their arguments) and file access flags are off, or the loaded URL is a compile-time constant https endpoint the app controls.",
+  "synthetic_vulnerable_example": "webView.addJavascriptInterface(bridge, \"nativeApp\")",
+  "synthetic_safe_example": "webView.settings.allowFileAccess = false; /* restrict bridge */",
+  "public_references": [
+    "CWE-749: Exposed Dangerous Method or Function — https://cwe.mitre.org/data/definitions/749.html",
+    "Android developer documentation: WebView — https://developer.android.com/reference/android/webkit/WebView.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_kotlin_04",
+      "pattern": "webView\\.addJavascriptInterface\\(",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "kotlin-04"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

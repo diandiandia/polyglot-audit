@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "java-07",
+  "title": "Concurrency and Mutable State in Servlets",
+  "language": "java",
+  "platform_conditions": "Jakarta/Javax servlet containers (Tomcat, Jetty, WebSphere); the container creates ONE servlet instance serving all requests concurrently",
+  "security_mechanism": "The servlet specification keeps a single instance per servlet, so every instance field is shared by all concurrent requests: a currentUser field written by one request is read by another, letting a victim inherit an attacker's identity or vice versa. SimpleDateFormat stores intermediate parsing state in its instance and corrupts output or throws under concurrency; HashMap without synchronization loses updates and (in older JDKs) can loop under concurrent resize. A check-then-act pattern on an instance field ('if (this.session == null) create') races two requests into double initialization with mismatched credentials.",
+  "source_sink_clues": {
+    "source": "Concurrent HTTP requests handled by the same servlet/filter/bean instance; per-request values stored in instance fields.",
+    "sink": "Mutable instance fields in HttpServlet/Filter/singletons holding request or identity data; shared SimpleDateFormat/HashMap instances used from request threads; check-then-act sequences on instance state"
+  },
+  "tracking_guards": "Check that per-request values live in local variables or request/session attributes rather than instance fields; check shared utility instances are replaced by ThreadLocal or immutable/thread-safe types (DateTimeFormatter, ConcurrentHashMap); check check-then-act sequences are atomic under a lock orCAS.",
+  "not_candidate_when": "The fields are read-only after container initialization (safe publication with final/initialization-on-demand), the servlet is explicitly single-threaded (SingleThreadModel-era or one instance per request), shared state is confined to ConcurrentHashMap/Atomic types, or the field holds immutable configuration only.",
+  "synthetic_vulnerable_example": "public class UserServlet extends HttpServlet { private String currentUser; }",
+  "synthetic_safe_example": "public class UserServlet extends HttpServlet { /* use local variables */ }",
+  "public_references": [
+    "CWE-362: Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition') — https://cwe.mitre.org/data/definitions/362.html",
+    "CWE-754: Improper Check for Unusual or Exceptional Conditions — https://cwe.mitre.org/data/definitions/754.html",
+    "Java SE documentation: SimpleDateFormat — https://docs.oracle.com/javase/8/docs/api/java/text/SimpleDateFormat.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_java_07",
+      "pattern": "public\\s+class\\s+UserServlet.*private\\s+String\\s+currentUser",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "java-07"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

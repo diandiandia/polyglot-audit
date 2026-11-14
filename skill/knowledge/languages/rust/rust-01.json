@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "id": "rust-01",
+  "title": "Unsoundness in Unsafe Memory Operations",
+  "language": "rust",
+  "platform_conditions": "Any Rust toolchain (stable/nightly); unsafe blocks bypass the borrow checker on every target and optimization level",
+  "security_mechanism": "Rust's safety guarantees are a contract the programmer must uphold inside every unsafe block: slice::from_raw_parts(ptr, len) builds a &[T] valid only if ptr points to len live, initialized, aligned elements for the slice's whole lifetime. A length taken from a protocol header or peer makes the contract attacker-controlled, so the resulting slice lets safe code — which the compiler assumes cannot access invalid memory — read or write far past the real allocation. The same holds for transmute (reinterpreting bytes as a different type, breaking size or layout invariants), MaybeUninit::assume_init (asserting initialization that never happened), get_unchecked (asserting a bound that was never checked), and Vec::set_len (asserting elements exist that were never constructed). Because the type system now believes the lie, the optimizer may elide the real bounds checks that would have caught the access.",
+  "source_sink_clues": {
+    "source": "Lengths, pointers, and layout assumptions derived from peer data: wire-format length prefixes, FFI-returned pointers and counts, descriptor tables.",
+    "sink": "unsafe { slice::from_raw_parts / from_raw_parts_mut } with an external length; transmute; MaybeUninit::assume_init; get_unchecked(_mut); Vec::set_len"
+  },
+  "tracking_guards": "Check that the length/pointer is validated against a real bound (allocation size, protocol maximum) BEFORE entering the unsafe block, that the provenance of the pointer is documented and within-lifetime, and that initialization claims (assume_init, set_len) are backed by writes that already happened; flag any unsafe block whose inputs include unvalidated external values.",
+  "not_candidate_when": "The unsafe block's length is clamped to the real allocation before entry and the bound is enforced in safe code, the pointer/length come from a checked internal invariant established at construction, or the block is covered by a reviewed abstraction whose safe API validates every input (and the external input never reaches the unsafe inputs).",
+  "synthetic_vulnerable_example": "unsafe { std::slice::from_raw_parts(ptr, external_len); }",
+  "synthetic_safe_example": "if external_len <= max_len { unsafe { std::slice::from_raw_parts(ptr, external_len) }; }",
+  "public_references": [
+    "CWE-119: Improper Restriction of Operations within the Bounds of a Memory Buffer — https://cwe.mitre.org/data/definitions/119.html",
+    "CWE-787: Out-of-bounds Write — https://cwe.mitre.org/data/definitions/787.html",
+    "Rust std: slice::from_raw_parts — https://doc.rust-lang.org/std/slice/fn.from_raw_parts.html",
+    "The Rustonomicon — https://doc.rust-lang.org/nomicon/",
+    "Rust Reference: Behavior considered undefined — https://doc.rust-lang.org/reference/behavior-considered-undefined.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_rust_01",
+      "pattern": "slice::from_raw_parts\\(ptr,\\s*external_len\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "rust-01"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

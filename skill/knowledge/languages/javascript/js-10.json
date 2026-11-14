@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "js-10",
+  "title": "Insecure Randomness via Math.random for Tokens",
+  "language": "javascript",
+  "platform_conditions": "ECMAScript 2020 semantics; Math.random in V8 (Node.js and Chrome) is a 128-bit xorshift128+ PRNG whose state is recoverable from outputs",
+  "security_mechanism": "Math.random is a pseudo-random generator seeded once per process and never reseeded; in V8 its xorshift128+ state can be reconstructed from a handful of observed outputs, after which all past and future outputs are predictable. Tokens, reset codes, and keys drawn from it are therefore guessable by anyone who can observe a few values (shares, leaderboards, timing endpoints) or read adjacent outputs. crypto.randomBytes / getRandomValues draw from the OS CSPRNG and do not share this weakness. Deprecated weak interfaces (md5 via createHash('md5') for credentials, single-DES) fail on the algorithm side the same way.",
+  "source_sink_clues": {
+    "source": "The token value itself: session identifiers, password-reset codes, API keys, CSRF nonces, and any secret the developer generated client-side or server-side with Math.random.",
+    "sink": "Math.random() feeding token/key/nonce generation; crypto.createHash('md5'/'sha1') for credentials; deprecated weak cipher construction in crypto.createCipheriv"
+  },
+  "tracking_guards": "Check security values come from crypto.randomBytes (Node) or crypto.getRandomValues (web), not Math.random; check credentials use a slow KDF or authenticated cipher from the crypto module; check comparers use crypto.timingSafeEqual.",
+  "not_candidate_when": "Math.random drives only non-security behavior (animation, sampling, test fixtures, shuffling non-sensitive lists), the random value is combined with a CSPRNG source before use, or the fast hash digests content for integrity/dedup rather than authentication.",
+  "synthetic_vulnerable_example": "const token = Math.random().toString(36).substring(2);",
+  "synthetic_safe_example": "const token = crypto.randomBytes(16).toString('hex');",
+  "public_references": [
+    "CWE-338: Use of Cryptographically Weak Pseudo-Random Number Generator — https://cwe.mitre.org/data/definitions/338.html",
+    "CWE-327: Use of a Broken or Risky Cryptographic Algorithm — https://cwe.mitre.org/data/definitions/327.html",
+    "Node.js documentation: crypto.randomBytes — https://nodejs.org/api/crypto.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_js_10",
+      "pattern": "Math\\.random\\(\\)\\.toString\\(36\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "js-10"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

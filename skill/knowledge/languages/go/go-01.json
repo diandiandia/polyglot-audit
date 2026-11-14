@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "go-01",
+  "title": "Data Race on Unsynchronized Shared Maps",
+  "language": "go",
+  "platform_conditions": "Go 1.x standard library; applies to all build targets (race detector requires -race builds)",
+  "security_mechanism": "The Go runtime deliberately detects concurrent writes to a built-in map and aborts the process with 'fatal error: concurrent map writes' — not a recoverable panic — so one unsynchronized map access in a goroutine takes down the whole service. Beyond the crash, the Go memory model guarantees nothing for unsynchronized access: a goroutine that reads a flag another goroutine wrote without a happens-before edge (channel, mutex, atomic) may observe a stale or zero value, so a security check performed by one goroutine and a privileged action performed by another can interleave into a check-then-act race. Closures capturing the loop variable (pre-Go 1.22 per-loop variable semantics) additionally make every spawned goroutine observe the same final iteration value.",
+  "source_sink_clues": {
+    "source": "Concurrent request handlers, background workers, and callbacks sharing maps, flags, or captured loop variables without synchronization.",
+    "sink": "go func() { ... m[key] = val }() on a built-in map; unsynchronized reads of shared state guarding authorization or session decisions; check-then-act sequences split across goroutines"
+  },
+  "tracking_guards": "Check that shared maps are either replaced by sync.Map or confined behind a sync.Mutex/RWMutex taken on both read and write paths; check cross-goroutine security decisions use channels or sync/atomic with a happens-before edge; run -race builds in CI to observe actual races rather than reasoning about them.",
+  "not_candidate_when": "The map is confined to a single goroutine and other goroutines communicate only via channels ('share memory by communicating'), every access path holds the same mutex, the variable is captured per-iteration on Go 1.22+ or via an explicit parameter, or the shared value is immutable after publication with a proper happens-before edge.",
+  "synthetic_vulnerable_example": "go func() { m[key] = val }()",
+  "synthetic_safe_example": "var mu sync.Mutex; mu.Lock(); m[key] = val; mu.Unlock()",
+  "public_references": [
+    "CWE-362: Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition') — https://cwe.mitre.org/data/definitions/362.html",
+    "CWE-754: Improper Check for Unusual or Exceptional Conditions — https://cwe.mitre.org/data/definitions/754.html",
+    "Go Memory Model — https://go.dev/ref/mem",
+    "Go standard library: sync — https://pkg.go.dev/sync"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_go_01",
+      "pattern": "go\\s+func\\(\\)\\s*\\{\\s*m\\[key\\]",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "go-01"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

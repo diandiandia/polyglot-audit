@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "py-03",
+  "title": "Command Injection in subprocess with shell=True",
+  "language": "python",
+  "platform_conditions": "CPython 3.x standard library on POSIX and Windows (shell resolution differs per OS)",
+  "security_mechanism": "With shell=True the argument string is handed to /bin/sh -c (or COMSPEC on Windows), so shell metacharacters in input (';', '|', '&&', '$(...)', backquotes) terminate the intended command and start attacker-controlled ones. Even without shell=True, an attacker-supplied value that begins with '-' reaches the spawned program as an option (argument injection) unless the call is positional and guarded.",
+  "source_sink_clues": {
+    "source": "Request parameters, headers, filenames, or environment values that are interpolated or appended into a command string or argv element.",
+    "sink": "subprocess.run/call/check_output/Popen with shell=True; os.system; os.popen"
+  },
+  "tracking_guards": "Prefer the argv-list form (shell=False) with the dynamic value as one element and a fixed executable path; if interpolation into a shell string is unavoidable, verify shlex.quote (not ad-hoc escaping) is applied; check for strict allowlist validation (e.g. ^[A-Za-z0-9_-]+$) before the value enters the command.",
+  "not_candidate_when": "The command string is entirely constant, the dynamic value is passed as a single argv element to a program that accepts no options, or the value is validated against a strict allowlist grammar that excludes all shell metacharacters before use.",
+  "synthetic_vulnerable_example": "subprocess.Popen(f\"echo {user_input}\", shell=True)",
+  "synthetic_safe_example": "subprocess.Popen([\"echo\", user_input])",
+  "public_references": [
+    "CWE-78: Improper Neutralization of Special Elements used in an OS Command — https://cwe.mitre.org/data/definitions/78.html",
+    "CWE-88: Argument Injection or Modification — https://cwe.mitre.org/data/definitions/88.html",
+    "Python documentation: subprocess security considerations — https://docs.python.org/3/library/subprocess.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_py_03",
+      "pattern": "subprocess\\.Popen\\(.*shell=True\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "py-03"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

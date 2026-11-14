@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "id": "ts-09",
+  "title": "Compile-Time Access Control Bypass via Runtime Inspection",
+  "language": "typescript",
+  "platform_conditions": "'private'/'readonly' exist only in tsc and are erased at emit; ES '#private' fields are enforced by the runtime (V8 and all ES2022 engines)",
+  "security_mechanism": "The 'private' modifier is a checker-only annotation: tsc emits the field as an ordinary property, so (obj as any).key, JSON round-trips, and Object.entries all read or overwrite it. Class instances rebuilt from payloads lose the invariant the type declared, because deserialization assigns plain fields without running the constructor that established them. '#private' fields are hard slots at the engine level: external code cannot reach them even with any-casts, and deserialization cannot forge them.",
+  "source_sink_clues": {
+    "source": "Deserialized objects, any-casts, and reflective access to instances whose internal fields gate security behavior.",
+    "sink": "private/readonly fields holding credentials, roles, or invariants that can be read or rewritten from outside the class"
+  },
+  "tracking_guards": "Check secrets and security invariants use '#private' (or closures/WeakMap) rather than the modifier keyword; check deserialization paths reconstruct instances through validated constructors or static fromJSON factories instead of plain assignment.",
+  "not_candidate_when": "The private field is non-security and its corruption is contained, the class is never reconstructed from external data, or '#private'is already used for the security-relevant state.",
+  "synthetic_vulnerable_example": "class Secret { private key: string = 'token'; }",
+  "synthetic_safe_example": "class Secret { #key: string = 'token'; }",
+  "public_references": [
+    "CWE-668: Exposure of Resource to Wrong Sphere — https://cwe.mitre.org/data/definitions/668.html",
+    "TypeScript Handbook: Classes — https://www.typescriptlang.org/docs/handbook/2/classes.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_ts_09",
+      "pattern": "class\\s+Secret\\s*\\{\\s*private\\s+key",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "ts-09"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

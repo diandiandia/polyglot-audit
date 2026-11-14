@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "id": "shell-10",
+  "title": "Secondary Injection into Remote Shells and Utilities",
+  "language": "shell",
+  "platform_conditions": "POSIX sh and bash on Linux/macOS; ssh invokes the remote user's login shell to parse the command string, so quoting semantics on the remote side follow the remote account's shell",
+  "security_mechanism": "A remote command given as one quoted string is parsed twice: the local shell expands $x first, then ssh hands the resulting string to the remote user's login shell, which parses it again as shell grammar. A value containing a space, semicolon, quote or $ therefore changes meaning between the two parses — an attacker-controlled filename like 'a; rm -rf /' executes on the remote host as a second command. The same double-parse exists in program-text injection: sed 's/.../$x/' and awk scripts interpolate input into the program source, an unquoted here-doc delimiter lets the remote/local body expand $vars, and concatenating input into SQL, JSON, or python -c payloads re-uses the host string as target-language syntax.",
+  "source_sink_clues": {
+    "source": "Values crossing an interpreter boundary: filenames and hostnames fed into ssh commands, log fields or user text fed into sed/awk programs, form input concatenated into SQL/JSON bodies, and arguments to python -c / psql -c style invocations.",
+    "sink": "ssh host \"...$var...\"; sed/awk invocations with interpolated program text; here-docs whose delimiter is unquoted; string concatenation into SQL statements, JSON payloads, or python -c/- <<EOF script bodies"
+  },
+  "tracking_guards": "Check values crossing to a remote shell are single-quoted with printf '%q' (or quoted with ' careful escaping) so the local expansion produces one literal remote operand; check sed/awk receive data via -v or ENVIRON/stdin rather than string substitution into the program; check here-doc delimiters are quoted ('EOF') to suppress expansion; check SQL/JSON/python -c bodies are built from structured encoders, not concatenation.",
+  "not_candidate_when": "The remote command is a fixed string and no local variable is interpolated, the interpolated value is passed with printf '%q' quoting so it arrives as one literal remote operand, the here-doc delimiter is quoted and the body is constant, or program text for sed/awk/SQL is constant with data supplied through separate data channels.",
+  "synthetic_vulnerable_example": "ssh remote \"rm -f $filename\"",
+  "synthetic_safe_example": "ssh remote \"rm -f -- $(printf '%q' \"$filename\")\"",
+  "public_references": [
+    "CWE-78: Improper Neutralization of Special Elements used in an OS Command — https://cwe.mitre.org/data/definitions/78.html",
+    "CWE-89: Improper Neutralization of Special Elements in SQL Command — https://cwe.mitre.org/data/definitions/89.html",
+    "CWE-94: Improper Control of Generation of Code — https://cwe.mitre.org/data/definitions/94.html",
+    "Bash Reference Manual: Quoting — https://www.gnu.org/software/bash/manual/html_node/Quoting.html",
+    "Bash Reference Manual: Redirections (here-documents) — https://www.gnu.org/software/bash/manual/html_node/Redirections.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_shell_10",
+      "pattern": "ssh\\s+remote\\s+\\\"rm\\s+-f\\s+\\$filename\\\"",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "shell-10"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

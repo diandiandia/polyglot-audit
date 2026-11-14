@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "finding_id": "F-0001",
+  "candidate_refs": ["cand-0001"],
+  "verdict": "confirmed",
+  "evidence_level": "E2",
+  "provenance": {"hunt_tasks": ["task-0001"], "verify_tasks": ["task-0002"]},
+  "title": "Unsafe deserialization of upload payload",
+  "issue": "py-01",
+  "languages": ["python"],
+  "source": {"path": "app/handlers/upload.py", "line": 8},
+  "sink": {"path": "app/storage/state.py", "line": 10},
+  "steps": [
+    {"path": "app/handlers/upload.py", "line": 8, "role": "source", "note": "raw body read"},
+    {"path": "app/storage/state.py", "line": 10, "role": "sink", "note": "pickle.loads"}
+  ],
+  "attacker": "remote unauthenticated",
+  "preconditions": ["upload endpoint reachable"],
+  "rating": {
+    "impact": 4,
+    "exploitability": 4,
+    "calculated_severity": "Critical",
+    "calculated_urgency": "P0",
+    "final_severity": "Critical",
+    "final_urgency": "P0"
+  },
+  "remediation": {"where": "app/storage/state.py:10", "change": "use json.loads"}
+}

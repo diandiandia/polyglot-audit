@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "rust-06",
+  "title": "Unbounded Resource Allocation in Collections",
+  "language": "rust",
+  "platform_conditions": "Any Rust toolchain; Vec::with_capacity panics on allocation failure and the allocator behavior (overcommit vs guaranteed) is target-dependent",
+  "security_mechanism": "Vec::with_capacity(n) reserves n * size_of::<T>() bytes up front, so a length field read from a peer header reserves gigabytes before any byte of payload arrives — one request exhausts memory for the whole process. read_to_end on a socket grows the buffer to whatever the peer sends, and unbounded mpsc channels or spawned task counts turn request floods into unbounded queues. Decompression repeats the pattern: decoding a small compressed stream into memory with no output cap amplifies a few kilobytes into gigabytes. Each is the same root mechanism: an attacker-chosen magnitude drives allocation or work before any bound is applied.",
+  "source_sink_clues": {
+    "source": "Declared sizes and counts from protocol headers, request body lengths, compressed stream content, and message rates from peers.",
+    "sink": "Vec::with_capacity / String::with_capacity sized from input; read_to_end on untrusted streams; unbounded channel/task creation; decompression into memory without an output budget"
+  },
+  "tracking_guards": "Check that any with_capacity argument is clamped to a fixed maximum (or sized from bytes already received) before the call, that body reads use take(Limit) or incremental reads with a cap, that queues are bounded (bounded channel, task semaphore), and that decompressors write through a limited writer with a byte budget.",
+  "not_candidate_when": "The length field is validated against a protocol maximum below the memory budget before the allocation, capacity is sized from already-received data (chunked growth), or the stream is consumed incrementally with an enforced output cap.",
+  "synthetic_vulnerable_example": "let mut v = Vec::with_capacity(remote_size);",
+  "synthetic_safe_example": "if remote_size > MAX_ALLOWED { return Err(Error::TooLarge); }; let mut v = Vec::with_capacity(remote_size);",
+  "public_references": [
+    "CWE-400: Uncontrolled Resource Consumption — https://cwe.mitre.org/data/definitions/400.html",
+    "CWE-770: Allocation of Resources Without Limits or Throttling — https://cwe.mitre.org/data/definitions/770.html",
+    "CWE-409: Improper Handling of Highly Compressed Data (Data Amplification) — https://cwe.mitre.org/data/definitions/409.html",
+    "Rust std: Vec::with_capacity — https://doc.rust-lang.org/std/vec/struct.Vec.html#method.with_capacity"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_rust_06",
+      "pattern": "Vec::with_capacity\\(remote_size\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "rust-06"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

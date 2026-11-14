@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "id": "kotlin-05",
+  "title": "Coroutine Concurrency and Shared Mutable State",
+  "language": "kotlin",
+  "platform_conditions": "Kotlin/JVM with kotlinx.coroutines; applies on both server JVM and Android runtime (Dispatchers.Default/IO share worker threads on both)",
+  "security_mechanism": "Coroutines do not serialize memory: a suspend call can resume on a different worker thread, so a plain var or shared collection touched across a suspension point is a data race, not just a logic bug. GlobalScope.launch escapes structured concurrency — the work outlives its scope, cannot be cancelled with the caller, and its failures surface as an unhandled exception in a process-wide handler (on Android this crashes the app; on a server it can bypass the request's error path). launch/async swallow the body's exception until join/await is called, so a failed authorization write can disappear silently when the returned Deferred is never awaited.",
+  "source_sink_clues": {
+    "source": "Concurrent requests or UI events driving the same shared state; attacker-shaped inputs that race two interleaved coroutine runs against one check-then-act sequence.",
+    "sink": "GlobalScope.launch / GlobalScope.async; reads and writes of shared vars or collections inside coroutines without Mutex/actor/confined dispatcher; check-then-act sequences separated by a suspension point (withContext, delay, network calls)"
+  },
+  "tracking_guards": "Check shared state is confined: Mutex.withLock, atomic types, an actor/Channel serialized to one coroutine, or a single-threaded dispatcher owning the state; check coroutines run inside lifecycle- or request-scoped CoroutineScope instead of GlobalScope; check every async() result is awaited or its exception explicitly handled (supervisorScope + handler).",
+  "not_candidate_when": "The state is immutable or constructed per-coroutine, the shared value is a confined single-threaded dispatcher's data, or the launch is an isolated fire-and-forget task with no shared memory and a handled failure path.",
+  "synthetic_vulnerable_example": "GlobalScope.launch { counter++ }",
+  "synthetic_safe_example": "val mutex = Mutex(); launch { mutex.withLock { counter++ } }",
+  "public_references": [
+    "CWE-362: Concurrent Execution using Shared Resource with Improper Synchronization — https://cwe.mitre.org/data/definitions/362.html",
+    "Kotlin documentation: coroutines overview — https://kotlinlang.org/docs/coroutines-overview.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_kotlin_05",
+      "pattern": "GlobalScope\\.launch\\s*\\{\\s*counter\\+\\+",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "kotlin-05"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

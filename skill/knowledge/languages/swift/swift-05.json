@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "swift-05",
+  "title": "WKWebView JavaScript String Concatenation Injection",
+  "language": "swift",
+  "platform_conditions": "iOS/macOS SDK (WebKit framework: WKWebView, WKScriptMessageHandler)",
+  "security_mechanism": "evaluateJavaScript compiles and runs the given string as JavaScript inside the page's context with the page's origin; splicing an external value into that string (\"setUser('\\(userParam)')\") lets a quote or newline in the value terminate the intended call and execute attacker-authored script with full page privileges — DOM access, storage, and any native bridge the page exposes via WKScriptMessageHandler. The same trust inversion appears at the entry side: custom URL schemes and universal links hand their parameters to the app, and NSAppleScript executes an AppleScript string compiled from input, which is code execution on macOS by definition. Trusting postMessage content arriving on the script-message bridge without origin/content checks gives the loaded page a native-call primitive.",
+  "source_sink_clues": {
+    "source": "Remote deep-link/universal-link parameters, user-controlled URL fragments, web content loaded into the WebView, and messages posted over the WKScriptMessageHandler bridge.",
+    "sink": "wkWebView.evaluateJavaScript with an interpolated script string; NSAppleScript(source: externalString).executeAndReturnError; WKScriptMessageHandler message bodies used without validation; custom scheme handlers acting on unvalidated parameters"
+  },
+  "tracking_guards": "Check script invocations pass parameters as data, not code: JSON-encode the argument and have the page parse it, or route values through WKScriptMessageHandler with a JSON body; check message handlers validate the expected message name and schema and never dispatch on raw strings; check custom scheme/deep-link parameters are allowlist-validated before driving navigation or script; check NSAppleScript input is a constant.",
+  "not_candidate_when": "The evaluated script is a compile-time constant with no interpolation, parameters cross the bridge as JSON-encoded data validated on the native side, or the WebView loads only bundled static content with no user or remote influence.",
+  "synthetic_vulnerable_example": "webView.evaluateJavaScript(\\\"setUser('\\(userParam)')\\\")",
+  "synthetic_safe_example": "/* pass parameters via message handler or JSON */",
+  "public_references": [
+    "CWE-79: Improper Neutralization of Input During Web Page Generation — https://cwe.mitre.org/data/definitions/79.html",
+    "CWE-94: Improper Control of Generation of Code — https://cwe.mitre.org/data/definitions/94.html",
+    "Apple developer documentation: WKWebView — https://developer.apple.com/documentation/webkit/wkwebview"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_swift_05",
+      "pattern": "webView\\.evaluateJavaScript\\(",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "swift-05"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

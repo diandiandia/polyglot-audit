@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "id": "rust-08",
+  "title": "Command and Path Traversal Hazards",
+  "language": "rust",
+  "platform_conditions": "Any Rust toolchain; std::process::Command spawns directly (no shell) but on Windows uses CreateProcess arg-quoting semantics",
+  "security_mechanism": "Command::new(name) treats its argument as the executable; when the name comes from input the attacker selects which binary runs, and on Windows the CRT's argument quoting allows embedded metacharacter attacks against programs that re-parse their command line. Path construction has the same trap with different semantics: Path::join / PathBuf::push REPLACE the whole base when the argument is absolute (`/etc/passwd` joined to /srv/data yields /etc/passwd), and `..` components remain in the result unless normalized, so one join does not confine the outcome to the base directory. Archive entry names reproduce the traversal when extracted with the entry's own path.",
+  "source_sink_clues": {
+    "source": "Executable names, file names, and archive entry paths from requests, uploads, and peer-supplied manifests.",
+    "sink": "std::process::Command::new with an attacker-influenced program or argument; Path::join / PathBuf::push with input followed by file operations; archive entry paths extracted as-is"
+  },
+  "tracking_guards": "Check that the spawned program is a fixed absolute path (or allowlisted) and dynamic values arrive via .arg() as single arguments, that the joined path is canonicalized and verified to start_with the base after canonicalization, and that archive extraction rejects absolute paths and `..` components per entry.",
+  "not_candidate_when": "The executable is a constant with input passed only as one argument to a program that takes no options, the joined path is validated with canonicalize()+starts_with on the result, or entry names are stripped to their file component before extraction.",
+  "synthetic_vulnerable_example": "Command::new(user_cmd).arg(arg).spawn()?;",
+  "synthetic_safe_example": "Command::new(\"/usr/bin/trusted_app\").arg(arg).spawn()?;",
+  "public_references": [
+    "CWE-78: Improper Neutralization of Special Elements used in an OS Command — https://cwe.mitre.org/data/definitions/78.html",
+    "CWE-22: Improper Limitation of a Pathname to a Restricted Directory — https://cwe.mitre.org/data/definitions/22.html",
+    "CWE-88: Argument Injection or Modification — https://cwe.mitre.org/data/definitions/88.html",
+    "Rust std: process::Command — https://doc.rust-lang.org/std/process/struct.Command.html",
+    "Rust std: Path::join — https://doc.rust-lang.org/std/path/struct.Path.html#method.join"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_rust_08",
+      "pattern": "Command::new\\(user_cmd\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "rust-08"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

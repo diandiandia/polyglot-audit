@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "rust-05",
+  "title": "Unsound Send and Sync Implementations",
+  "language": "rust",
+  "platform_conditions": "Any Rust toolchain; the C11/C++-style memory model of std::sync::atomic Orderings applies per CPU architecture",
+  "security_mechanism": "The compiler grants cross-thread access based on the marker traits Send and Sync, and `unsafe impl Sync for T` asserts to the whole type system that &T is thread-sharable without any proof: a type holding a raw pointer or a non-atomic counter then compiles into data races that are undefined behavior, not mere wrong answers. static mut shares the same hazard — every access is a raw multi-threaded pointer dereference with no synchronization. Relaxed or mis-chosen atomic Orderings compile but do not synchronize: a flag set with Relaxed and read with Relaxed may be observed late or reordered relative to the data it protects, so a check-then-act on credentials races with the writer. Across .await points the same state interleaves between polls, producing a check-then-act race the borrow checker cannot see.",
+  "source_sink_clues": {
+    "source": "Concurrent requests mutating shared authorization state, session tables, or caches; asynchronous tasks sharing one non-synchronized state object across .await points.",
+    "sink": "unsafe impl Send/Sync for types containing raw pointers or non-atomic state; static mut access; atomics with incorrect Ordering guarding other data; Mutex-adjacent check-then-act sequences across .await"
+  },
+  "tracking_guards": "Check that every unsafe impl Send/Sync is backed by an argument why &self is thread-safe (interior synchronization, immutable after construction), that static mut is replaced by OnceLock/lazy initialization or atomics, that an atomic Release/Acquire (not Relaxed) publishes the data it guards, and that shared state touched across .await is behind a Mutex or an actor owning the state.",
+  "not_candidate_when": "The type is genuinely thread-safe (all fields atomic or behind locks) and the unsafe impl documents that proof, the state is only reachable from one thread/task by construction, or the atomic is used with an ordering that actually establishes the required happens-before relation.",
+  "synthetic_vulnerable_example": "unsafe impl Sync for RawContainer {}",
+  "synthetic_safe_example": "/* use Mutex or Arc to ensure thread safety */",
+  "public_references": [
+    "CWE-362: Concurrent Execution using Shared Resource with Improper Synchronization — https://cwe.mitre.org/data/definitions/362.html",
+    "CWE-667: Improper Locking — https://cwe.mitre.org/data/definitions/667.html",
+    "The Rustonomicon: Send and Sync — https://doc.rust-lang.org/nomicon/send-and-sync.html",
+    "Rust std: module std::sync::atomic — https://doc.rust-lang.org/std/sync/atomic/index.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_rust_05",
+      "pattern": "unsafe\\s+impl\\s+Sync\\s+for",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "rust-05"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

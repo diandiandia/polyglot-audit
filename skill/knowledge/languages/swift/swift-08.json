@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "swift-08",
+  "title": "Decoding and Type Coercion Inconsistencies",
+  "language": "swift",
+  "platform_conditions": "Swift runtime semantics (Codable, Any/NSNumber bridging); applies wherever Swift runs, with JSONSerialization bridging behavior defined by the Apple Foundation / swift-corelibs-foundation implementations",
+  "security_mechanism": "JSONSerialization returns Any dictionaries whose values are NSNumber, and NSNumber bridges to Bool in a way that surprises: 0/1 and true/false are interchangeable through CFBoolean bridging, so an 'isAdmin': 1 numeric field can satisfy a Bool check written against a different shape. 'as?' chains over Any give silent fallbacks per level, so a payload that shifts a field from String to [String] takes a different (often unvalidated) branch instead of failing. try? JSONDecoder().decode(...) collapses every decode error into nil, indistinguishable from 'field absent', so authorization code cannot tell a malformed attacker payload from a missing permission and may default to allow. A lenient custom init(from:) that returns defaults for unparseable values has the same allow-by-default effect, and raw-value enum initialization (Role(rawValue: x) ?? .member) falls back to a benign-looking role on out-of-range input.",
+  "source_sink_clues": {
+    "source": "JSON/protobuf request bodies, push and deep-link payloads, and any attacker-chosen field type variations (number vs bool vs array vs null).",
+    "sink": "try? JSONDecoder().decode on authorization-relevant models; 'as?' chains over JSONSerialization Any output; NSNumber-to-Bool/Int bridges compared in security checks; custom init(from:) with default-value fallbacks; enum Role(rawValue:) ?? .default on role fields"
+  },
+  "tracking_guards": "Check decode errors are surfaced and rejected (do/catch with a denial path), not folded into nil-by-default; check decoded models pin field types strictly (no Any, explicit types) and role/state enums decode via throws rather than rawValue fallback; check NSNumber comparisons go through an explicit type test (obj is Bool / obj is Int) before any security comparison.",
+  "not_candidate_when": "The decoded model only feeds display rendering with no security decision, the payload originates from the app's own backend with a fixed schema verified by tests, or the decode failure path explicitly denies rather than defaulting.",
+  "synthetic_vulnerable_example": "let user = try? JSONDecoder().decode(User.self, from: data)",
+  "synthetic_safe_example": "do { let user = try JSONDecoder().decode(User.self, from: data) } catch { ... }",
+  "public_references": [
+    "CWE-754: Improper Check for Unusual or Exceptional Conditions — https://cwe.mitre.org/data/definitions/754.html",
+    "CWE-704: Incorrect Type Conversion or Cast — https://cwe.mitre.org/data/definitions/704.html",
+    "Swift Programming Language guide: Codable and type casting (as?)"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_swift_08",
+      "pattern": "try\\?\\s+JSONDecoder\\(\\)\\.decode\\(",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "swift-08"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

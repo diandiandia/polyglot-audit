@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "rust-09",
+  "title": "Cryptographic Constant-Time Comparison Failures",
+  "language": "rust",
+  "platform_conditions": "Any Rust toolchain; timing exploitation depends on target CPU and network jitter but `==` on Vec<u8>/&[u8] is never constant-time",
+  "security_mechanism": "The derived PartialEq for &[u8] compares bytes with early return on the first mismatch, so the wall-clock time of a MAC/tag comparison correlates with the number of leading correct bytes. An attacker who can submit many candidate tags and measure response time recovers the expected tag byte by byte, forging authentication without knowing the key. The same class covers nonce misuse (a counter nonce reused across messages with the same key destroys AES-GCM confidentiality and authentication), secrets left in zeroable memory (Vec buffers freed without wiping keep key material in freed heap reachable by later leaks), and closing certificate validation to make a TLS layer accept any peer.",
+  "source_sink_clues": {
+    "source": "Attacker-supplied MAC tags, signatures, and tokens compared against computed secrets, plus key material handled in ordinary Vec buffers.",
+    "sink": "== / != / assert_eq! on digests, MACs, and signature byte slices used to grant access; nonce reuse across encryptions; secrets stored in non-wiped buffers; disabled certificate verification"
+  },
+  "tracking_guards": "Check that tag comparison uses the `subtle` crate's ConstantTimeEq ct_eq (or an equivalent constant-time primitive) before the decision, that AEAD nonces are unique per key (counter or random with collision-avoidance), that key buffers are zeroized after use, and that certificate verification remains at library defaults.",
+  "not_candidate_when": "The comparison is over non-secret data (public IDs, content hashes), the constant-time primitive is already in place, the AEAD nonce is provably unique per key, or the compared values never gate authentication and no timing oracle is reachable.",
+  "synthetic_vulnerable_example": "if sig == expected_sig { grant(); }",
+  "synthetic_safe_example": "if subtle::ConstantTimeEq::ct_eq(&sig, &expected_sig).into() { grant(); }",
+  "public_references": [
+    "CWE-208: Observable Timing Discrepancy — https://cwe.mitre.org/data/definitions/208.html",
+    "CWE-347: Improper Verification of Cryptographic Signature — https://cwe.mitre.org/data/definitions/347.html",
+    "CWE-327: Use of a Broken or Risky Cryptographic Algorithm — https://cwe.mitre.org/data/definitions/327.html",
+    "docs.rs: subtle crate ConstantTimeEq — https://docs.rs/subtle/latest/subtle/trait.ConstantTimeEq.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_rust_09",
+      "pattern": "if\\s+sig\\s*==\\s*expected_sig",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "rust-09"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

@@ -1,0 +1,62 @@
+[
+  {
+    "id": "ruby-01",
+    "title": "Unsafe Deserialization via Marshal.load",
+    "sink_clue": "Marshal.load on untrusted bytes; YAML.load (Psych 3.x) without safe_load/permitted_classes; JSON.parse with create_additions: true",
+    "when_to_open": "When auditing Ruby code: Unsafe Deserialization via Marshal.load. Sink: Marshal.load on untrusted bytes; YAML.load (Psych 3.x) without safe_load/permitted_classes; JSON.parse with create_additions: true"
+  },
+  {
+    "id": "ruby-02",
+    "title": "Dynamic Code Execution and Metaprogramming via send",
+    "sink_clue": "eval / instance_eval / class_eval on dynamic strings; send / public_send / const_get with input-derived names; ERB.new(attacker_text).result",
+    "when_to_open": "When auditing Ruby code: Dynamic Code Execution and Metaprogramming via send. Sink: eval / instance_eval / class_eval on dynamic strings; send / public_send / const_get with input-derived names; ERB.new(attacker_text).result"
+  },
+  {
+    "id": "ruby-03",
+    "title": "Command Injection in Kernel#open and System Backticks",
+    "sink_clue": "Kernel#open(attacker_string); IO.read(attacker_string); system / exec / backticks / %x; IO.popen and Open3 calls with a single shell string",
+    "when_to_open": "When auditing Ruby code: Command Injection in Kernel#open and System Backticks. Sink: Kernel#open(attacker_string); IO.read(attacker_string); system / exec / backticks / %x; IO.popen and Open3 calls with a single shell string"
+  },
+  {
+    "id": "ruby-04",
+    "title": "SQL Injection via String Interpolation in Queries",
+    "sink_clue": "Condition/fragment APIs taking interpolated strings (where(\"... #{...}\"), order(\"... #{...}\")), and raw driver execute calls built by concatenation",
+    "when_to_open": "When auditing Ruby code: SQL Injection via String Interpolation in Queries. Sink: Condition/fragment APIs taking interpolated strings (where(\"... #{...}\"), order(\"... #{...}\")), and raw driver execute calls built by concatenation"
+  },
+  {
+    "id": "ruby-05",
+    "title": "Mass Assignment and Parameter Type Confusion",
+    "sink_clue": "Model update interfaces fed the raw params hash (update(params[:user]), attributes=), and query condition interfaces receiving raw nested params values",
+    "when_to_open": "When auditing Ruby code: Mass Assignment and Parameter Type Confusion. Sink: Model update interfaces fed the raw params hash (update(params[:user]), attributes=), and query condition interfaces receiving raw nested params values"
+  },
+  {
+    "id": "ruby-06",
+    "title": "Regular Expression Multiline Anchors Trap",
+    "sink_clue": "=~ / match on security gates using ^...$ or $-anchored patterns; Regexp.new with input-derived patterns; to_sym on external input used for lookups",
+    "when_to_open": "When auditing Ruby code: Regular Expression Multiline Anchors Trap. Sink: =~ / match on security gates using ^...$ or $-anchored patterns; Regexp.new with input-derived patterns; to_sym on external input used for lookups"
+  },
+  {
+    "id": "ruby-07",
+    "title": "Raw HTML and html_safe Misuse",
+    "sink_clue": "html_safe / raw() applied to input-derived strings; unescaped interpolation into attribute contexts; javascript:-scheme URLs placed into href/src attributes",
+    "when_to_open": "When auditing Ruby code: Raw HTML and html_safe Misuse. Sink: html_safe / raw() applied to input-derived strings; unescaped interpolation into attribute contexts; javascript:-scheme URLs placed into href/src attributes"
+  },
+  {
+    "id": "ruby-08",
+    "title": "Path Traversal via Pathname#join",
+    "sink_clue": "Pathname#join / File.join / File.read with attacker components; Dir.glob with input-derived patterns; archive extraction loops; hard-coded temporary file names",
+    "when_to_open": "When auditing Ruby code: Path Traversal via Pathname#join. Sink: Pathname#join / File.join / File.read with attacker components; Dir.glob with input-derived patterns; archive extraction loops; hard-coded temporary file names"
+  },
+  {
+    "id": "ruby-09",
+    "title": "Class Variable and Open Class State Leakage",
+    "sink_clue": "Reopening/monkey-patching of auth-relevant methods; method_missing dispatch without allowlist; send reaching private methods; @@class variables and class-level attributes holding per-request identity or authorization state",
+    "when_to_open": "When auditing Ruby code: Class Variable and Open Class State Leakage. Sink: Reopening/monkey-patching of auth-relevant methods; method_missing dispatch without allowlist; send reaching private methods; @@class variables and class-level attributes holding per-request identity or authorization state"
+  },
+  {
+    "id": "ruby-10",
+    "title": "Weak Randomness and Timeout Asynchronous Interrupts",
+    "sink_clue": "rand / Random.new feeding security values; == / != comparisons of tokens or MACs; Timeout.timeout wrapping multi-step security operations",
+    "when_to_open": "When auditing Ruby code: Weak Randomness and Timeout Asynchronous Interrupts. Sink: rand / Random.new feeding security values; == / != comparisons of tokens or MACs; Timeout.timeout wrapping multi-step security operations"
+  }
+]

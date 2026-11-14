@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "c-03",
+  "title": "Use-After-Free and Double-Free in Cleanup Paths",
+  "language": "c",
+  "platform_conditions": "C99/C11 on any hosted toolchain with a malloc/free allocator (glibc, musl, MSVC CRT); exploitation difficulty depends on allocator hardening",
+  "security_mechanism": "Ownership in C is purely conventional: free() unlinks the block and returns immediately, leaving the pointer variable holding the old address. Error paths that free the same pointer on two exits (goto cleanup without nulling, or a second free inside an if(err) block) hand the allocator a stale chunk: a use reads whatever the allocator wrote into the freed header, and a double free corrupts the free list into returning overlapping allocations. Callback registrations and retry paths extend the lifetime gap: a consumer holding the pointer runs after the owner already released it.",
+  "source_sink_clues": {
+    "source": "Any path that changes control flow after ownership transfers: error returns, signal interruption, disconnect/retry handling, callbacks invoked from another subsystem holding a borrowed pointer.",
+    "sink": "free() reached twice for one pointer; dereference or memcpy through a pointer after its free call; re-assignment of a freed pointer into a still-live structure"
+  },
+  "tracking_guards": "Check that every free site sets the pointer to NULL immediately after (free(p); p = NULL;), that cleanup labels are idempotent (each free guarded by a NULL test or reached on exactly one path), and that callbacks/registrations are unregistered before the owner frees the shared object.",
+  "not_candidate_when": "The pointer is set to NULL at every free site so a second free is provably free(NULL), the object's lifetime provably ends with the request and no alias survives it, or the cleanup path is unreachable because the failure it handles cannot occur on the audited path.",
+  "synthetic_vulnerable_example": "free(ptr); if (err) { free(ptr); return; }",
+  "synthetic_safe_example": "free(ptr); ptr = NULL; if (err) return;",
+  "public_references": [
+    "CWE-416: Use After Free — https://cwe.mitre.org/data/definitions/416.html",
+    "CWE-415: Double Free — https://cwe.mitre.org/data/definitions/415.html",
+    "SEI CERT C Coding Standard: MEM30-C (no access to freed memory), MEM32-C (detect heap corruption)"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_c_03",
+      "pattern": "free\\(ptr\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "c-03"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

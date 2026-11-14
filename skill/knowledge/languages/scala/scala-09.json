@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "scala-09",
+  "title": "Path Traversal via scala.io.Source",
+  "language": "scala",
+  "platform_conditions": "Scala 2.13 / Scala 3 standard library (scala.io.Source) on the JVM; URL handlers follow JVM protocol resolution",
+  "security_mechanism": "scala.io.Source.fromURL accepts any java.net.URL-legal scheme, so an attacker-supplied 'file:///etc/passwd' or 'http://169.254.169.254/...' string makes the read API itself the SSRF/local-file primitive -- no separate network call is needed and the content comes back through the same return value. fromFile with a traversal path ('../../..') escapes the intended directory because Source performs no confinement check, and archive entry names carrying absolute paths or '..' do the same at extraction time via JVM file APIs.",
+  "source_sink_clues": {
+    "source": "Path or URL strings from requests, import/export parameters, and archive member names.",
+    "sink": "scala.io.Source.fromURL / fromFile over attacker-influenced strings; JVM File/Paths operations over archive entry names"
+  },
+  "tracking_guards": "Check URL reads restrict the scheme to an allowlist and the host to a validated set resolved before the request; check file reads normalize the candidate and verify containment under the base directory (startsWith on canonical paths); check archive entry names reject absolute paths and '..' segments.",
+  "not_candidate_when": "The path is generated server-side, a canonical-path containment check rejects escapes before reading, or the URL is restricted to an allowlisted scheme+host with redirects disabled.",
+  "synthetic_vulnerable_example": "val content = Source.fromFile(userPath).mkString",
+  "synthetic_safe_example": "val clean = sanitize(userPath); Source.fromFile(clean).mkString",
+  "public_references": [
+    "CWE-22: Improper Limitation of a Pathname to a Restricted Directory — https://cwe.mitre.org/data/definitions/22.html",
+    "CWE-918: Server-Side Request Forgery (SSRF) — https://cwe.mitre.org/data/definitions/918.html",
+    "OWASP Server Side Request Forgery Prevention Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_scala_09",
+      "pattern": "Source\\.fromFile\\(userPath\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "scala-09"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

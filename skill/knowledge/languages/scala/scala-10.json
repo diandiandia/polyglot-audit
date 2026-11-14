@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "scala-10",
+  "title": "Secret Leakage via case class toString()",
+  "language": "scala",
+  "platform_conditions": "Scala 2.13 / Scala 3 standard library on the JVM (scala.util.Random delegates to java.util.Random; case class toString is compiler-generated)",
+  "security_mechanism": "scala.util.Random wraps java.util.Random's 48-bit LCG: its state is fully determined by a small number of observed outputs, so tokens or reset codes drawn from it are reconstructible from a few samples. Secret-bearing values leak through compiler-generated code the author did not write: case class toString includes every field, so logging or exception-wrapping a credentials case class prints passwords into logs and error pages. Digest comparisons written with == short-circuit on the first differing byte, giving a timing oracle byte-by-byte over MessageDigest output; MessageDigest.isEqual is the constant-time counterpart on the JVM.",
+  "source_sink_clues": {
+    "source": "The secret values themselves: generated tokens, credential case class instances, and digest/MAC byte arrays compared in decision code.",
+    "sink": "scala.util.Random for security values; case class toString / productElement access exposing secret fields into logs and responses; == / != over digest arrays"
+  },
+  "tracking_guards": "Check tokens come from java.security.SecureRandom or a CSPRNG wrapper; check credential types override toString (or keep secrets out of case classes) and never reach logger calls whole; check digest comparisons use MessageDigest.isEqual.",
+  "not_candidate_when": "Random drives only non-security sampling, the printed type carries no secret fields and never reaches logs, or the comparison is over non-sensitive nonces with no attacker oracle.",
+  "synthetic_vulnerable_example": "case class UserCredentials(username: String, pass: String)",
+  "synthetic_safe_example": "case class UserCredentials(...) { override def toString = ... }",
+  "public_references": [
+    "CWE-338: Use of Cryptographically Weak Pseudo-Random Number Generator — https://cwe.mitre.org/data/definitions/338.html",
+    "CWE-532: Insertion of Sensitive Information into Log File — https://cwe.mitre.org/data/definitions/532.html",
+    "CWE-208: Observable Timing Discrepancy — https://cwe.mitre.org/data/definitions/208.html",
+    "Java SE documentation: MessageDigest.isEqual — https://docs.oracle.com/javase/8/docs/api/java/security/MessageDigest.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_scala_10",
+      "pattern": "case\\s+class\\s+UserCredentials\\(",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "scala-10"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

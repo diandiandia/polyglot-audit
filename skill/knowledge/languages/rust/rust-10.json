@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "id": "rust-10",
+  "title": "Unsafe Abstraction Drop and Panic Safety",
+  "language": "rust",
+  "platform_conditions": "Any Rust toolchain; drop/panic interaction semantics are toolchain-independent, Pin projection rules apply to async/future types",
+  "security_mechanism": "Rust's safety story assumes every value is dropped exactly once and destructors always run, but unsafe abstractions can break both. ptr::read copies the value out bitwise while leaving the source intact: if the source is later dropped normally, the same value is dropped twice, and if a panic fires between read and forget the double drop happens mid-unwind. Abstractions that rely on the destructor to restore an invariant (releasing a lock, decrementing a count, restoring a file mode) leave the invariant broken if a panic skips the drop path they assumed — unwinding still runs destructors, but only for values already constructed, so ManuallyDrop/DontDrop fields and manually-managed slots escape cleanup. Pin misuse (moving a pinned value, or projecting a non-structural field as structural) breaks self-referential futures whose internal pointers then dangle across the next poll.",
+  "source_sink_clues": {
+    "source": "Attacker-triggerable panics and early returns that interrupt an unsafe abstraction between its setup and teardown steps (parse errors mid-construction, request cancellation between polls).",
+    "sink": "unsafe { ptr::read / ptr::copy_nonoverlapping } followed by manual mem::forget; Drop implementations assuming they always run; Pin projections that move pinned data; invariants restored only in explicit (not drop-guard) code paths"
+  },
+  "tracking_guards": "Check that every ptr::read is paired with mem::forget or ManuallyDrop on ALL paths including panic unwinding, that resource-releasing and invariant-restoring logic lives in Drop rather than a call the caller may skip, and that Pin projections follow the pinned-field rules (structural pinning only for fields that are genuinely pinned).",
+  "not_candidate_when": "The read/forget pair is total on every path and the type is UnwindSafe-verified, invariants are enforced by Drop guards so unwinding restores them, the pinned type has no structural self-references (Pin is only a marker there), or the abstraction is unreachable from input-triggered panics.",
+  "synthetic_vulnerable_example": "let val = unsafe { std::ptr::read(src) };",
+  "synthetic_safe_example": "/* ensure std::mem::forget or ManuallyDrop handles panic */",
+  "public_references": [
+    "CWE-415: Double Free — https://cwe.mitre.org/data/definitions/415.html",
+    "CWE-416: Use After Free — https://cwe.mitre.org/data/definitions/416.html",
+    "Rust std: ptr::read — https://doc.rust-lang.org/std/ptr/fn.read.html",
+    "Rust std: module std::pin — https://doc.rust-lang.org/std/pin/index.html",
+    "The Rustonomicon: Drop Check — https://doc.rust-lang.org/nomicon/dropck.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_rust_10",
+      "pattern": "std::ptr::read\\(src\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "rust-10"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

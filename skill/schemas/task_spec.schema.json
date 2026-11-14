@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polyglot-audit.internal/schemas/task_spec.schema.json",
+  "description": "SWR-007/SWR-018 版本化数据契约；绑定 DSR-006/007/017/025/073。task_spec 记录：分派给 worker 的任务规格与执行限额。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "task_id",
+    "kind",
+    "unit_ids",
+    "packet_digest",
+    "priority",
+    "limits"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "enum": [
+        "recon",
+        "hunt",
+        "verify"
+      ]
+    },
+    "unit_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "packet_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "priority": {
+      "type": "integer"
+    },
+    "limits": {
+      "type": "object",
+      "required": [
+        "max_candidates",
+        "timeout_seconds"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "max_candidates": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

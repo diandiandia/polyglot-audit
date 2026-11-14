@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "go-02",
+  "title": "Ignored Error Leading to Fail-Open Authorization",
+  "language": "go",
+  "platform_conditions": "Go 1.x standard library; applies to all build targets",
+  "security_mechanism": "Go surfaces failures as values, and the zero value of a bool/struct is indistinguishable in syntax from a legitimate result. Discarding err with _ (or shadowing it with := in an inner scope) leaves the zero value in the variable that the security decision then consumes: verifyToken's (valid, err) becomes valid=false on error, but the same pattern with an inverted convention (err-only helpers returning a session struct) yields an empty-but-non-nil value that downstream code treats as authenticated. Error shadowing across a function boundary means a later assignment can overwrite the failure before it is checked, so the review must trace the specific variable instance.",
+  "source_sink_clues": {
+    "source": "Authentication, signature verification, certificate validation, and permission-check calls whose error results are discarded or shadowed.",
+    "sink": "valid, _ := verifyToken(token); err := ... with := re-declaration shadowing an outer err; if err == nil checks placed after the variable was reassigned; authorization flows that treat a zero-value session or claims struct as valid"
+  },
+  "tracking_guards": "Check the specific failure path: on verification error the code must return/deny, not fall through to a zero value; check for := shadowing of err inside if/for blocks whose scope reaches the security decision; check that errors are compared with errors.Is/!= nil before any use of the paired result.",
+  "not_candidate_when": "Every error from the verification call is checked with != nil and the handler returns before using the result, the discarded error comes from a call whose failure cannot affect the decision (e.g. closing an already-closed resource on a non-security path), or the shadowed variable is a distinct local that never feeds the authorization outcome.",
+  "synthetic_vulnerable_example": "valid, _ := verifyToken(token); if valid { grantAccess() }",
+  "synthetic_safe_example": "valid, err := verifyToken(token); if err != nil || !valid { return false }; grantAccess()",
+  "public_references": [
+    "CWE-252: Unchecked Return Value — https://cwe.mitre.org/data/definitions/252.html",
+    "CWE-754: Improper Check for Unusual or Exceptional Conditions — https://cwe.mitre.org/data/definitions/754.html",
+    "Go standard library: errors — https://pkg.go.dev/errors"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_go_02",
+      "pattern": "valid,\\s*_\\s*:=\\s*verifyToken\\(token\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "go-02"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

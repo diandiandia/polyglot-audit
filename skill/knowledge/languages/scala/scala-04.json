@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "id": "scala-04",
+  "title": "Implicit Conversion Changing Security Semantics",
+  "language": "scala",
+  "platform_conditions": "Scala 2.13 implicits / Scala 3 given-using resolution; a compile-time mechanism whose effect appears in the emitted JVM bytecode",
+  "security_mechanism": "An implicit conversion (implicit def, or Scala 3 Conversion given) rewrites the expression tree at compile time, so a value can be transformed -- trimmed, coerced, wrapped into a privileged type -- without any visible call at the audit point. When the conversion maps toward a type the authorization logic trusts (User -> Admin-like wrappers, canonicalized strings), the check runs on the transformed value, not the attacker's. given resolution has the same shape for ExecutionContext: a wrong implicit context can serialize sensitive work onto an unrestricted pool. Universal equality compounds it: comparing different types with == compiles (Scala 3 allows it unless strict equality is enabled) and is always false, silently short-circuiting a deny branch.",
+  "source_sink_clues": {
+    "source": "Externally derived values that cross implicit conversion or given boundaries before reaching authorization checks.",
+    "sink": "implicit def / Conversion givens defined on security-relevant types; implicit ExecutionContext selection for privileged work; == comparisons across unrelated types in decision logic"
+  },
+  "tracking_guards": "Check no implicit conversion is defined between untrusted input types and authorization-relevant types, check the execution context is passed explicitly for privileged operations, and check comparisons compile under strict-equality (-source:future or explicit ===).",
+  "not_candidate_when": "Conversions are confined to value types with no security semantics and reviewed as such, the execution context is explicit at every sensitive call site, or both compared operands are provably the same type.",
+  "synthetic_vulnerable_example": "implicit def toAdmin(u: User): Admin = Admin(u.name)",
+  "synthetic_safe_example": "/* explicit conversion functions only */",
+  "public_references": [
+    "CWE-704: Incorrect Type Conversion or Cast — https://cwe.mitre.org/data/definitions/704.html",
+    "CWE-697: Incorrect Comparison — https://cwe.mitre.org/data/definitions/697.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_scala_04",
+      "pattern": "implicit\\s+def\\s+toAdmin",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "scala-04"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

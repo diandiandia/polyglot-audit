@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polyglot-audit.internal/schemas/claim.schema.json",
+  "description": "SWR-018 版本化数据契约；绑定 DSR-006/007/017/073。claim 记录：任务一次性领取凭据与租约信息。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "task_id",
+    "attempt_id",
+    "generation",
+    "claim_token",
+    "expires_at",
+    "packet_ref"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attempt_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generation": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "claim_token": {
+      "type": "string",
+      "minLength": 8
+    },
+    "expires_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "packet_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "spec": {
+      "type": "object"
+    }
+  }
+}

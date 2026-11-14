@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polyglot-audit.internal/schemas/snapshot_manifest.schema.json",
+  "description": "SWR-017 版本化数据契约；绑定 DSR-006/007/012/014。snapshot_manifest 记录：内容寻址只读快照的文件清单与 root_hash。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "snapshot_id",
+    "hash_algorithm",
+    "root_hash",
+    "files",
+    "excluded",
+    "collection_assumptions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "hash_algorithm": {
+      "const": "sha256"
+    },
+    "root_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "sha256",
+          "bytes",
+          "line_count",
+          "encoding",
+          "component",
+          "language"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "line_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "encoding": {
+            "type": "string"
+          },
+          "component": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "excluded": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "collection_assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

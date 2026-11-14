@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "id": "kotlin-02",
+  "title": "Android Exported Component Intent Redirection",
+  "language": "kotlin",
+  "platform_conditions": "Android runtime (API level 1+; component export semantics tightened in Android 12 / API 31, which requires an explicit android:exported declaration)",
+  "security_mechanism": "An exported Activity/Service/Receiver is invokable by any app on the device. A common redirection pattern reads an Intent (or a URI) out of the incoming Intent's extras and hands it to startActivity()/sendBroadcast()/bindService() without checking the embedded component. A malicious app then supplies an explicit Intent targeting one of YOUR privileged non-exported components, or carrying extras those components trust; because the forwarding app is the caller of record, the privileged component's permission and identity checks pass even though the payload originated from the attacker. Mutable PendingIntents (FLAG_MUTABLE absent) have the same shape: the filling app can rewrite the wrapped Intent's extras before it fires.",
+  "source_sink_clues": {
+    "source": "An attacker-controlled Intent delivered to the exported component: extras, the embedded Intent object itself, or a deep-link URI parsed from it.",
+    "sink": "startActivity/getParcelableExtra(\"forward\")-style forwarding to startActivity(), startActivityForResult(), sendBroadcast(), bindService(); PendingIntent.getActivity/getBroadcast with a non-immutable (FLAG_IMMUTABLE missing) wrapped Intent"
+  },
+  "tracking_guards": "Check the forwarded Intent is validated before use: its component/class compared against an allowlist, its action/data URI scheme checked, extras re-validated, and the wrapper PendingIntent created with FLAG_IMMUTABLE; check the manifest marks components non-exported unless externally reachable (android:exported=\"false\" or the absence of intent-filters on internal components); check the component sets Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS or otherwise defends when forwarding is genuinely required.",
+  "not_candidate_when": "The component is not exported (no intent-filter and android:exported=\"false\"), so no other app can deliver the Intent; the forwarded Intent is constructed entirely inside the app from validated fields; or the embedded Intent is resolved against a fixed allowlist of in-app components before startActivity is called.",
+  "synthetic_vulnerable_example": "startActivity(intent.getParcelableExtra(\"forward\"))",
+  "synthetic_safe_example": "val target = intent.getParcelableExtra<Intent>(\"forward\"); if (isValid(target)) startActivity(target)",
+  "public_references": [
+    "CWE-926: Improper Export of Android Application Components — https://cwe.mitre.org/data/definitions/926.html",
+    "CWE-927: Use of Implicit Intent for Sensitive Communication — https://cwe.mitre.org/data/definitions/927.html",
+    "Android developer documentation: security tips (Intents and PendingIntents) — https://developer.android.com/privacy-and-security/security-tips",
+    "Android developer documentation: activity element (android:exported) — https://developer.android.com/guide/topics/manifest/activity-element.html",
+    "Android developer documentation: PendingIntent — https://developer.android.com/reference/android/app/PendingIntent.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_kotlin_02",
+      "pattern": "startActivity\\(intent\\.getParcelableExtra",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "kotlin-02"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

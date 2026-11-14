@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "csharp-01",
+  "title": "Unsafe Deserialization via BinaryFormatter",
+  "language": "csharp",
+  "platform_conditions": ".NET Framework 4.x and modern .NET; BinaryFormatter is obsolete and throws by default in .NET 5+ unless explicitly re-enabled, and is disabled outright in .NET 8+",
+  "security_mechanism": "BinaryFormatter.Deserialize reads the .NET Remoting binary format, resolves the types named inside the payload through the loaded assemblies, instantiates them without running normal constructors, and invokes deserialization callbacks (OnDeserialization, ISerializable constructors). An attacker who controls the stream therefore only needs to name a gadget type reachable in the process (or in any loaded library) whose callbacks lead to Process.Start, delegate invocation, or file/system access; the deserializer executes them itself. Microsoft's guidance is that a SerializationBinder alone is not a security boundary and the only real fix is to stop using BinaryFormatter for untrusted data.",
+  "source_sink_clues": {
+    "source": "View-state/session blobs, cache files, IPC or named-pipe payloads, message-queue bodies, and any stream an attacker can write that is later deserialized in-process.",
+    "sink": "BinaryFormatter.Deserialize / UnsafeDeserialize on attacker-influenced streams; NetDataContractSerializer and LosFormatter with the same payload shapes; JSON/XML deserializers configured with a type-resolution callback"
+  },
+  "tracking_guards": "Check the payload format: a data-only deserializer (System.Text.Json / XmlSerializer over a fixed type) is the guard; a SerializationBinder or assembly allowlist is explicitly not sufficient per Microsoft's BinaryFormatter security guide. Verify any legacy BinaryFormatter call is unreachable from input and that EnableUnsafeBinaryFormatterSerialization is not flipped on in project settings.",
+  "not_candidate_when": "The stream is produced and consumed inside one trust domain with no network/shared-storage exposure, the payload is protected by an authenticated-encryption envelope whose key the attacker cannot read (verified before Deserialize), or deserialization uses a fixed concrete type with a data-only serializer and no type resolution from the stream.",
+  "synthetic_vulnerable_example": "BinaryFormatter bf = new BinaryFormatter(); object o = bf.Deserialize(stream);",
+  "synthetic_safe_example": "JsonSerializer.Deserialize<SafeModel>(stream);",
+  "public_references": [
+    "CWE-502: Deserialization of Untrusted Data — https://cwe.mitre.org/data/definitions/502.html",
+    "Microsoft: BinaryFormatter security guide (migration and risk) — https://learn.microsoft.com/en-us/dotnet/standard/serialization/binaryformatter-security-guide",
+    "OWASP Deserialization Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_csharp_01",
+      "pattern": "BinaryFormatter.*Deserialize\\(",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "csharp-01"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "java-05",
+  "title": "Path Traversal in File Construction and Zip Extraction",
+  "language": "java",
+  "platform_conditions": "Java SE 8+ standard library (java.io.File, java.nio.file.Path, java.util.zip); applies on all target operating systems",
+  "security_mechanism": "new File(baseDir, child) treats an absolute child as a full path on most platforms, discarding baseDir entirely, and both File and Paths.get keep '..' segments; a 'startsWith' check on raw strings also fails because ./ and encoding variants normalize to the same file. ZipEntry.getName is attacker-chosen data: entries with absolute names or '..' segments (Zip Slip) escape the extraction directory unless each entry is resolved against the destination and verified to remain inside it. File.getCanonicalPath/Path.normalize/toRealPath are the mechanisms that actually collapse these variants, which is why the containment check must run on the canonical form.",
+  "source_sink_clues": {
+    "source": "Upload filenames, archive entry names, download/path parameters, and any path component from a request.",
+    "sink": "new File(baseDir, userInput) / Paths.get(baseDir, userInput) feeding file APIs; ZipInputStream.getNextEntry with entry.getName used as the extraction target unvalidated"
+  },
+  "tracking_guards": "Require the containment check on the canonical/normalized path: baseDir.toAbsolutePath().normalize() must be a prefix of candidate.normalize() (or toRealPath for symlink-aware checks) before any file API is called; require archive extraction to validate each ZipEntry name (reject absolute and '..' forms) before writing.",
+  "not_candidate_when": "The child component is server-generated (UUID) or passed through File.getName-equivalent stripping, the canonical containment check rejects escapes before the file API, archive entries are validated or extracted under a resolving guard, or the base directory is not attacker-influenced and the child is a fixed constant.",
+  "synthetic_vulnerable_example": "File target = new File(baseDir, entry.getName());",
+  "synthetic_safe_example": "Path p = baseDir.resolve(entry.getName()).normalize(); if (!p.startsWith(baseDir)) throw new SecurityException();",
+  "public_references": [
+    "CWE-22: Improper Limitation of a Pathname to a Restricted Directory — https://cwe.mitre.org/data/definitions/22.html",
+    "Java SE documentation: ZipEntry — https://docs.oracle.com/javase/8/docs/api/java/util/zip/ZipEntry.html",
+    "Java SE documentation: Path — https://docs.oracle.com/javase/8/docs/api/java/nio/file/Path.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_java_05",
+      "pattern": "new\\s+File\\(baseDir,\\s*entry\\.getName\\(\\)\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "java-05"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

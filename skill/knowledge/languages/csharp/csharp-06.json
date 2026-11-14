@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "id": "csharp-06",
+  "title": "ASP.NET Over-Posting and Mass Assignment",
+  "language": "csharp",
+  "platform_conditions": "ASP.NET Core and ASP.NET (MVC/API) model binding; applies where request data is bound directly to domain objects",
+  "security_mechanism": "The model binder enumerates every public settable property whose name matches a form-field, route, or query key and assigns the supplied value, regardless of what the UI sends. Binding directly to a domain/EF entity lets an attacker add isadmin=true or rowversion fields to an ordinary form post and promote or corrupt records; the same shape appears when a controller accepts the entity type and passes it straight to DbContext.Update. Authorization/antiforgery filters declared on a base class are silently not inherited when overridden, so a controller that re-declares its own attributes can drop protections without any diff at the action level.",
+  "source_sink_clues": {
+    "source": "Form bodies, query strings, route values, and JSON bodies whose keys the attacker chooses (the request itself).",
+    "sink": "Action parameters bound directly to entity types ([FromForm] User entity, User entity) followed by DbContext.Add/Update or direct persistence; controller classes whose [Authorize]/[ValidateAntiForgeryToken] attributes are re-declared and thereby overridden"
+  },
+  "tracking_guards": "Check the bound model is a narrow DTO containing only editable fields (plus [Bind] attribute inclusion lists on legacy MVC); check the service layer maps DTO to entity field-by-field; check that authorization and antiforgery attributes exist on the concrete controller/action actually reached, not only on a base class.",
+  "not_candidate_when": "The action binds a DTO without sensitive setters, an explicit [Bind] include list excludes security-relevant properties, the service layer copies only whitelisted fields onto the persisted entity, or the field the attacker could set is recomputed server-side before saving.",
+  "synthetic_vulnerable_example": "public IActionResult Update([FromForm] User entity) { _db.Users.Update(entity); }",
+  "synthetic_safe_example": "public IActionResult Update([FromForm] UserUpdateDto dto) { _service.Update(dto); }",
+  "public_references": [
+    "CWE-915: Improperly Controlled Modification of Dynamically-Determined Object Attributes — https://cwe.mitre.org/data/definitions/915.html",
+    "CWE-285: Improper Authorization — https://cwe.mitre.org/data/definitions/285.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_csharp_06",
+      "pattern": "\\[FromForm\\]\\s*User\\s+entity",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "csharp-06"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "js-03",
+  "title": "Command Injection via child_process.exec",
+  "language": "javascript",
+  "platform_conditions": "Node.js runtime (child_process module); shell resolution is /bin/sh on POSIX and cmd.exe on Windows",
+  "security_mechanism": "child_process.exec and execSync do not take an argv vector: they hand the whole string to a shell, so metacharacters in interpolated input (';', '|', '&', '$( )', backquotes, newlines) end the intended command and start attacker-chosen ones. spawn with shell:true rebuilds the same string form. Even with the argv form, an input value that starts with '-' is consumed by the spawned program as an option (argument injection), which for utilities like curl or tar can flip them into file-write or exfiltration primitives.",
+  "source_sink_clues": {
+    "source": "Hosts, URLs, filenames, or free-text fields from requests that are interpolated into a command string or passed as leading argv elements.",
+    "sink": "child_process.exec / execSync with template strings; spawn / execFile with shell:true; argv elements starting with '-' taken from input"
+  },
+  "tracking_guards": "Prefer execFile/spawn with an argv array, shell unset, and the dynamic value as one element; verify '--' is placed before attacker-derived arguments; verify strict allowlist validation (e.g. hostname grammar) before interpolation into any shell string.",
+  "not_candidate_when": "The command is a fixed constant with no interpolation, the dynamic value lands in a single argv element after a literal '--' and the utility takes no further options, or the value is validated against a strict grammar that excludes shell metacharacters.",
+  "synthetic_vulnerable_example": "child_process.exec(`ping ${host}`);",
+  "synthetic_safe_example": "child_process.execFile('ping', [host]);",
+  "public_references": [
+    "CWE-78: Improper Neutralization of Special Elements used in an OS Command — https://cwe.mitre.org/data/definitions/78.html",
+    "CWE-88: Argument Injection or Modification — https://cwe.mitre.org/data/definitions/88.html",
+    "Node.js documentation: child_process.exec (shell caveats) — https://nodejs.org/api/child_process.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_js_03",
+      "pattern": "child_process\\.exec\\(`ping",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "js-03"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "shell-08",
+  "title": "Secret Leakage in Process Arguments and set -x",
+  "language": "shell",
+  "platform_conditions": "POSIX sh and bash on Linux/macOS; xtrace (set -x/-v) and PS4 expansion are interpreter-level and apply to any CI or interactive context where trace output is captured to logs",
+  "security_mechanism": "Everything in a command line is world-readable while the process runs: ps, /proc/<pid>/cmdline, and shell/job accounting all expose argv verbatim, so a token passed as 'curl -H \"Authorization: $TOKEN\"' is readable by any local user for the duration of the request. Tracing leaks the same values statically: set -x prints each expanded command line (including the token) to stderr, where CI systems capture it into build logs; PS4 is expanded before printing, and a PS4 containing $(...) executes and emits further data. export propagates a secret to every child process and its environment, which outlives the command in child core dumps and third-party tools; here-docs/here-strings may be implemented via temporary files on disk.",
+  "source_sink_clues": {
+    "source": "Credentials the script holds: API tokens, deploy keys, cloud credentials, password variables passed in from CI secret stores or operator prompts.",
+    "sink": "Secrets interpolated into command arguments (curl -H, wget --header, client CLI flags), scripts running with set -x/-v or a PS4 containing command substitution, export of secret variables, and here-doc/here-string bodies carrying credentials"
+  },
+  "tracking_guards": "Check secrets reach the target via stdin, a config file read with fd redirection (curl -K <(...)), or environment variables consumed in-process rather than argv; check no set -x/-v is active on credential-handling paths (and set +x precedes them if tracing is needed); check PS4 contains no $(...) or ${...} expansions; check secrets are not exported beyond the immediate child.",
+  "not_candidate_when": "The secret is passed via stdin or an fd-based config mechanism that never appears in argv, tracing is disabled and PS4 is a literal constant on all credential paths, or the value in argv is a short-lived, low-privilege identifier rather than a credential (e.g. a public URL or a ticket number).",
+  "synthetic_vulnerable_example": "curl -H \"Authorization: $TOKEN\" http://example.com",
+  "synthetic_safe_example": "curl -K <(echo \"header = \\\"Authorization: $TOKEN\\\"\") http://example.com",
+  "public_references": [
+    "CWE-214: Invocation of Process Using Visible Sensitive Information — https://cwe.mitre.org/data/definitions/214.html",
+    "CWE-532: Insertion of Sensitive Information into Log File — https://cwe.mitre.org/data/definitions/532.html",
+    "CWE-312: Cleartext Storage of Sensitive Information — https://cwe.mitre.org/data/definitions/312.html",
+    "Bash Reference Manual: Bash Variables (PS4) — https://www.gnu.org/software/bash/manual/html_node/Bash-Variables.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_shell_08",
+      "pattern": "curl\\s+-H\\s+\\\"Authorization:\\s+\\$TOKEN\\\"",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "shell-08"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

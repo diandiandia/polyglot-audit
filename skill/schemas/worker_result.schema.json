@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polyglot-audit.internal/schemas/worker_result.schema.json",
+  "description": "SWR-007/SWR-018 版本化数据契约；绑定 DSR-006/007/018/025/073。worker_result 记录：worker 对任务的覆盖、记录与溢出回报。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "task_id",
+    "attempt_id",
+    "kind",
+    "coverage",
+    "records",
+    "overflow"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attempt_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "enum": [
+        "recon",
+        "hunt",
+        "verify"
+      ]
+    },
+    "coverage": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "overflow": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "dimension",
+          "estimated_count",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "minLength": 1
+          },
+          "estimated_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

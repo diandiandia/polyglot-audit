@@ -1,0 +1,62 @@
+[
+  {
+    "id": "js-01",
+    "title": "Prototype Pollution in Recursive Object Merging",
+    "sink_clue": "Recursive merge helpers writing target[key] = value for attacker keys (especially __proto__ and constructor); lodash-style set/assign with path strings; obj[attackerPath] = value on plain objects",
+    "when_to_open": "When auditing JavaScript code: Prototype Pollution in Recursive Object Merging. Sink: Recursive merge helpers writing target[key] = value for attacker keys (especially __proto__ and constructor); lodash-style set/assign with path strings; obj[attackerPath] = value on plain objects"
+  },
+  {
+    "id": "js-02",
+    "title": "Code Injection via eval and new Function",
+    "sink_clue": "eval(), new Function(), string-form setTimeout/setInterval, vm.runInNewContext/runInThisContext on untrusted text, dynamic require() / import() with attacker-controlled specifiers",
+    "when_to_open": "When auditing JavaScript code: Code Injection via eval and new Function. Sink: eval(), new Function(), string-form setTimeout/setInterval, vm.runInNewContext/runInThisContext on untrusted text, dynamic require() / import() with attacker-controlled specifiers"
+  },
+  {
+    "id": "js-03",
+    "title": "Command Injection via child_process.exec",
+    "sink_clue": "child_process.exec / execSync with template strings; spawn / execFile with shell:true; argv elements starting with '-' taken from input",
+    "when_to_open": "When auditing JavaScript code: Command Injection via child_process.exec. Sink: child_process.exec / execSync with template strings; spawn / execFile with shell:true; argv elements starting with '-' taken from input"
+  },
+  {
+    "id": "js-04",
+    "title": "DOM Cross-Site Scripting via innerHTML",
+    "sink_clue": "element.innerHTML / outerHTML / insertAdjacentHTML assignment; document.write; javascript: URL assignment to href/location; acting on postMessage event.data without an origin check",
+    "when_to_open": "When auditing JavaScript code: DOM Cross-Site Scripting via innerHTML. Sink: element.innerHTML / outerHTML / insertAdjacentHTML assignment; document.write; javascript: URL assignment to href/location; acting on postMessage event.data without an origin check"
+  },
+  {
+    "id": "js-05",
+    "title": "Type Coercion and Loose Comparison Bypasses",
+    "sink_clue": "== / != on security-decision values; truthiness checks over parser-produced arrays; parseInt / Number validation feeding authorization; == on 64-bit identifiers",
+    "when_to_open": "When auditing JavaScript code: Type Coercion and Loose Comparison Bypasses. Sink: == / != on security-decision values; truthiness checks over parser-produced arrays; parseInt / Number validation feeding authorization; == on 64-bit identifiers"
+  },
+  {
+    "id": "js-06",
+    "title": "Path Traversal via path.resolve and fs APIs",
+    "sink_clue": "path.resolve / path.join over attacker input feeding fs.readFile, fs.createReadStream, fs.writeFile, fs.unlink, or archive member extraction",
+    "when_to_open": "When auditing JavaScript code: Path Traversal via path.resolve and fs APIs. Sink: path.resolve / path.join over attacker input feeding fs.readFile, fs.createReadStream, fs.writeFile, fs.unlink, or archive member extraction"
+  },
+  {
+    "id": "js-07",
+    "title": "Event Loop Blocking and Catastrophic Regex (ReDoS)",
+    "sink_clue": "RegExp .exec/.test/.match on untrusted input with nested-quantifier patterns; long synchronous loops in request handlers; Buffer.alloc or Buffer.allocUnsafe sized from input",
+    "when_to_open": "When auditing JavaScript code: Event Loop Blocking and Catastrophic Regex (ReDoS). Sink: RegExp .exec/.test/.match on untrusted input with nested-quantifier patterns; long synchronous loops in request handlers; Buffer.alloc or Buffer.allocUnsafe sized from input"
+  },
+  {
+    "id": "js-08",
+    "title": "Unhandled Promise Rejection and Missing Await in Auth",
+    "sink_clue": "async guard invoked without await in a conditional; floating Promises before sensitive operations; empty .catch handlers on auth paths; check-then-act sequences spanning an await",
+    "when_to_open": "When auditing JavaScript code: Unhandled Promise Rejection and Missing Await in Auth. Sink: async guard invoked without await in a conditional; floating Promises before sensitive operations; empty .catch handlers on auth paths; check-then-act sequences spanning an await"
+  },
+  {
+    "id": "js-09",
+    "title": "Unsafe Deserialization and Reviver Misuse",
+    "sink_clue": "new Function / eval used to reconstruct objects from text; JSON.parse with a reviver that assigns or constructs from attacker keys; XML parsers with entity expansion enabled",
+    "when_to_open": "When auditing JavaScript code: Unsafe Deserialization and Reviver Misuse. Sink: new Function / eval used to reconstruct objects from text; JSON.parse with a reviver that assigns or constructs from attacker keys; XML parsers with entity expansion enabled"
+  },
+  {
+    "id": "js-10",
+    "title": "Insecure Randomness via Math.random for Tokens",
+    "sink_clue": "Math.random() feeding token/key/nonce generation; crypto.createHash('md5'/'sha1') for credentials; deprecated weak cipher construction in crypto.createCipheriv",
+    "when_to_open": "When auditing JavaScript code: Insecure Randomness via Math.random for Tokens. Sink: Math.random() feeding token/key/nonce generation; crypto.createHash('md5'/'sha1') for credentials; deprecated weak cipher construction in crypto.createCipheriv"
+  }
+]

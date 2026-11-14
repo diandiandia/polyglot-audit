@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "attempt_id": "att-0003",
+  "dimension": "tasks",
+  "availability": "unavailable",
+  "unit": "tasks",
+  "source": "host_cli_report",
+  "reason": "process lost",
+  "estimated_cost": 3
+}

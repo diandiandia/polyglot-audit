@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "py-04",
+  "title": "Path Traversal in os.path.join and Archive Extraction",
+  "language": "python",
+  "platform_conditions": "CPython 3.x standard library; archive filters require Python 3.12+ (tarfile data filter)",
+  "security_mechanism": "os.path.join discards the base directory entirely when the second argument is absolute ('/etc/passwd' yields '/etc/passwd'), and keeps '..' segments otherwise, so one join call does not confine the result to the base. Archive members replicate the same flaw at extraction time: tar/zip entry names with absolute paths or '..' escape the extraction root because extractall trusts member names by default. tempfile.mktemp returns a predictable name that another process can create first (symlink race).",
+  "source_sink_clues": {
+    "source": "Upload filenames, archive entry names, download/path parameters, or any path component taken from a request.",
+    "sink": "os.path.join(base, attacker_path) whose result reaches open/read/write; tarfile/zipfile extractall on untrusted archives; tempfile.mktemp"
+  },
+  "tracking_guards": "Check for basename() stripping or normalization before join (os.path.basename or PurePath.name), and for a realpath containment check: os.path.realpath(candidate) must startswith realpath(base) + os.sep. For archives, require member-name validation or extraction with the tarfile 'data' filter; for temp files require tempfile.mkstemp or TemporaryFile.",
+  "not_candidate_when": "The path component is generated server-side (UUID/timestamp), basename is extracted and a realpath containment check rejects escapes, archive extraction uses the data filter or an equivalent member whitelist, or the temporary name comes from mkstemp/NamedTemporaryFile.",
+  "synthetic_vulnerable_example": "full_path = os.path.join('/app/uploads', filename)",
+  "synthetic_safe_example": "full_path = os.path.join('/app/uploads', os.path.basename(filename))",
+  "public_references": [
+    "CWE-22: Improper Limitation of a Pathname to a Restricted Directory — https://cwe.mitre.org/data/definitions/22.html",
+    "CWE-59: Improper Link Resolution Before File Access — https://cwe.mitre.org/data/definitions/59.html",
+    "Python documentation: os.path.join semantics — https://docs.python.org/3/library/os.path.html#os.path.join",
+    "Python documentation: tarfile extraction filters — https://docs.python.org/3/library/tarfile.html#tarfile-extraction-filter"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_py_04",
+      "pattern": "os\\.path\\.join\\('/app/uploads',\\s*filename\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "py-04"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

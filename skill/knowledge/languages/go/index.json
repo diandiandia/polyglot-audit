@@ -1,0 +1,62 @@
+[
+  {
+    "id": "go-01",
+    "title": "Data Race on Unsynchronized Shared Maps",
+    "sink_clue": "go func() { ... m[key] = val }() on a built-in map; unsynchronized reads of shared state guarding authorization or session decisions; check-then-act sequences split across goroutines",
+    "when_to_open": "When auditing Go code: Data Race on Unsynchronized Shared Maps. Sink: go func() { ... m[key] = val }() on a built-in map; unsynchronized reads of shared state guarding authorization or session decisions; check-then-act sequences split across goroutines"
+  },
+  {
+    "id": "go-02",
+    "title": "Ignored Error Leading to Fail-Open Authorization",
+    "sink_clue": "valid, _ := verifyToken(token); err := ... with := re-declaration shadowing an outer err; if err == nil checks placed after the variable was reassigned; authorization flows that treat a zero-value session or claims struct as valid",
+    "when_to_open": "When auditing Go code: Ignored Error Leading to Fail-Open Authorization. Sink: valid, _ := verifyToken(token); err := ... with := re-declaration shadowing an outer err; if err == nil checks placed after the variable was reassigned; authorization flows that treat a zero-value session or claims struct as valid"
+  },
+  {
+    "id": "go-03",
+    "title": "Untrusted Input Triggering Nil Panic in Shared Service",
+    "sink_clue": "val := req.Body.(string) style single-value type assertions; writes to possibly-nil maps; index/slice expressions over untrusted indexes; goroutines spawned inside request handling without a recover",
+    "when_to_open": "When auditing Go code: Untrusted Input Triggering Nil Panic in Shared Service. Sink: val := req.Body.(string) style single-value type assertions; writes to possibly-nil maps; index/slice expressions over untrusted indexes; goroutines spawned inside request handling without a recover"
+  },
+  {
+    "id": "go-04",
+    "title": "Integer Conversion Truncation in Boundary Checks",
+    "sink_clue": "int16(idx) / int32(idx) / uint(n) conversions applied to strconv results or lengths; arithmetic on mixed int/uint operands feeding allocations, slices, or access-control comparisons",
+    "when_to_open": "When auditing Go code: Integer Conversion Truncation in Boundary Checks. Sink: int16(idx) / int32(idx) / uint(n) conversions applied to strconv results or lengths; arithmetic on mixed int/uint operands feeding allocations, slices, or access-control comparisons"
+  },
+  {
+    "id": "go-05",
+    "title": "Unbounded Resource Consumption via io.ReadAll",
+    "sink_clue": "io.ReadAll(req.Body) / io/ioutil.ReadAll with no LimitReader; http.Server{...} without ReadHeaderTimeout/ReadTimeout/IdleTimeout; make([]byte, n) with n from input; per-request goroutines or channels with no bound",
+    "when_to_open": "When auditing Go code: Unbounded Resource Consumption via io.ReadAll. Sink: io.ReadAll(req.Body) / io/ioutil.ReadAll with no LimitReader; http.Server{...} without ReadHeaderTimeout/ReadTimeout/IdleTimeout; make([]byte, n) with n from input; per-request goroutines or channels with no bound"
+  },
+  {
+    "id": "go-06",
+    "title": "Command and SQL Injection via fmt.Sprintf",
+    "sink_clue": "exec.Command(\"sh\", \"-c\", <formatted string>) or unguarded argv elements; db.Query/QueryRow with fmt.Sprintf-built SQL; text/template execution of user data; template.HTML(x) casts feeding html/template output",
+    "when_to_open": "When auditing Go code: Command and SQL Injection via fmt.Sprintf. Sink: exec.Command(\"sh\", \"-c\", <formatted string>) or unguarded argv elements; db.Query/QueryRow with fmt.Sprintf-built SQL; text/template execution of user data; template.HTML(x) casts feeding html/template output"
+  },
+  {
+    "id": "go-07",
+    "title": "Path Traversal in Archive and File Serving",
+    "sink_clue": "filepath.Join(baseDir, userInput) feeding os.Open/ReadFile or archive extraction targets; http.FileServer/http.Dir over directories that contain or receive attacker-influenced symlinks; zip/tar entry extraction using f.Name unvalidated",
+    "when_to_open": "When auditing Go code: Path Traversal in Archive and File Serving. Sink: filepath.Join(baseDir, userInput) feeding os.Open/ReadFile or archive extraction targets; http.FileServer/http.Dir over directories that contain or receive attacker-influenced symlinks; zip/tar entry extraction using f.Name unvalidated"
+  },
+  {
+    "id": "go-08",
+    "title": "Unsafe and cgo Lifetime and Pointer Boundary",
+    "sink_clue": "unsafe.String / unsafe.Slice with input-derived pointer/length; unsafe.Pointer arithmetic between Go and C buffers; reflect with unsafe.Pointer to forge values",
+    "when_to_open": "When auditing Go code: Unsafe and cgo Lifetime and Pointer Boundary. Sink: unsafe.String / unsafe.Slice with input-derived pointer/length; unsafe.Pointer arithmetic between Go and C buffers; reflect with unsafe.Pointer to forge values"
+  },
+  {
+    "id": "go-09",
+    "title": "Cryptography and TLS Insecure Configuration",
+    "sink_clue": "tls.Config{InsecureSkipVerify: true}; math/rand/rand for keys, tokens, or nonces; == / bytes.Equal on MACs or signature digests; AES-GCM/ChaCha20 Seal calls reusing a nonce",
+    "when_to_open": "When auditing Go code: Cryptography and TLS Insecure Configuration. Sink: tls.Config{InsecureSkipVerify: true}; math/rand/rand for keys, tokens, or nonces; == / bytes.Equal on MACs or signature digests; AES-GCM/ChaCha20 Seal calls reusing a nonce"
+  },
+  {
+    "id": "go-10",
+    "title": "Encoding and Parser Discrepancies in JSON and URLs",
+    "sink_clue": "json.Unmarshal into structs holding security-relevant fields (roles/flags) without DisallowUnknownFields; numeric IDs decoded via interface{} into float64; authorization decisions on net/url-parsed values; http.Client requests that follow redirects from untrusted responses",
+    "when_to_open": "When auditing Go code: Encoding and Parser Discrepancies in JSON and URLs. Sink: json.Unmarshal into structs holding security-relevant fields (roles/flags) without DisallowUnknownFields; numeric IDs decoded via interface{} into float64; authorization decisions on net/url-parsed values; http.Client requests that follow redirects from untrusted responses"
+  }
+]

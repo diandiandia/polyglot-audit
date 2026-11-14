@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "csharp-09",
+  "title": "Unsafe Code and Span Memory Boundary Violations",
+  "language": "csharp",
+  "platform_conditions": ".NET Framework 4.x and modern .NET; stackalloc in nested expressions requires C# 8+ / .NET Core, where the runtime may fall back to heap allocation",
+  "security_mechanism": "stackalloc allocates on the current thread's stack (about 1 MB by default); a length taken from input can push the stack pointer past the thread stack limit, and StackOverflowException is unrecoverable — the process dies with no catch handler. unsafe blocks plus pointers, Marshal.Copy/PtrToStructure with a length or size that does not match the real buffer, and reinterpretation of struct layouts through Marshal.StructureToPtr corrupt adjacent memory when the declared and actual sizes disagree; a Span<T> built over an external buffer also outlives its owner's lifetime silently.",
+  "source_sink_clues": {
+    "source": "Request-declared lengths (Content-Length, protocol size fields), record sizes from binary payloads, and buffer sizes chosen from deserialized data.",
+    "sink": "stackalloc byte[userLength] (or stackalloc Span with input length); Marshal.Copy/Marshal.PtrToStructure with input-derived counts; pointer arithmetic inside unsafe blocks over externally sized buffers"
+  },
+  "tracking_guards": "Check every input-derived stackalloc length is clamped to a small fixed constant (or replaced by a pooled heap allocation); check Marshal operations use sizes derived from Marshal.SizeOf<T> of the same type and lengths validated against the real buffer; check unsafe blocks are confined to reviewed helpers rather than request paths.",
+  "not_candidate_when": "The stackalloc length is a compile-time constant or clamped to a small constant before allocation, the buffer length is bounded by the transport below the stack limit before the call, or the Marshal size comes from Marshal.SizeOf<T>() on the identical type being copied.",
+  "synthetic_vulnerable_example": "Span<byte> buffer = stackalloc byte[userLength];",
+  "synthetic_safe_example": "byte[] buffer = new byte[Math.Min(userLength, 4096)];",
+  "public_references": [
+    "CWE-119: Improper Restriction of Operations within the Bounds of a Memory Buffer — https://cwe.mitre.org/data/definitions/119.html",
+    "CWE-400: Uncontrolled Resource Consumption — https://cwe.mitre.org/data/definitions/400.html",
+    "Microsoft: stackalloc operator — https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/operators/stackalloc"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_csharp_09",
+      "pattern": "stackalloc\\s+byte\\[userLength\\]",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "csharp-09"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

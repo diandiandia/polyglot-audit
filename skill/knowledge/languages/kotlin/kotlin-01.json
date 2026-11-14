@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "kotlin-01",
+  "title": "Java Interop Null-Safety Gaps Leading to Panic",
+  "language": "kotlin",
+  "platform_conditions": "Kotlin/JVM language semantics; applies wherever Kotlin compiles to JVM bytecode (server JVM and Android runtime both)",
+  "security_mechanism": "Kotlin's null safety is a compile-time type system, and every value coming from Java code arrives as a platform type (String!), a type the compiler neither null-checks nor forbids dereferencing. The null-safety invariant is therefore only as good as the assumption the Kotlin call site asserts: '!!' compiles to an intrinsic that throws KotlinNullPointerException at runtime when the Java callee returned null, and assigning a platform type to a non-null Kotlin variable throws an implicit NullPointerException later at the first use. On request-reachable paths this turns one unexpected Java return value into a guaranteed crash rather than a rejected input; lateinit val reads behave the same way, throwing UninitializedPropertyAccessException when initialization was skipped.",
+  "source_sink_clues": {
+    "source": "Any Java-side value crossing into Kotlin: return values of Java methods fed by request data, Java framework callbacks, deserialized Java objects whose fields the attacker controls to be null.",
+    "sink": "'!!' non-null assertions on platform types, implicit assignment of platform types to non-null Kotlin types, and lateinit property reads on attacker-influenced paths"
+  },
+  "tracking_guards": "Check the call site handles the platform type explicitly: elvis with a safe fallback ('?: return null' / '?: throw'), safe-call chains ('?.'), or a requireNotNull(...) check with a handled failure before any further use; verify lateinit properties have an ::isInitialized guard or are replaced by nullable types on input-driven paths.",
+  "not_candidate_when": "The Java callee is contractually non-null and locally verified (returns a freshly constructed object, never null), the assertion sits on a value the server itself produced rather than on request data, or the failure is handled (elvis/requireNotNull) and cannot crash a shared process on a request path.",
+  "synthetic_vulnerable_example": "val user = javaApi.getUser()!!",
+  "synthetic_safe_example": "val user = javaApi.getUser() ?: return null",
+  "public_references": [
+    "CWE-476: NULL Pointer Dereference — https://cwe.mitre.org/data/definitions/476.html",
+    "Kotlin documentation: calling Java from Kotlin and platform types — https://kotlinlang.org/docs/java-interop.html",
+    "Kotlin documentation: null safety — https://kotlinlang.org/docs/null-safety.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_kotlin_01",
+      "pattern": "javaApi\\.getUser\\(\\)!!",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "kotlin-01"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

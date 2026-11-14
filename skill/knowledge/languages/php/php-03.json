@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "php-03",
+  "title": "Local File Inclusion via include/require",
+  "language": "php",
+  "platform_conditions": "PHP 7.4/8.x; allow_url_include is Off by default (no remote include), allow_url_fopen is On by default (stream wrappers usable in file functions)",
+  "security_mechanism": "include/require execute the file their argument resolves to with full application privileges, so a path assembled from input is arbitrary code execution whenever the attacker can plant PHP content anywhere the web user reads (upload directories, session files, /tmp). Even without remote include, file functions honor stream wrappers: php://filter/convert.base64-encode/resource=... returns application source, and data:// yields inline content to file_get_contents/fopen because allow_url_fopen is On by default. move_uploaded_file() does not inspect content or type, so an attacker-chosen destination plus an uploaded .php payload combine into the same execution primitive.",
+  "source_sink_clues": {
+    "source": "GET/POST/cookie page or template parameters, uploaded file names and destination paths, import/export path options.",
+    "sink": "include/require with a dynamic path; file_get_contents/fopen on an attacker string while allow_url_fopen is on; move_uploaded_file into an attacker-influenced location"
+  },
+  "tracking_guards": "Require a fixed allowlist mapping request keys to constant file paths; where a path is unavoidable, require basename() plus realpath containment inside a directory holding no executable or attacker-writable files; require stream wrappers to be rejected (validated realpath, no scheme prefix) before any file function; require server-generated upload names.",
+  "not_candidate_when": "The included file is resolved through a fixed allowlist dictionary, realpath containment confines the result to a non-executable, non-attacker-writable directory, or upload destinations are generated server-side with content-type validation independent of client headers.",
+  "synthetic_vulnerable_example": "include($_GET['page'] . '.php');",
+  "synthetic_safe_example": "include(ALLOWED_PAGES[$_GET['page']]);",
+  "public_references": [
+    "CWE-98: Improper Control of Filename for Include/Require Statement in PHP Program — https://cwe.mitre.org/data/definitions/98.html",
+    "CWE-22: Improper Limitation of a Pathname to a Restricted Directory — https://cwe.mitre.org/data/definitions/22.html",
+    "PHP manual: supported protocols and wrappers — https://www.php.net/manual/en/wrappers.php",
+    "PHP manual: include — https://www.php.net/manual/en/function.include.php"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_php_03",
+      "pattern": "include\\(\\$_GET\\['page'\\]",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "php-03"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

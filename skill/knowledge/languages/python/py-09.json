@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "id": "py-09",
+  "title": "Cryptographic Misuse: Weak PRNG, Fast Hashes, Non-constant-time Compare",
+  "language": "python",
+  "platform_conditions": "CPython 3.x standard library (random, hashlib, hmac, secrets)",
+  "security_mechanism": "random seeds a Mersenne Twister from a 32-bit-derived state and emits enough state bits through its outputs to reconstruct the generator, so tokens, reset codes, or keys drawn from random are predictable from a few observed values. md5/sha1 applied directly to passwords give fast, unsalted digests that tolerate massive offline guessing; hmac.compare_digest exists precisely because '==' on MACs short-circuits and leaks a timing oracle that recovers the tag byte by byte.",
+  "source_sink_clues": {
+    "source": "The security value itself: session tokens, password reset codes, API keys, MAC tags, password digests chosen by the developer's library call.",
+    "sink": "random.choice/random.random/randint feeding tokens or keys; hashlib.md5/sha1 used for password storage; == / != comparisons of digests or MAC tags"
+  },
+  "tracking_guards": "Require secrets.token_hex/token_bytes for any security value; require hmac.compare_digest for authenticator comparisons; require a salted, deliberately slow KDF (hashlib.pbkdf2_hmac with sufficient iterations, or an Argon2/bcrypt implementation) for password storage.",
+  "not_candidate_when": "random is used only for non-security purposes (sampling, shuffling, simulations), the fast hash digests untrusted content for integrity or deduplication rather than authentication, or the compared digests come from hmac.compare_digest already.",
+  "synthetic_vulnerable_example": "token = ''.join(random.choice(chars) for _ in range(32))",
+  "synthetic_safe_example": "token = secrets.token_hex(32)",
+  "public_references": [
+    "CWE-338: Use of Cryptographically Weak Pseudo-Random Number Generator — https://cwe.mitre.org/data/definitions/338.html",
+    "CWE-327: Use of a Broken or Risky Cryptographic Algorithm — https://cwe.mitre.org/data/definitions/327.html",
+    "CWE-208: Observable Timing Discrepancy — https://cwe.mitre.org/data/definitions/208.html",
+    "PEP 506: Designing secrets-aware standard library modules — https://peps.python.org/pep-0506/",
+    "Python documentation: secrets module — https://docs.python.org/3/library/secrets.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_py_09",
+      "pattern": "random\\.choice\\(chars\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "py-09"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

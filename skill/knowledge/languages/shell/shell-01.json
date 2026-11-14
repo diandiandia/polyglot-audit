@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "shell-01",
+  "title": "Unquoted Variable Expansion and Word Splitting",
+  "language": "shell",
+  "platform_conditions": "POSIX sh and bash on Linux/macOS; word splitting and pathname expansion semantics are identical in both, per POSIX Shell Command Language §2.6",
+  "security_mechanism": "An unquoted expansion is not a value but a string to be re-parsed: the shell first splits it on every character of IFS (default: space, tab, newline), then runs pathname expansion on each resulting word. An attacker-controlled filename containing spaces becomes two arguments, so 'rm -rf $dir' with dir='/tmp/my docs' deletes '/tmp/my'; a value containing '*' expands against the current directory contents, so a filename shaped like a glob makes the shell choose its own operand list. Command substitution $(cmd) inherits the same re-parsing unless quoted.",
+  "source_sink_clues": {
+    "source": "Attacker-influenced strings reaching a privileged or CI script: untrusted filenames from a shared directory, branch/tag names from a VCS webhook, fields parsed from untrusted files, environment variables in a setuid-root or CI-runner context.",
+    "sink": "Unquoted $var, ${var}, $(cmd) or ${arr[*]} expansions feeding destructive or security-relevant commands (rm -rf, chown, chmod, kill, cp, mv, installer invocations)"
+  },
+  "tracking_guards": "Check every expansion feeding a command is double-quoted (\"$var\", \"$(cmd)\", \"${arr[@]}\"); check destructive utilities get '--' before operand variables; check IFS is pinned or the loop uses 'while IFS= read -r'; for arrays verify \"${arr[@]}\" is used, never \"${arr[*]}\" in a single-string context.",
+  "not_candidate_when": "The variable is assigned a compile-time constant in the same script with no external input on any assignment path, the expansion is quoted and the command takes no options (splitting cannot change semantics), or the script provably runs only on operator-supplied arguments from a trusted operator console with no untrusted filenames in scope.",
+  "synthetic_vulnerable_example": "rm -rf $UNQUOTED_DIR_PATH",
+  "synthetic_safe_example": "rm -rf -- \"$UNQUOTED_DIR_PATH\"",
+  "public_references": [
+    "CWE-78: Improper Neutralization of Special Elements used in an OS Command — https://cwe.mitre.org/data/definitions/78.html",
+    "Bash Reference Manual: Word Splitting — https://www.gnu.org/software/bash/manual/html_node/Word-Splitting.html",
+    "Bash Reference Manual: Shell Parameter Expansion — https://www.gnu.org/software/bash/manual/html_node/Shell-Parameter-Expansion.html",
+    "POSIX Shell Command Language §2.6 Word Expansions — https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_shell_01",
+      "pattern": "rm\\s+-rf\\s+\\$UNQUOTED_DIR_PATH",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "shell-01"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

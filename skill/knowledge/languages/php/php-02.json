@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "php-02",
+  "title": "PHP Object Injection via unserialize()",
+  "language": "php",
+  "platform_conditions": "PHP 7.4/8.x default configuration; the phar stream wrapper parses metadata via unserialize on plain file-stat calls (phar.readonly does not block reads)",
+  "security_mechanism": "unserialize() reconstructs the object graph named inside the serialized string without ever calling a constructor, so attacker-chosen classes are instantiated in arbitrary internal states; afterwards PHP fires the magic methods __wakeup, __destruct and __toString on those objects, and gadget methods inside the codebase chain from them into file writes, eval or command execution (POP chains need no parse bug, only reachable classes). Separately, ordinary file functions such as file_exists(), is_dir() or fopen() unserialize phar archive metadata whenever the path uses the phar:// wrapper, so code that never calls unserialize on user input is still exploitable if an attacker-controlled path can carry that wrapper.",
+  "source_sink_clues": {
+    "source": "Cookie/session blobs, state parameters, queued payloads, and any attacker-influenced file path that may reach a filesystem function.",
+    "sink": "unserialize() on attacker-controlled data; is_dir/file_exists/fopen/file_get_contents and friends receiving phar:// paths"
+  },
+  "tracking_guards": "Check unserialize calls pass the allowed_classes second argument as [] or a tight class whitelist (PHP 7.0+); prefer json_decode for data exchange; check file functions never receive raw attacker paths — stream wrappers must be stripped (realpath plus scheme validation) before any stat/read.",
+  "not_candidate_when": "The payload is produced and signed inside one trust domain with the signature verified before unserialize and a whitelist via allowed_classes, unserialize runs with allowed_classes=[] over value-only objects, or attacker paths are reduced to plain real paths before reaching file functions so no phar:// wrapper survives.",
+  "synthetic_vulnerable_example": "$data = unserialize($_COOKIE['session']);",
+  "synthetic_safe_example": "$data = json_decode($_COOKIE['session'], true);",
+  "public_references": [
+    "CWE-502: Deserialization of Untrusted Data — https://cwe.mitre.org/data/definitions/502.html",
+    "PHP manual: unserialize (allowed_classes) — https://www.php.net/manual/en/function.unserialize.php",
+    "OWASP Deserialization Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_php_02",
+      "pattern": "unserialize\\(\\$_COOKIE",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "php-02"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

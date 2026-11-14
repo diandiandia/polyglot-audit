@@ -1,0 +1,72 @@
+[
+  {
+    "pattern_id": "sig_kotlin_01",
+    "pattern": "javaApi\\.getUser\\(\\)!!",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "kotlin-01"
+  },
+  {
+    "pattern_id": "sig_kotlin_02",
+    "pattern": "startActivity\\(intent\\.getParcelableExtra",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "kotlin-02"
+  },
+  {
+    "pattern_id": "sig_kotlin_03",
+    "pattern": "intent\\.getSerializableExtra\\(",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "kotlin-03"
+  },
+  {
+    "pattern_id": "sig_kotlin_04",
+    "pattern": "webView\\.addJavascriptInterface\\(",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "kotlin-04"
+  },
+  {
+    "pattern_id": "sig_kotlin_05",
+    "pattern": "GlobalScope\\.launch\\s*\\{\\s*counter\\+\\+",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "kotlin-05"
+  },
+  {
+    "pattern_id": "sig_kotlin_06",
+    "pattern": "rawQuery\\(\\\"SELECT.*\\$id",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "kotlin-06"
+  },
+  {
+    "pattern_id": "sig_kotlin_07",
+    "pattern": "Runtime\\.getRuntime\\(\\)\\.exec\\(\\\"sh -c \\$cmd\\\"\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "kotlin-07"
+  },
+  {
+    "pattern_id": "sig_kotlin_08",
+    "pattern": "prefs\\.edit\\(\\)\\.putString\\(\\\"auth_token\\\"",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "kotlin-08"
+  },
+  {
+    "pattern_id": "sig_kotlin_09",
+    "pattern": "builder\\.sslSocketFactory\\(trustAll",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "kotlin-09"
+  },
+  {
+    "pattern_id": "sig_kotlin_10",
+    "pattern": "user\\.copy\\(role\\s*=\\s*\\\"admin\\\"\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "kotlin-10"
+  }
+]

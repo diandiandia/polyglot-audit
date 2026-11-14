@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "rust-02",
+  "title": "FFI Boundary Lifetime and CString Hazards",
+  "language": "rust",
+  "platform_conditions": "Any Rust toolchain linking C via extern \"C\" (libc on Unix, MSVC CRT on Windows); #[repr(C)] layout rules apply per target ABI",
+  "security_mechanism": "CString::new(s).unwrap().as_ptr() evaluates as a temporary: the CString owning the NUL-terminated buffer is dropped at the end of the statement, so the pointer handed to the C function already points to memory that Rust has freed — the callee reads freed heap whose contents the allocator may have reused. Box::from_raw on a pointer that is not exactly the one from Box::into_raw (or called twice for one allocation) makes the allocator free a block from a mismatched base or twice. A #[repr(Rust)] struct passed across FFI as #[repr(C)] implies a field order and padding the C side does not match, so both sides read each other's fields at wrong offsets; and a Rust panic unwinding through an extern \"C\" frame is undefined behavior on targets where C cannot handle unwinding (panic=abort changes this).",
+  "source_sink_clues": {
+    "source": "Strings, buffers, and handles crossing into C: peer-supplied strings converted for C APIs, handles returned by C and re-wrapped with from_raw, struct layouts matched to C headers.",
+    "sink": "CString/CStr::as_ptr results used after the owner dropped; Box::from_raw / Vec::from_raw_parts on pointers whose allocation method or count mismatches; extern \"C\" function signatures with non-repr(C) struct parameters"
+  },
+  "tracking_guards": "Check that the CString binding outlives the call (named binding kept alive across the extern call), that every from_raw pairs exactly with the matching into_raw from the same type and runs once, that struct types crossing FFI carry #[repr(C)] matching the C header, and that panic strategy (abort vs unwind) is set deliberately for FFI-facing code with catch_unwind where needed.",
+  "not_candidate_when": "The owner binding is kept alive for the whole extern call, the from_raw/into_raw pair is uniquely matched and single-shot, both sides compile the same #[repr(C)] layout from one source of truth, or the FFI surface is compile-time constant with no peer-controlled strings or counts.",
+  "synthetic_vulnerable_example": "let p = CString::new(s).unwrap().as_ptr(); unsafe { c_function(p); }",
+  "synthetic_safe_example": "let cs = CString::new(s).unwrap(); unsafe { c_function(cs.as_ptr()); }",
+  "public_references": [
+    "CWE-416: Use After Free — https://cwe.mitre.org/data/definitions/416.html",
+    "CWE-415: Double Free — https://cwe.mitre.org/data/definitions/415.html",
+    "Rust std: CString — https://doc.rust-lang.org/std/ffi/struct.CString.html",
+    "The Rustonomicon: FFI — https://doc.rust-lang.org/nomicon/ffi.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_rust_02",
+      "pattern": "CString::new\\(s\\)\\.unwrap\\(\\)\\.as_ptr\\(\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "rust-02"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

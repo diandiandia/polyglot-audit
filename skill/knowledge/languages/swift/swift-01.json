@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "swift-01",
+  "title": "Unsafe Pointer Escape and Buffer Bounds",
+  "language": "swift",
+  "platform_conditions": "Swift runtime language semantics (Unsafe pointer family); applies wherever Swift runs (iOS/macOS and server-side Swift on Linux)",
+  "security_mechanism": "withUnsafeBytes/withUnsafeMutableBytes hand the closure a pointer that is only valid for the duration of the call: the buffer's backing storage can be reallocated or freed the moment the closure returns, so storing the pointer in an outer variable and dereferencing it later is use-after-free by construction, not just a style warning. bindMemory and assumingMemoryBound reinterpret raw bytes as a typed T; if the real bytes were attacker-influenced or the alignment/stride assumption is wrong, reads return type-confused values and writes corrupt unrelated memory. Unmanaged retains the pre-ARC calling convention: a mismatched retain/release pair (retain().release() vs toOpaque()/fromOpaque()) produces a leak or a double release that attackers can groom.",
+  "source_sink_clues": {
+    "source": "External data whose length or content determines the buffer's lifetime or interpretation: network packets, parsed files, IPC messages fed into pointer-based processing.",
+    "sink": "withUnsafeBytes { ptr = $0.baseAddress } and any escape of the closure-scoped pointer; bindMemory / assumingMemoryBound on externally sized raw buffers; UnsafeMutablePointer / UnsafeRawBufferPointer arithmetic with input-derived offsets; Unmanaged retain/release imbalance"
+  },
+  "tracking_guards": "Check every unsafe pointer is consumed inside its with* closure (no assignment to outer scope, no stored baseAddress); check lengths used for pointer arithmetic or bindMemory counts are validated against the real allocation size before use; check Unmanaged pairs are balanced (or takeRetainedValue/takeUnretainedValue used correctly) at every path.",
+  "not_candidate_when": "The pointer is used only within the withUnsafeBytes closure on a buffer sized from compile-time constants, the reinterpretation is on internal fixed-layout structs never fed by external bytes, or the value is fully bridged through safe Swift collections before any use outside the closure.",
+  "synthetic_vulnerable_example": "var ptr: UnsafeRawPointer?; data.withUnsafeBytes { ptr = $0.baseAddress }",
+  "synthetic_safe_example": "data.withUnsafeBytes { use($0) }",
+  "public_references": [
+    "CWE-416: Use After Free — https://cwe.mitre.org/data/definitions/416.html",
+    "CWE-119: Improper Restriction of Operations within the Bounds of a Memory Buffer — https://cwe.mitre.org/data/definitions/119.html",
+    "Swift Programming Language guide: Unsafe Pointer (Memory Safety chapter)"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_swift_01",
+      "pattern": "withUnsafeBytes\\s*\\{\\s*ptr\\s*=",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "swift-01"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

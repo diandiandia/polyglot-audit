@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polyglot-audit.internal/schemas/frontier.schema.json",
+  "description": "SWR-007 版本化数据契约；绑定 DSR-006/007/025。frontier 记录：仅有 source 侧的半链，不得伪装成完整发现。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "frontier_id",
+    "source",
+    "boundary",
+    "steps",
+    "open_questions",
+    "provenance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "frontier_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "path",
+        "line",
+        "symbol",
+        "kind"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "symbol": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        }
+      }
+    },
+    "boundary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "line",
+          "role",
+          "note"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "role": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "hunt_tasks"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "hunt_tasks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

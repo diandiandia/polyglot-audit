@@ -1,0 +1,72 @@
+[
+  {
+    "pattern_id": "sig_shell_01",
+    "pattern": "rm\\s+-rf\\s+\\$UNQUOTED_DIR_PATH",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "shell-01"
+  },
+  {
+    "pattern_id": "sig_shell_02",
+    "pattern": "eval\\s+\\\"\\$user_cmd_input\\\"",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "shell-02"
+  },
+  {
+    "pattern_id": "sig_shell_03",
+    "pattern": "cat\\s+\\$user_file_param",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "shell-03"
+  },
+  {
+    "pattern_id": "sig_shell_04",
+    "pattern": "tmpfile=\\\"/tmp/test\\.\\$\\$\\\"",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "shell-04"
+  },
+  {
+    "pattern_id": "sig_shell_05",
+    "pattern": "cleanup_script_unqualified",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "shell-05"
+  },
+  {
+    "pattern_id": "sig_shell_06",
+    "pattern": "sha256sum\\s+-c\\s+hash\\.txt;\\s*install_package\\.sh",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "shell-06"
+  },
+  {
+    "pattern_id": "sig_shell_07",
+    "pattern": "declare\\s+-n\\s+ref=\\\"\\$user_input\\\"",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "shell-07"
+  },
+  {
+    "pattern_id": "sig_shell_08",
+    "pattern": "curl\\s+-H\\s+\\\"Authorization:\\s+\\$TOKEN\\\"",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "shell-08"
+  },
+  {
+    "pattern_id": "sig_shell_09",
+    "pattern": "rm\\s+-rf\\s+\\\"\\$UNCHECKED_DEST/\\\"\\*",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "shell-09"
+  },
+  {
+    "pattern_id": "sig_shell_10",
+    "pattern": "ssh\\s+remote\\s+\\\"rm\\s+-f\\s+\\$filename\\\"",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "shell-10"
+  }
+]

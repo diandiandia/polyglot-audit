@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "py-01",
+  "title": "Unsafe Deserialization via pickle/marshal/shelve",
+  "language": "python",
+  "platform_conditions": "CPython 3.x standard library; applies on every OS and deployment target",
+  "security_mechanism": "The pickle protocol is an execution protocol, not a data format: during pickle.loads the VM in the pickle module executes opcodes such as GLOBAL and REDUCE, importing modules and calling callables named inside the byte stream. An attacker who controls the bytes therefore achieves code execution simply by encoding __reduce__ that returns (os.system, (cmd,)); no parse bug is required. marshal and shelve reuse the same object-reconstruction machinery, and yaml.load with a non-SafeLoader resolves arbitrary Python tags the same way.",
+  "source_sink_clues": {
+    "source": "Byte streams an attacker can write: HTTP request bodies, message-queue payloads, cache/queue entries shared across trust boundaries, session or cookie blobs, files downloaded from untrusted origins.",
+    "sink": "pickle.loads / pickle.load / marshal.loads / shelve.open on attacker-influenced bytes; yaml.load without an explicit SafeLoader"
+  },
+  "tracking_guards": "Check whether the load site restricts reconstruction: a custom Unpickler whose find_class allows only an explicit module/class whitelist, a payload integrity check (HMAC/signature) verified BEFORE loads, or replacement by a data-only format (json). For YAML, verify the call passes yaml.SafeLoader explicitly; yaml.load without a Loader argument is not a guard.",
+  "not_candidate_when": "The bytes are produced and consumed inside one trust domain with no network or shared-storage exposure (pure intra-process memoization), or an authenticated-encryption/HMAC envelope is verified before loads and the key is not attacker-readable, or loads runs behind a restricted Unpickler with a class whitelist that excludes all executable callables.",
+  "synthetic_vulnerable_example": "obj = pickle.loads(untrusted_payload)",
+  "synthetic_safe_example": "obj = json.loads(untrusted_payload)",
+  "public_references": [
+    "CWE-502: Deserialization of Untrusted Data — https://cwe.mitre.org/data/definitions/502.html",
+    "Python documentation: pickle module security notes — https://docs.python.org/3/library/pickle.html",
+    "OWASP Deserialization Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_py_01",
+      "pattern": "pickle\\.loads\\(untrusted_payload\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "py-01"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

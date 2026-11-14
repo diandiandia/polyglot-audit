@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "shell-02",
+  "title": "Code Injection in eval and Command Substitution",
+  "language": "shell",
+  "platform_conditions": "POSIX sh and bash on Linux/macOS; BASH_ENV/ENV startup-file behavior is bash/sh-specific and does not apply to scripts run with the -p (privileged) setuid path",
+  "security_mechanism": "eval concatenates its arguments and hands the string back through the full grammar a second time, so any quoting that survived the first parse is re-interpreted: a semicolon, pipe, backtick or $(...) inside the input becomes shell syntax, not text. The same re-parse happens in indirect expansion ${!var} (the named variable's own expansion is evaluated), in arithmetic contexts where $((expr)) expands variable names recursively, and in trap 'string' which is evaluated as code when the signal fires. Piping fetched content straight to an interpreter (curl ... | sh, eval \"$(curl ...)\") collapses transport integrity and execution into one step with no review point in between.",
+  "source_sink_clues": {
+    "source": "Text the script does not author: configuration values sourced from untrusted files, user replies from read, remote installer payloads fetched over the network, environment variables in a CI runner, or variable names supplied externally to ${!var} and declare.",
+    "sink": "eval of dynamic strings; sh -c \"$x\"; source/. of externally chosen paths; ${!var} with an externally influenced name; arithmetic evaluation of input-derived expressions; trap \"...$var...\"; curl|sh and eval \"$(curl ...)\" pipelines"
+  },
+  "tracking_guards": "Check the executed string is built from server-side constants only; check dynamic dispatch is replaced by a case allowlist instead of eval or ${!var}; check fetched content is written to a file, integrity-verified (checksum/signature), read, and only then executed; check trap bodies contain no variable interpolation; check arithmetic uses a validated numeric variable, not raw input text.",
+  "not_candidate_when": "eval executes only literal constant strings (e.g. eval \"$setflags\" where setflags is defined verbatim in the script), the indirect name comes from a fixed internal set validated against ^[A-Za-z_][A-Za-z0-9_]*$, or the fetched payload is pinned by a cryptographic checksum verified before execution with no network path around the check.",
+  "synthetic_vulnerable_example": "eval \"$user_cmd_input\"",
+  "synthetic_safe_example": "run_fixed_command \"$user_cmd_input\"",
+  "public_references": [
+    "CWE-95: Eval Injection — https://cwe.mitre.org/data/definitions/95.html",
+    "CWE-78: Improper Neutralization of Special Elements used in an OS Command — https://cwe.mitre.org/data/definitions/78.html",
+    "Bash Reference Manual: Quoting — https://www.gnu.org/software/bash/manual/html_node/Quoting.html",
+    "Bash Reference Manual: Bash Startup Files — https://www.gnu.org/software/bash/manual/html_node/Bash-Startup-Files.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_shell_02",
+      "pattern": "eval\\s+\\\"\\$user_cmd_input\\\"",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "shell-02"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

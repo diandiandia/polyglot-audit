@@ -1,0 +1,72 @@
+[
+  {
+    "pattern_id": "sig_rust_01",
+    "pattern": "slice::from_raw_parts\\(ptr,\\s*external_len\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "rust-01"
+  },
+  {
+    "pattern_id": "sig_rust_02",
+    "pattern": "CString::new\\(s\\)\\.unwrap\\(\\)\\.as_ptr\\(\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "rust-02"
+  },
+  {
+    "pattern_id": "sig_rust_03",
+    "pattern": "packet\\[user_index\\]",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "rust-03"
+  },
+  {
+    "pattern_id": "sig_rust_04",
+    "pattern": "user_size\\s+as\\s+u16",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "rust-04"
+  },
+  {
+    "pattern_id": "sig_rust_05",
+    "pattern": "unsafe\\s+impl\\s+Sync\\s+for",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "rust-05"
+  },
+  {
+    "pattern_id": "sig_rust_06",
+    "pattern": "Vec::with_capacity\\(remote_size\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "rust-06"
+  },
+  {
+    "pattern_id": "sig_rust_07",
+    "pattern": "serde_json::from_reader\\(reader\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "rust-07"
+  },
+  {
+    "pattern_id": "sig_rust_08",
+    "pattern": "Command::new\\(user_cmd\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "rust-08"
+  },
+  {
+    "pattern_id": "sig_rust_09",
+    "pattern": "if\\s+sig\\s*==\\s*expected_sig",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "rust-09"
+  },
+  {
+    "pattern_id": "sig_rust_10",
+    "pattern": "std::ptr::read\\(src\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "rust-10"
+  }
+]

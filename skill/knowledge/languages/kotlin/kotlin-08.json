@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0",
+  "id": "kotlin-08",
+  "title": "Insecure Storage and Hardcoded Cryptographic Keys",
+  "language": "kotlin",
+  "platform_conditions": "Android runtime (API level 1+ for SharedPreferences; the AndroidKeyStore provider exists from API 18)",
+  "security_mechanism": "SharedPreferences writes a plaintext XML file in the app sandbox; on rooted devices, in backups (android:allowBackup), and through any sandbox escape the file is readable, so auth tokens and keys stored there are recoverable offline. Keys compiled into the app ship in the APK/dex and are extracted with static analysis by anyone who downloads it, so 'encrypted with a hardcoded key' is only obfuscation. Cipher.getInstance(\"AES\") without a transformation returns AES/ECB/PKCS5Padding, which encrypts equal plaintext blocks to equal ciphertext and leaks structure; keys generated outside the AndroidKeyStore provider stay extractable from the filesystem.",
+  "source_sink_clues": {
+    "source": "The stored material itself: session tokens, refresh tokens, user data, and keys/constants embedded in the app binary.",
+    "sink": "prefs.edit().putString(\"token\", ...) for secrets; hardcoded key strings/byte arrays passed to SecretKeySpec; Cipher.getInstance(\"AES\") or any ECB transformation; writes to external storage"
+  },
+  "tracking_guards": "Check secrets live in the Android Keystore (AndroidKeyStore provider, KeyGenParameterSpec with ENCRYPT_MODE purposes) or in EncryptedSharedPreferences/AndroidX security-crypto backed by it, not in plain SharedPreferences; check no key material appears as a string or literals in the source/APK; check Cipher.getInstance names a full transformation with GCM or CBC + random IV and MAC; check android:allowBackup=\"false\" or backup rules exclude the secrets store.",
+  "not_candidate_when": "The stored value is non-sensitive (UI prefs, cache), the key is generated inside AndroidKeyStore and never leaves secure hardware, or the cipher is fully specified (AES/GCM/NoPadding) with keys from the Keystore and the only plaintext values are non-secret.",
+  "synthetic_vulnerable_example": "prefs.edit().putString(\"auth_token\", token).apply()",
+  "synthetic_safe_example": "EncryptedSharedPreferences.create(...).edit().putString(\"token\", token).apply()",
+  "public_references": [
+    "CWE-312: Cleartext Storage of Sensitive Information — https://cwe.mitre.org/data/definitions/312.html",
+    "CWE-798: Use of Hard-coded Credentials — https://cwe.mitre.org/data/definitions/798.html",
+    "CWE-327: Use of a Broken or Risky Cryptographic Algorithm — https://cwe.mitre.org/data/definitions/327.html",
+    "Android developer documentation: Android Keystore system — https://developer.android.com/training/articles/keystore.html",
+    "Android developer documentation: KeyStore — https://developer.android.com/reference/java/security/KeyStore.html",
+    "Android developer documentation: Cipher — https://developer.android.com/reference/javax/crypto/Cipher.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_kotlin_08",
+      "pattern": "prefs\\.edit\\(\\)\\.putString\\(\\\"auth_token\\\"",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "kotlin-08"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

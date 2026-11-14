@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polyglot-audit.internal/schemas/anchor.schema.json",
+  "description": "SWR-025 版本化数据契约；绑定 DSR-006/007/010/073。anchor 记录：定位到快照内文件与行区间的最小证据锚点引用。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "snapshot_id",
+    "path",
+    "line_start",
+    "line_end",
+    "file_sha256"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "line_start": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "line_end": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "file_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "symbol": {
+      "type": "string"
+    }
+  }
+}

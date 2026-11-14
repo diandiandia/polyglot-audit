@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "csharp-10",
+  "title": "Resource Exhaustion and Asynchronous Traps",
+  "language": "csharp",
+  "platform_conditions": ".NET Framework 4.x and modern .NET; Regex match timeout is opt-in per instance or app-domain wide",
+  "security_mechanism": "The .NET regex engine backtracks without any internal time limit unless a timeout is supplied, so one crafted subject against a nested-quantifier pattern pins a CPU core indefinitely inside Match/IsMatch/Replace. Unbounded request bodies and collection growth allocate server memory until OOM; async void methods route exceptions to the synchronously-invoked context where they crash the process unobserved; and C# defaults to unchecked integer arithmetic, so an overflow silently wraps a length or limit to a small value that then passes a downstream bounds check.",
+  "source_sink_clues": {
+    "source": "Request bodies, query-string values fed to regexes, uploaded collections, and arithmetic operands derived from request-declared sizes.",
+    "sink": "Regex.Match/IsMatch/Replace on instances without a matchTimeout; reads and collections grown from request data with no cap; async void handlers on request paths; checked-arithmetic-free comparisons guarding sizes"
+  },
+  "tracking_guards": "Require Regex instances over untrusted input to carry a timeout (the TimeSpan constructor overload or Regex.MatchTimeout app-wide setting); require body/length caps before parsing; require async Task instead of async void on request handlers; require checked arithmetic or explicit range checks on security-relevant sizes.",
+  "not_candidate_when": "The pattern is a constant without nested quantifiers and the subject is length-capped, the regex carries an explicit match timeout, request size limits are enforced by the platform before the code runs, or the async void is a UI event handler outside request processing.",
+  "synthetic_vulnerable_example": "Regex reg = new Regex(pattern); reg.Match(input);",
+  "synthetic_safe_example": "Regex reg = new Regex(pattern, RegexOptions.None, TimeSpan.FromSeconds(1));",
+  "public_references": [
+    "CWE-1333: Inefficient Regular Expression Complexity — https://cwe.mitre.org/data/definitions/1333.html",
+    "CWE-400: Uncontrolled Resource Consumption — https://cwe.mitre.org/data/definitions/400.html",
+    "CWE-190: Integer Overflow or Wraparound — https://cwe.mitre.org/data/definitions/190.html",
+    "Microsoft: Regex.MatchTimeout — https://learn.microsoft.com/en-us/dotnet/api/system.text.regularexpressions.regex.matchtimeout"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_csharp_10",
+      "pattern": "new\\s+Regex\\(pattern\\);",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "csharp-10"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

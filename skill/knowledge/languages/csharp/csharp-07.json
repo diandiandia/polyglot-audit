@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "id": "csharp-07",
+  "title": "Raw HTML Output Leading to XSS",
+  "language": "csharp",
+  "platform_conditions": "ASP.NET (MVC/Razor) and Blazor; applies to any view engine with Razor-style auto-encoding plus explicit opt-out APIs",
+  "security_mechanism": "Razor encodes every emitted expression unless the developer marks the string as trusted. Html.Raw (Razor), HtmlString/MarkupString, and IHtmlContent-typed properties short-circuit that encoder, so markup in the string is parsed as HTML by the browser; a stored value containing <script> or an event-handler attribute therefore executes in every victim's session. The encoded-opt-out also covers attribute and javascript:-URL positions the default encoder does not reach when the value is already an IHtmlContent.",
+  "source_sink_clues": {
+    "source": "Stored user content (bios, comments, rich-text fields), request parameters echoed back, and any third-party HTML accepted into the content pipeline.",
+    "sink": "@Html.Raw(...), new HtmlString(...), [MarkupString]-decorated Blazor fields, and direct @model-to-IHtmlContent assignments rendered into a page"
+  },
+  "tracking_guards": "Check whether the raw-markup path runs untrusted content through a sanitizer with an allowlist policy before rendering; check the content is produced by the server from fixed templates rather than user text; in attribute and URL positions require scheme validation (http/https only) even for trusted fragments.",
+  "not_candidate_when": "The string is server-generated markup from a fixed template with no user-derived fragment, an allowlist sanitizer (with a hardened policy) processes the content before Raw, or the field only ever holds values written by trusted administrators within a trusted-content model.",
+  "synthetic_vulnerable_example": "@Html.Raw(Model.UserBio)",
+  "synthetic_safe_example": "@Html.DisplayFor(m => m.UserBio)",
+  "public_references": [
+    "CWE-79: Improper Neutralization of Input During Web Page Generation — https://cwe.mitre.org/data/definitions/79.html",
+    "OWASP Cross Site Scripting Prevention Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_csharp_07",
+      "pattern": "Html\\.Raw\\(Model\\.UserBio\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "csharp-07"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "go-06",
+  "title": "Command and SQL Injection via fmt.Sprintf",
+  "language": "go",
+  "platform_conditions": "Go 1.x standard library (os/exec, text/template, database/sql); applies to all build targets",
+  "security_mechanism": "os/exec does not invoke a shell: Command(name, args...) passes each element as one argv entry, so injection requires the developer to opt in by building a shell string (exec.Command(\"sh\", \"-c\", fmt.Sprintf(...))) or by letting an input beginning with '-' become an option of the target binary. The same confidence in fmt.Sprintf produces SQL when its output is passed to db.Query, since database/sql placeholders ('?') are the only out-of-band channel. In templates, text/template never escapes and an explicit template.HTML(value) cast tells html/template to trust the value, defeating auto-escaping at exactly the attacker-controlled position.",
+  "source_sink_clues": {
+    "source": "Request parameters interpolated into shell command strings, SQL text, or template values cast to template.HTML.",
+    "sink": "exec.Command(\"sh\", \"-c\", <formatted string>) or unguarded argv elements; db.Query/QueryRow with fmt.Sprintf-built SQL; text/template execution of user data; template.HTML(x) casts feeding html/template output"
+  },
+  "tracking_guards": "Require exec.Command with a fixed executable and the dynamic value as one separate argv argument (no sh -c); require SQL placeholders with args passed separately to Query/Exec; require html/template (not text/template) for HTML output and no template.HTML casts over untrusted values; require '--' or allowlist checks for values that may start with '-'.",
+  "not_candidate_when": "The command is a constant executable with input as a single argv element and no option-parsing surface, SQL values bind through placeholders, html/template auto-escaping remains in effect with no template.HTML cast, or the interpolated fragment comes from a fixed server-side allowlist.",
+  "synthetic_vulnerable_example": "query := fmt.Sprintf(\"SELECT * FROM items WHERE name = '%s'\", name)",
+  "synthetic_safe_example": "row := db.QueryRow(\"SELECT * FROM items WHERE name = ?\", name)",
+  "public_references": [
+    "CWE-89: Improper Neutralization of Special Elements in SQL Command — https://cwe.mitre.org/data/definitions/89.html",
+    "CWE-78: Improper Neutralization of Special Elements used in an OS Command — https://cwe.mitre.org/data/definitions/78.html",
+    "Go standard library: os/exec — https://pkg.go.dev/os/exec",
+    "Go standard library: text/template — https://pkg.go.dev/text/template"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_go_06",
+      "pattern": "fmt\\.Sprintf\\(\\\"SELECT.*name\\s*=",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "go-06"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

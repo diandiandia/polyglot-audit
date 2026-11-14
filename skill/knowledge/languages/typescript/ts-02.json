@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "ts-02",
+  "title": "Type Escape Hatches at Security Boundaries",
+  "language": "typescript",
+  "platform_conditions": "Type-checker behavior only; any/as/!/@ts-ignore leave no runtime trace and apply wherever the compiled JavaScript runs",
+  "security_mechanism": "any disables checking for every expression derived from it, so one 'const user: any = JSON.parse(data)' makes the entire downstream call graph unchecked while reading as type-safe. The double assertion 'as unknown as T' converts between unrelated types without an error, non-null '!' suppresses the undefined check exactly where null arrives from attacker-shaped payloads, and @ts-ignore deletes the diagnostic rather than fixing the cause. On an authorization path these constructs let a mis-typed role or missing field flow unchecked into grant/deny decisions.",
+  "source_sink_clues": {
+    "source": "External payloads entering through any-typed variables, double assertions, non-null assertions, or @ts-ignore-suppressed lines.",
+    "sink": "any / as unknown as T / ! / @ts-ignore on values that feed authentication, authorization, or privilege fields"
+  },
+  "tracking_guards": "Check the boundary value flows through an explicit validation step rather than a type escape; check strict mode is enabled and escape hatches are counted in CI (no-explicit-any, no-non-null-assertion lint rules); check each suppressed diagnostic has a recorded justification.",
+  "not_candidate_when": "The escape hatch sits on internal glue code whose value was validated at entry, the '!' guards a field that is structurally guaranteed non-null by a preceding validated parse, or the value is a test fixture never deployed.",
+  "synthetic_vulnerable_example": "const user: any = JSON.parse(data); grant(user.role);",
+  "synthetic_safe_example": "const user = parseValidatedUser(data);",
+  "public_references": [
+    "CWE-704: Incorrect Type Conversion or Cast — https://cwe.mitre.org/data/definitions/704.html",
+    "CWE-697: Incorrect Comparison — https://cwe.mitre.org/data/definitions/697.html",
+    "TypeScript Handbook: Everyday Types (any and unknown) — https://www.typescriptlang.org/docs/handbook/2/everyday-types.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_ts_02",
+      "pattern": "const\\s+user:\\s*any\\s*=",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "ts-02"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

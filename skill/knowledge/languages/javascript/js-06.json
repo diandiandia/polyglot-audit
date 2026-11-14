@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "js-06",
+  "title": "Path Traversal via path.resolve and fs APIs",
+  "language": "javascript",
+  "platform_conditions": "Node.js runtime (path and fs modules); behavior identical on POSIX and Windows with platform-specific separators",
+  "security_mechanism": "path.resolve(base, userFile) treats an absolute second argument as a full replacement -- resolve('/var/data', '/etc/passwd') returns '/etc/passwd' -- and it normalizes '..' segments away without ever checking containment, so '../..' escapes silently. path.join keeps the base but still preserves '..' segments, so join alone is not a confinement mechanism either. Any fs call (readFile, createReadStream, unlink) then operates on the escaped path; symlink entries inside user-uploaded archives add a second escape once extracted.",
+  "source_sink_clues": {
+    "source": "Download/upload filename parameters, stored file names from user profiles, archive entry names, and any path fragment from a request.",
+    "sink": "path.resolve / path.join over attacker input feeding fs.readFile, fs.createReadStream, fs.writeFile, fs.unlink, or archive member extraction"
+  },
+  "tracking_guards": "Check the code strips to path.basename before composing, or normalizes the candidate and verifies path.resolve(candidate).startsWith(resolve(base) + sep) before any fs call; check symlinked entries in extracted archives are rejected or resolved and re-checked.",
+  "not_candidate_when": "The path fragment is generated server-side (UUID/content hash), basename is taken and a realpath containment check runs before the fs call, or the resolved candidate is compared to a fixed allowlist of full paths.",
+  "synthetic_vulnerable_example": "fs.readFile(path.resolve('/var/data', userFile), cb);",
+  "synthetic_safe_example": "const clean = path.basename(userFile); fs.readFile(path.join('/var/data', clean), cb);",
+  "public_references": [
+    "CWE-22: Improper Limitation of a Pathname to a Restricted Directory — https://cwe.mitre.org/data/definitions/22.html",
+    "Node.js documentation: path.resolve — https://nodejs.org/api/path.html",
+    "Node.js documentation: fs module — https://nodejs.org/api/fs.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_js_06",
+      "pattern": "fs\\.readFile\\(path\\.resolve\\(",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "js-06"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

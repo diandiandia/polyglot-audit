@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "swift-03",
+  "title": "Runtime Traps and Force Unwrapping DoS",
+  "language": "swift",
+  "platform_conditions": "Swift runtime language semantics (optional unwrapping, overflow trapping, preconditions); applies wherever Swift runs (iOS/macOS and server-side Swift)",
+  "security_mechanism": "Several Swift constructs are defined to abort the process rather than return an error: '!' on nil and 'as!' on a wrong dynamic type trap; subscripting an array out of bounds traps; '+'/'*' on integers overflow-trap in every build configuration; 'try!' rethrows the error as a fatal; precondition/fatalError are unconditional aborts. One attacker-chosen value reaching any of them — a missing JSON field, a number above Int64, an index past the end — kills the whole process (on iOS the app crashes for the user; on a Swift server the worker dies), so a single malformed request becomes a reliable remote denial of service with no memory corruption needed. unowned references trap the same way when the target was deallocated by an earlier request's cleanup.",
+  "source_sink_clues": {
+    "source": "Fields of decoded JSON/protobuf messages, query parameters, headers, and any numeric or array value the attacker can set (including 0, negative, or >Int64.max values that trigger arithmetic traps).",
+    "sink": "'!' force unwrap and 'as!' forced downcast on decoded values; 'try!' on parsing calls; array/collection subscripts on untrusted indices; arithmetic on attacker-supplied integers without &+ / &* / checked variants; precondition/fatalError reachable from input; unowned access after await"
+  },
+  "tracking_guards": "Check every input-derived optional uses guard let/if let with a handled failure path, conditional 'as?', and get(index) or bounds checks instead of forced forms; check numeric inputs use Int64-clamped parsing or overflow-checked operators; check precondition/fatalError appear only on truly impossible internal invariants not influenced by request data.",
+  "not_candidate_when": "The forced unwrap sits on a value the app itself just constructed (non-nil by construction, e.g. a just-registered dependency), the decode path already rejects malformed payloads before the subscript, or the crash aborts only an attacker's own single-user session with no shared state (still a hardening note, not a candidate).",
+  "synthetic_vulnerable_example": "let token = json[\"token\"] as! String",
+  "synthetic_safe_example": "guard let token = json[\"token\"] as? String else { return }",
+  "public_references": [
+    "CWE-617: Reachable Assertion — https://cwe.mitre.org/data/definitions/617.html",
+    "CWE-755: Improper Handling of Exceptional Conditions — https://cwe.mitre.org/data/definitions/755.html",
+    "Swift Programming Language guide: Optional unwrapping and error handling"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_swift_03",
+      "pattern": "json\\[\\\"token\\\"\\]\\s+as!\\s+String",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "swift-03"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

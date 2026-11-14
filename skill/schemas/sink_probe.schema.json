@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polyglot-audit.internal/schemas/sink_probe.schema.json",
+  "description": "SWR-007 版本化数据契约；绑定 DSR-006/007/025。sink_probe 记录：缺少 source 侧的悬空敏感操作。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "probe_id",
+    "sink",
+    "boundary",
+    "steps",
+    "guard_analysis",
+    "open_questions",
+    "provenance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "probe_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sink": {
+      "type": "object",
+      "required": [
+        "path",
+        "line",
+        "symbol",
+        "kind"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "symbol": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        }
+      }
+    },
+    "boundary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "line",
+          "role",
+          "note"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "role": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "guard_analysis": {
+      "type": "string"
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "hunt_tasks"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "hunt_tasks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

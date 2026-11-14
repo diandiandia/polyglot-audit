@@ -1,0 +1,72 @@
+[
+  {
+    "pattern_id": "sig_py_01",
+    "pattern": "pickle\\.loads\\(untrusted_payload\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "py-01"
+  },
+  {
+    "pattern_id": "sig_py_02",
+    "pattern": "eval\\(user_expression\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "py-02"
+  },
+  {
+    "pattern_id": "sig_py_03",
+    "pattern": "subprocess\\.Popen\\(.*shell=True\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "py-03"
+  },
+  {
+    "pattern_id": "sig_py_04",
+    "pattern": "os\\.path\\.join\\('/app/uploads',\\s*filename\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "py-04"
+  },
+  {
+    "pattern_id": "sig_py_05",
+    "pattern": "cursor\\.execute\\(f\\\"SELECT.*user_id",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "py-05"
+  },
+  {
+    "pattern_id": "sig_py_06",
+    "pattern": "xml\\.etree\\.ElementTree\\.fromstring\\(",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "py-06"
+  },
+  {
+    "pattern_id": "sig_py_07",
+    "pattern": "assert\\s+is_admin\\(user\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "py-07"
+  },
+  {
+    "pattern_id": "sig_py_08",
+    "pattern": "urllib\\.request\\.urlopen\\(user_url\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "py-08"
+  },
+  {
+    "pattern_id": "sig_py_09",
+    "pattern": "random\\.choice\\(chars\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "py-09"
+  },
+  {
+    "pattern_id": "sig_py_10",
+    "pattern": "request\\.raw\\.read\\(\\)",
+    "kind": "sink",
+    "strength": 3,
+    "card_id": "py-10"
+  }
+]

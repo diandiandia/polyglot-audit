@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "java-08",
+  "title": "Boxed Primitive Comparison and Silent Numerical Overflow",
+  "language": "java",
+  "platform_conditions": "Java SE 8+ standard library (java.lang autoboxing cache, String.split, int/long arithmetic); applies on all target operating systems",
+  "security_mechanism": "== between two boxed Integers compares references: values in the -128..127 autobox cache compare equal, while the same numeric value outside the cache compares unequal, so a role-ID check can pass in one environment and fail in another purely by cache range. String.split drops trailing empty strings, so splitting an ID list or path and checking 'element count' silently miscounts on inputs with trailing separators. Arithmetic on int silently wraps (Integer.MAX_VALUE + 1 becomes negative), so an attacker-chosen size that overflows a limit computation passes a 'less than' bounds check as a negative number.",
+  "source_sink_clues": {
+    "source": "Request-supplied numeric IDs boxed into wrapper types, delimited strings from clients parsed with split, and size/count fields feeding arithmetic on security paths.",
+    "sink": "== / != on Integer/Long wrappers guarding authorization; String.split-derived arrays indexed or counted for access decisions; int arithmetic (sums, multiplies) whose result feeds bounds or quota checks"
+  },
+  "tracking_guards": "Require Objects.equals or unboxing to int primitives for numeric comparisons on security paths; require split with a negative limit argument (-1) when trailing empties matter, or explicit counting logic; require long/checked arithmetic (Math.addExact/subtractExact/multiplyExact) or explicit range validation before comparisons on sizes.",
+  "not_candidate_when": "The comparison uses Objects.equals or primitives, the split result's empty-trailing behavior is irrelevant to the decision (membership tests not counts), the arithmetic operands are bounded far below overflow by prior validation, or the boxed values are canonicalized (e.g. from an enum or interned constants).",
+  "synthetic_vulnerable_example": "if (roleId1 == roleId2) { grantAccess(); }",
+  "synthetic_safe_example": "if (Objects.equals(roleId1, roleId2)) { grantAccess(); }",
+  "public_references": [
+    "CWE-595: Comparison of Object References Instead of Object Contents — https://cwe.mitre.org/data/definitions/595.html",
+    "CWE-190: Integer Overflow or Wraparound — https://cwe.mitre.org/data/definitions/190.html",
+    "CWE-252: Unchecked Return Value — https://cwe.mitre.org/data/definitions/252.html",
+    "Java SE documentation: Integer cache and boxing — https://docs.oracle.com/javase/8/docs/api/java/lang/Integer.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_java_08",
+      "pattern": "if\\s*\\(roleId1\\s*==\\s*roleId2\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "java-08"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

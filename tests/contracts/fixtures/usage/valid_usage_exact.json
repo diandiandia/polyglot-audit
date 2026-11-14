@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0",
+  "attempt_id": "att-0001",
+  "dimension": "tasks",
+  "availability": "exact",
+  "value": 1,
+  "unit": "tasks",
+  "source": "host_cli_report"
+}

@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "js-05",
+  "title": "Type Coercion and Loose Comparison Bypasses",
+  "language": "javascript",
+  "platform_conditions": "ECMAScript 2020 semantics in Node.js runtime and browsers; identical coercion rules in both (Abstract Equality Comparison)",
+  "security_mechanism": "The == operator applies ToPrimitive/ToNumber coercion before comparison, so values of different types can compare equal: '' == 0, '0' == false, [1] == 1, and document.cookie or query values parsed out of a string arrive as strings that coerce against numbers. On an authorization path, a check like value == 1 accepts '1', ' 1', or [1]. Query-string parsers that decode a[]=1 produce arrays where the code expects a string, and parseInt('08abc') stops at the first non-digit, so a validated-looking prefix hides the rest. Integers beyond 2^53 lose precision in doubles, letting two distinct 64-bit IDs collapse to one compared value.",
+  "source_sink_clues": {
+    "source": "Query strings, request bodies, cookies, and headers -- always strings or parser-produced arrays -- that flow into comparison or validation expressions.",
+    "sink": "== / != on security-decision values; truthiness checks over parser-produced arrays; parseInt / Number validation feeding authorization; == on 64-bit identifiers"
+  },
+  "tracking_guards": "Check security comparisons use === / !==, that expected types are asserted (typeof) before the check, that token/MAC comparisons use crypto.timingSafeEqual over equal-length buffers, and that large IDs stay strings or BigInt end to end.",
+  "not_candidate_when": "Both operands are provably the same type by construction and the comparison uses ===, the compared value is a constant not derived from request data, or the check is non-security and coercion is the intended behavior.",
+  "synthetic_vulnerable_example": "if (token == expectedToken) { grantAccess(); }",
+  "synthetic_safe_example": "if (crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expectedToken))) { grantAccess(); }",
+  "public_references": [
+    "CWE-697: Incorrect Comparison — https://cwe.mitre.org/data/definitions/697.html",
+    "CWE-208: Observable Timing Discrepancy — https://cwe.mitre.org/data/definitions/208.html",
+    "Node.js documentation: crypto.timingSafeEqual — https://nodejs.org/api/crypto.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_js_05",
+      "pattern": "token\\s*==\\s*expectedToken",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "js-05"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

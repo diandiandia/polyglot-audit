@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polyglot-audit.internal/schemas/gate_result.schema.json",
+  "description": "SWR-026 版本化数据契约；绑定 DSR-006/007/022。gate_result 记录：G0~G4 门禁检查结论、理由与 revision。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "gate_id",
+    "status",
+    "checks",
+    "revision"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "gate_id": {
+      "enum": [
+        "G0",
+        "G1",
+        "G2",
+        "G3",
+        "G4"
+      ]
+    },
+    "status": {
+      "enum": [
+        "pass",
+        "fail",
+        "not_applicable"
+      ]
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "check_id",
+          "name",
+          "status",
+          "message"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "check_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "not_applicable"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "evidence_ref": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "reason": {
+      "type": "string"
+    }
+  }
+}

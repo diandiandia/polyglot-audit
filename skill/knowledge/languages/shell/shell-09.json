@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "shell-09",
+  "title": "Destructive File Operations on Empty Variables",
+  "language": "shell",
+  "platform_conditions": "POSIX sh and bash on Linux/macOS; ${var:?} expansion and symlink-following chown -h/-P behavior are portable, glob-matches-nothing semantics default to leaving the pattern literal",
+  "security_mechanism": "If DIR is unset or empty, 'rm -rf \"$DIR/\"*' concatenates to 'rm -rf \"/\"*' and the glob expands to the filesystem root: the script deletes the system with root's privileges. Empty-variable expansion also flattens intended boundaries in mv/cp/chmod targets, and tar/unzip extraction of attacker-supplied archives writes outside the target through absolute or '..' member names. Recursive chown/chmod follow symlinks unless the implementation's -P/-h semantics are used, letting a planted symlink move the operation onto /etc or another critical path; and a loop over unquoted find/ls output breaks on filenames containing newlines, so one crafted name causes two operands where the script expected one.",
+  "source_sink_clues": {
+    "source": "Configuration or environment variables holding destination paths that an untrusted party can leave unset or empty; archive member names from untrusted archives; filenames in shared directories (including names containing newlines or crafted symlinks).",
+    "sink": "rm -rf, mv, cp, chmod -R, chown -R executed on expansions without a non-empty assertion; tar/unzip extraction of untrusted archives without member validation; recursive permission operations over directories containing attacker-planted symlinks; unquoted for-loops over filenames"
+  },
+  "tracking_guards": "Check every destructive target uses ${var:?message} so an empty or unset variable aborts the script; check '--' precedes operands; check archive extraction validates member paths (no leading '/', no '..') or extracts into a fresh empty directory with realpath containment checking; check recursive chown/chmod pass -P/-h (no symlink following) and loops quote their input (while IFS= read -r).",
+  "not_candidate_when": "The destination variable is asserted non-empty with ${var:?} and validated against an expected prefix before the destructive command, the archive is produced by the same trusted pipeline that consumes it with member names verified, or the operation runs in a container/scratch namespace where the deleted or re-permissioned tree has no security value.",
+  "synthetic_vulnerable_example": "rm -rf \"$UNCHECKED_DEST/\"*",
+  "synthetic_safe_example": "rm -rf -- \"${UNCHECKED_DEST:?Destination required}/\"*",
+  "public_references": [
+    "CWE-78: Improper Neutralization of Special Elements used in an OS Command — https://cwe.mitre.org/data/definitions/78.html",
+    "CWE-59: Improper Link Resolution Before File Access — https://cwe.mitre.org/data/definitions/59.html",
+    "CWE-22: Improper Limitation of a Pathname to a Restricted Directory — https://cwe.mitre.org/data/definitions/22.html",
+    "Bash Reference Manual: Shell Parameter Expansion (${var:?word}) — https://www.gnu.org/software/bash/manual/html_node/Shell-Parameter-Expansion.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_shell_09",
+      "pattern": "rm\\s+-rf\\s+\\\"\\$UNCHECKED_DEST/\\\"\\*",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "shell-09"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

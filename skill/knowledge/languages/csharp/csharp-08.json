@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "id": "csharp-08",
+  "title": "Cryptography and Randomness Misuse",
+  "language": "csharp",
+  "platform_conditions": ".NET Framework 4.x and modern .NET; CryptographicOperations.FixedTimeEquals requires .NET Core 2.1+",
+  "security_mechanism": "System.Random is a time-seeded subtractive generator whose outputs reveal enough internal state to predict future draws, so tokens, reset codes, or keys taken from rnd.Next() are guessable from a handful of observed values. CipherMode defaults and hand-rolled parameters reintroduce classical breaks: ECB leaks equality of plaintext blocks, a fixed IV with CBC makes the first block deterministic for identical inputs, and certificate-validation callbacks that return true (RemoteCertificateValidationCallback / ServerCertificateValidationCallback) switch TLS into accept-anything mode. Comparing MACs or digests with == compares byte arrays via looped equality, leaking a timing oracle that recovers authenticator bytes.",
+  "source_sink_clues": {
+    "source": "The security value itself: session tokens, password reset codes, API keys, MAC tags, and the crypto parameters (mode, IV, callbacks) chosen in code.",
+    "sink": "new Random() feeding security values; Aes/DESCryptoServiceProvider configured with CipherMode.ECB or a constant IV; certificate-validation callbacks that return true; == / SequenceEqual on digests or MACs"
+  },
+  "tracking_guards": "Require RandomNumberGenerator.GetBytes for any security value; require CipherMode.CBC/GCM with a random per-message IV from RNGCryptoServiceProvider (or AesGcm); require validation callbacks to inspect the certificate and ssl policy errors rather than returning true unconditionally; require CryptographicOperations.FixedTimeEquals for authenticator comparison.",
+  "not_candidate_when": "Random is confined to non-security uses (sampling, jitter, simulations), ECB/fixed-IV applies only to non-secret, non-repeating data with no confidentiality requirement, the callback's unconditional-true branch is gated to a documented test environment, or comparison already uses FixedTimeEquals.",
+  "synthetic_vulnerable_example": "Random rnd = new Random(); string token = rnd.Next().ToString();",
+  "synthetic_safe_example": "byte[] token = RandomNumberGenerator.GetBytes(32);",
+  "public_references": [
+    "CWE-338: Use of Cryptographically Weak Pseudo-Random Number Generator — https://cwe.mitre.org/data/definitions/338.html",
+    "CWE-327: Use of a Broken or Risky Cryptographic Algorithm — https://cwe.mitre.org/data/definitions/327.html",
+    "CWE-295: Improper Certificate Validation — https://cwe.mitre.org/data/definitions/295.html",
+    "CWE-208: Observable Timing Discrepancy — https://cwe.mitre.org/data/definitions/208.html",
+    "Microsoft: RandomNumberGenerator — https://learn.microsoft.com/en-us/dotnet/api/system.security.cryptography.randomnumbergenerator"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_csharp_08",
+      "pattern": "new\\s+Random\\(\\);.*rnd\\.Next\\(",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "csharp-08"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

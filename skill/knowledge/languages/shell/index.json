@@ -1,0 +1,62 @@
+[
+  {
+    "id": "shell-01",
+    "title": "Unquoted Variable Expansion and Word Splitting",
+    "sink_clue": "Unquoted $var, ${var}, $(cmd) or ${arr[*]} expansions feeding destructive or security-relevant commands (rm -rf, chown, chmod, kill, cp, mv, installer invocations)",
+    "when_to_open": "When auditing Shell code: Unquoted Variable Expansion and Word Splitting. Sink: Unquoted $var, ${var}, $(cmd) or ${arr[*]} expansions feeding destructive or security-relevant commands (rm -rf, chown, chmod, kill, cp, mv, installer invocations)"
+  },
+  {
+    "id": "shell-02",
+    "title": "Code Injection in eval and Command Substitution",
+    "sink_clue": "eval of dynamic strings; sh -c \"$x\"; source/. of externally chosen paths; ${!var} with an externally influenced name; arithmetic evaluation of input-derived expressions; trap \"...$var...\"; curl|sh and eval \"$(curl ...)\" pipelines",
+    "when_to_open": "When auditing Shell code: Code Injection in eval and Command Substitution. Sink: eval of dynamic strings; sh -c \"$x\"; source/. of externally chosen paths; ${!var} with an externally influenced name; arithmetic evaluation of input-derived expressions; trap \"...$var...\"; curl|sh and eval \"$(curl ...)\" pipelines"
+  },
+  {
+    "id": "shell-03",
+    "title": "Option Injection via Unfiltered Flags",
+    "sink_clue": "Utility invocations where an input-derived value follows the command name with no '--' separator: cat/sort/head/cp/mv/kill, tar with input-derived flags, xargs without -0 or -d, git/curl wrapper scripts forwarding user arguments",
+    "when_to_open": "When auditing Shell code: Option Injection via Unfiltered Flags. Sink: Utility invocations where an input-derived value follows the command name with no '--' separator: cat/sort/head/cp/mv/kill, tar with input-derived flags, xargs without -0 or -d, git/curl wrapper scripts forwarding user arguments"
+  },
+  {
+    "id": "shell-04",
+    "title": "Predictable Temporary Files in /tmp",
+    "sink_clue": "Redirection or writes to /tmp paths built from $$, fixed names, or user-influenced components; mktemp invoked with a template lacking X's or on a path the attacker can pre-create; any [ -f ]/[ -e ] test followed by a separate open/write of the same path in a privileged script",
+    "when_to_open": "When auditing Shell code: Predictable Temporary Files in /tmp. Sink: Redirection or writes to /tmp paths built from $$, fixed names, or user-influenced components; mktemp invoked with a template lacking X's or on a path the attacker can pre-create; any [ -f ]/[ -e ] test followed by a separate open/write of the same path in a privileged script"
+  },
+  {
+    "id": "shell-05",
+    "title": "Insecure PATH Inheritance and Environment Trust",
+    "sink_clue": "Unqualified command names (tar, grep, awk, helper scripts) executed in a privileged script without a pinned PATH; scripts that read BASH_ENV/ENV-honored startup files; shells started with inherited exported functions; use of IFS from the environment",
+    "when_to_open": "When auditing Shell code: Insecure PATH Inheritance and Environment Trust. Sink: Unqualified command names (tar, grep, awk, helper scripts) executed in a privileged script without a pinned PATH; scripts that read BASH_ENV/ENV-honored startup files; shells started with inherited exported functions; use of IFS from the environment"
+  },
+  {
+    "id": "shell-06",
+    "title": "Fail-Open Execution without set -euo pipefail",
+    "sink_clue": "Verification-then-act sequences (checksum/signature check followed by install, chmod/chown, service start) in scripts lacking set -euo pipefail at the top, or where '|| true', unguarded cd, or 'local x=$(cmd)' neutralizes a failure on the security-relevant step",
+    "when_to_open": "When auditing Shell code: Fail-Open Execution without set -euo pipefail. Sink: Verification-then-act sequences (checksum/signature check followed by install, chmod/chown, service start) in scripts lacking set -euo pipefail at the top, or where '|| true', unguarded cd, or 'local x=$(cmd)' neutralizes a failure on the security-relevant step"
+  },
+  {
+    "id": "shell-07",
+    "title": "Variable Scope, Attributes, and Name Reference Pollution",
+    "sink_clue": "declare -n / local -n with input-derived names; declare \"$name=$value\"; printf -v \"$name\"; read into input-derived names; assignments to non-local names inside functions on security paths; export/export -f of secret-bearing or security-relevant names",
+    "when_to_open": "When auditing Shell code: Variable Scope, Attributes, and Name Reference Pollution. Sink: declare -n / local -n with input-derived names; declare \"$name=$value\"; printf -v \"$name\"; read into input-derived names; assignments to non-local names inside functions on security paths; export/export -f of secret-bearing or security-relevant names"
+  },
+  {
+    "id": "shell-08",
+    "title": "Secret Leakage in Process Arguments and set -x",
+    "sink_clue": "Secrets interpolated into command arguments (curl -H, wget --header, client CLI flags), scripts running with set -x/-v or a PS4 containing command substitution, export of secret variables, and here-doc/here-string bodies carrying credentials",
+    "when_to_open": "When auditing Shell code: Secret Leakage in Process Arguments and set -x. Sink: Secrets interpolated into command arguments (curl -H, wget --header, client CLI flags), scripts running with set -x/-v or a PS4 containing command substitution, export of secret variables, and here-doc/here-string bodies carrying credentials"
+  },
+  {
+    "id": "shell-09",
+    "title": "Destructive File Operations on Empty Variables",
+    "sink_clue": "rm -rf, mv, cp, chmod -R, chown -R executed on expansions without a non-empty assertion; tar/unzip extraction of untrusted archives without member validation; recursive permission operations over directories containing attacker-planted symlinks; unquoted for-loops over filenames",
+    "when_to_open": "When auditing Shell code: Destructive File Operations on Empty Variables. Sink: rm -rf, mv, cp, chmod -R, chown -R executed on expansions without a non-empty assertion; tar/unzip extraction of untrusted archives without member validation; recursive permission operations over directories containing attacker-planted symlinks; unquoted for-loops over filenames"
+  },
+  {
+    "id": "shell-10",
+    "title": "Secondary Injection into Remote Shells and Utilities",
+    "sink_clue": "ssh host \"...$var...\"; sed/awk invocations with interpolated program text; here-docs whose delimiter is unquoted; string concatenation into SQL statements, JSON payloads, or python -c/- <<EOF script bodies",
+    "when_to_open": "When auditing Shell code: Secondary Injection into Remote Shells and Utilities. Sink: ssh host \"...$var...\"; sed/awk invocations with interpolated program text; here-docs whose delimiter is unquoted; string concatenation into SQL statements, JSON payloads, or python -c/- <<EOF script bodies"
+  }
+]

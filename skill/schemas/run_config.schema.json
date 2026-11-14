@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polyglot-audit.internal/schemas/run_config.schema.json",
+  "description": "SWR-001 版本化数据契约；绑定 DSR-006/007/032/053。run_config 记录：audit 运行配置（目标、范围、预算、安全确认与报告语言）。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "target",
+    "run_dir",
+    "report_language",
+    "profile",
+    "scope",
+    "budgets",
+    "safety_acceptance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "target": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_dir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "report_language": {
+      "type": "string",
+      "minLength": 2
+    },
+    "profile": {
+      "enum": [
+        "quick",
+        "standard",
+        "deep"
+      ]
+    },
+    "scope": {
+      "type": "object",
+      "required": [
+        "include",
+        "exclude"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "budgets": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "safety_acceptance": {
+      "type": "object",
+      "required": [
+        "allow_unverified_execution",
+        "allow_unverified_network",
+        "allow_unverified_write",
+        "user_approved"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "allow_unverified_execution": {
+          "type": "boolean"
+        },
+        "allow_unverified_network": {
+          "type": "boolean"
+        },
+        "allow_unverified_write": {
+          "type": "boolean"
+        },
+        "user_approved": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

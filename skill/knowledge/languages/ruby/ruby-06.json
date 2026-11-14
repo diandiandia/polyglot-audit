@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "ruby-06",
+  "title": "Regular Expression Multiline Anchors Trap",
+  "language": "ruby",
+  "platform_conditions": "Ruby 3.x standard library; ^ and $ are line anchors in Ruby regex, and Regexp.timeout exists only from Ruby 3.2+",
+  "security_mechanism": "In Ruby, ^ and $ anchor to line boundaries, so a validator like /^https:\\/\\/example\\.com$/ accepts 'https://example.com.attacker.tld\\narbitrary' or any payload where the wanted prefix appears at a line start and everything else sits after a newline; \\A and \\z anchor the actual string boundaries ($ additionally matches before a trailing newline, \\Z does too, only \\z does not). The same unchecked-input shape feeds catastrophic backtracking: nested quantifiers over overlapping alternations drive exponential CPU on one thread, and only Ruby 3.2's Regexp.timeout bounds it. Converting external input with to_sym feeds attacker-chosen symbols into method and lookup namespaces; since Ruby 2.2 symbols are garbage-collected, so the historical memory-exhaustion angle is bounded, but the lookup-collision angle remains.",
+  "source_sink_clues": {
+    "source": "URLs, identifiers and multiline strings supplied by clients and validated with anchored regexes; patterns and subjects driving backtracking.",
+    "sink": "=~ / match on security gates using ^...$ or $-anchored patterns; Regexp.new with input-derived patterns; to_sym on external input used for lookups"
+  },
+  "tracking_guards": "Require \\A / \\z anchors (not ^ / $) in validators, plus explicit rejection of \\n in the validated value; require Regexp.timeout (Ruby 3.2+) or bounded input length with constant patterns; require to_sym inputs to come from a fixed set.",
+  "not_candidate_when": "The pattern is anchored with \\A/\\z and newlines are rejected explicitly, the regex is a constant without nested quantifiers and the subject is length-bounded, or to_sym operates on values drawn from a server-side fixed set.",
+  "synthetic_vulnerable_example": "valid = url =~ /^https:\\/\\/example\\.com$/",
+  "synthetic_safe_example": "valid = url =~ /\\Ahttps:\\/\\/example\\.com\\z/",
+  "public_references": [
+    "CWE-1333: Inefficient Regular Expression Complexity — https://cwe.mitre.org/data/definitions/1333.html",
+    "CWE-285: Improper Authorization — https://cwe.mitre.org/data/definitions/285.html",
+    "Ruby stdlib documentation: Regexp — https://docs.ruby-lang.org/en/3.2/Regexp.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_ruby_06",
+      "pattern": "url\\s*=~\\s*\\/\\^https",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "ruby-06"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

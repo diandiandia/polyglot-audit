@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "shell-06",
+  "title": "Fail-Open Execution without set -euo pipefail",
+  "language": "shell",
+  "platform_conditions": "POSIX sh supports set -e/-u but NOT pipefail; set -o pipefail requires bash, ksh or zsh; 'local x=$(cmd)' masking exit status is a bash/ksh behavior",
+  "security_mechanism": "Without set -e the shell keeps executing after any failure, so a failed signature or checksum verification (gpg verify, sha256sum -c) prints an error and the next line installs or runs the unverified artifact anyway. In a pipeline the exit status comes from the last command by default, so 'curl ... | sh' succeeds even when the download failed or was tampered mid-stream; pipefail exists to surface this and is POSIX-only in the non-portable direction. Two quiet paths add to it: 'local x=$(cmd)' discards the substitution's exit status because 'local' succeeds, and 'cmd || true' converts any failure — including a failed permission change — into success.",
+  "source_sink_clues": {
+    "source": "Installer and CI steps whose inputs are fetched or attacker-influenced (downloaded packages, PR-modified manifests), where a silent failure advances to the next stage instead of aborting.",
+    "sink": "Verification-then-act sequences (checksum/signature check followed by install, chmod/chown, service start) in scripts lacking set -euo pipefail at the top, or where '|| true', unguarded cd, or 'local x=$(cmd)' neutralizes a failure on the security-relevant step"
+  },
+  "tracking_guards": "Check set -euo pipefail is set before any security-relevant command (with set -o pipefail verified as supported by the interpreter); check verification commands are chained explicitly (verify && install, or if ! verify; then exit 1; fi); check cd is followed by an exit-status test or set -e is active; check no '|| true' on permission, signature, or checksum steps; check 'local' is split from its assignment when the exit status matters.",
+  "not_candidate_when": "set -euo pipefail is active and verification commands run directly (no pipeline or || true softening), each security step's status is checked explicitly with if/&&, or the script's only consumers are non-security steps whose failure mode is a build error rather than a privilege or integrity change.",
+  "synthetic_vulnerable_example": "sha256sum -c hash.txt; install_package.sh",
+  "synthetic_safe_example": "set -euo pipefail; sha256sum -c hash.txt; install_package.sh",
+  "public_references": [
+    "CWE-754: Improper Check for Unusual or Exceptional Conditions — https://cwe.mitre.org/data/definitions/754.html",
+    "CWE-252: Unchecked Return Value — https://cwe.mitre.org/data/definitions/252.html",
+    "CWE-347: Improper Verification of Cryptographic Signature — https://cwe.mitre.org/data/definitions/347.html",
+    "POSIX Shell Command Language §2 (exit status and set -e) — https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_shell_06",
+      "pattern": "sha256sum\\s+-c\\s+hash\\.txt;\\s*install_package\\.sh",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "shell-06"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

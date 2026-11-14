@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polyglot-audit.internal/schemas/candidate.schema.json",
+  "description": "SWR-007 版本化数据契约；绑定 DSR-006/007/025/073。candidate 记录：hunt 阶段 source→sink 完整链候选。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "candidate_id",
+    "issue",
+    "source",
+    "sink",
+    "steps",
+    "guard_analysis",
+    "impact_claim",
+    "open_questions",
+    "provenance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "candidate_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "issue": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "path",
+        "line",
+        "symbol",
+        "kind",
+        "control"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "symbol": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "control": {
+          "type": "string"
+        },
+        "lang": {
+          "type": "string"
+        }
+      }
+    },
+    "sink": {
+      "type": "object",
+      "required": [
+        "path",
+        "line",
+        "symbol",
+        "kind",
+        "effect"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "symbol": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "effect": {
+          "type": "string"
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "line",
+          "role",
+          "note"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "role": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "guard_analysis": {
+      "type": "string"
+    },
+    "impact_claim": {
+      "type": "string"
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "hunt_tasks"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "hunt_tasks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

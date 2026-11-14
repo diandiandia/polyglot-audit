@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "cpp-03",
+  "title": "Container and Raw Buffer Out-of-Bounds",
+  "language": "cpp",
+  "platform_conditions": "C++11 and later on any conforming toolchain; operator[] is unchecked by default in release, and only libstdc++/MSVC debug builds assert",
+  "security_mechanism": "vector::operator[] and string::operator[] perform no bounds check in conforming release builds: the standard makes an out-of-range index undefined behavior rather than an exception, so an attacker-supplied index reads or writes whatever object lies at data() + i * element_size. The same unchecked boundary appears where C++ hands its buffer to C: passing vector::data() plus a separately-tracked length to a C API lets a stale or mismatched length parameter overflow the vector's allocation, since data() itself is a raw pointer carrying no size.",
+  "source_sink_clues": {
+    "source": "Indexes and lengths from protocol fields, request parameters, parsed message offsets, or computed from attacker-influenced values.",
+    "sink": "operator[] on vector/deque/string/map with an unchecked index; data()/c_str() plus an external length handed to memcpy or a C API"
+  },
+  "tracking_guards": "Check that .at() is used (throws std::out_of_range) or the index is explicitly compared against .size() before operator[], and that every data()-plus-length hand-off to C derives both from the same container object in the same expression (size() called on the live vector, not a cached value).",
+  "not_candidate_when": "The index was validated against size() on the same path before the access, the container is a compile-time array with a constant index, or the buffer is only passed to C interfaces with lengths derived from the same live container object.",
+  "synthetic_vulnerable_example": "int val = data[user_index];",
+  "synthetic_safe_example": "int val = data.at(user_index);",
+  "public_references": [
+    "CWE-129: Improper Validation of Array Index — https://cwe.mitre.org/data/definitions/129.html",
+    "CWE-125: Out-of-bounds Read — https://cwe.mitre.org/data/definitions/125.html",
+    "cppreference: std::vector::operator[] — https://en.cppreference.com/w/cpp/container/vector/operator_at",
+    "C++ Core Guidelines: ES (expressions and statements) — https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_cpp_03",
+      "pattern": "data\\[user_index\\]",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "cpp-03"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

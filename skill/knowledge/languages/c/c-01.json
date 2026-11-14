@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "c-01",
+  "title": "Out-of-Bounds Memory Access in Buffers",
+  "language": "c",
+  "platform_conditions": "C99/C11 semantics on any hosted toolchain (glibc, musl, MSVC CRT); the failure mode is silent corruption whose visibility depends on compiler optimization level and heap layout",
+  "security_mechanism": "C array semantics carry no bounds metadata: a length or index arrives as a plain integer and strcpy/memcpy/sprintf trust the caller's count, so an attacker-supplied source string or length writes past the destination object. The write lands in adjacent stack or heap memory, overwriting saved return addresses, function pointers, or neighbouring heap metadata, and is only detected if a canary/ASLR/fortify combination happens to intercept it. The standard classifies the access as undefined behavior, so the optimizer may also delete subsequent bounds checks based on the assumption that no out-of-bounds access occurs.",
+  "source_sink_clues": {
+    "source": "Any length, count, or string that crosses a trust boundary: network protocol fields and headers, file content, environment variables, argv, or device/IPC buffers.",
+    "sink": "strcpy/sprintf/strcat with a fixed-size destination; memcpy/memmove with an attacker-derived n; array indexing a[i] where i is unchecked input"
+  },
+  "tracking_guards": "Check that the copy length is clamped to sizeof(dst) before the call (or that a strlcpy/snprintf equivalent is used), that the source length is known rather than assumed, and that indices are validated against the declared bound before every indexing operation on the affected path.",
+  "not_candidate_when": "The length and buffer are compile-time constants with the copy provably in-bounds (e.g. memcpy of a fixed-size constant record), the input is a length-validated protocol field whose bound is enforced before the copy, or the code path is only reachable with data generated inside the same trust domain (no network, file, or IPC attacker control).",
+  "synthetic_vulnerable_example": "strcpy(dest, untrusted_src);",
+  "synthetic_safe_example": "strncpy(dest, untrusted_src, sizeof(dest) - 1); dest[sizeof(dest)-1] = '\\0';",
+  "public_references": [
+    "CWE-120: Buffer Copy without Checking Size of Input — https://cwe.mitre.org/data/definitions/120.html",
+    "CWE-787: Out-of-bounds Write — https://cwe.mitre.org/data/definitions/787.html",
+    "CWE-125: Out-of-bounds Read — https://cwe.mitre.org/data/definitions/125.html",
+    "SEI CERT C Coding Standard: ARR38-C (pointer/array bounds)"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_c_01",
+      "pattern": "strcpy\\(",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "c-01"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

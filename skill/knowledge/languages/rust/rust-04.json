@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "rust-04",
+  "title": "Integer Wrapping and Lossy Casting via 'as'",
+  "language": "rust",
+  "platform_conditions": "Any Rust toolchain; wrapping only occurs when the release profile disables overflow checks (--release defaults overflow-checks=false; debug builds panic instead)",
+  "security_mechanism": "In release builds with overflow-checks off, arithmetic wraps modulo 2^N silently and the `as` cast truncates: `user_size as u16` keeps the low 16 bits, so 65536 becomes 0 and 131073 becomes 1 — a value that passed a >0 or <MAX check comes out tiny or negative-typed after the cast. The truncated value then drives allocation sizes, slice lengths, or loop bounds, producing buffers far smaller than the peer believes while the code writes the original count of bytes. Signedness changes compound this: casting i64 -1 to usize yields usize::MAX, turning a negative-length check into a near-maximum unsigned allocation.",
+  "source_sink_clues": {
+    "source": "Sizes, counts, and offsets from protocol fields: declared payload lengths, item counts, offsets in binary formats.",
+    "sink": "`as` casts between integer types on input-derived values; unchecked arithmetic (a + b, a * b) whose result feeds allocation, indexing, or copy length"
+  },
+  "tracking_guards": "Check that input-derived values are converted with try_from().map_err(...) (fails on truncation) rather than `as`, that arithmetic on external values uses checked_/saturating_ variants or runs with overflow-checks enabled in release, and that any wrapping is explicit (wrapping_ / overflowing_) and justified by a bound already applied.",
+  "not_candidate_when": "The value was range-checked before the cast such that truncation is impossible (e.g. u16::try_from already used, or the value is bounded by a protocol maximum below 65536), the arithmetic is done in checked/saturating form, or the release profile explicitly enables overflow-checks and the code handles the resulting panic.",
+  "synthetic_vulnerable_example": "let len = user_size as u16;",
+  "synthetic_safe_example": "let len = u16::try_from(user_size).map_err(|_| Error::Overflow)?;",
+  "public_references": [
+    "CWE-197: Numeric Truncation Error — https://cwe.mitre.org/data/definitions/197.html",
+    "CWE-190: Integer Overflow or Wraparound — https://cwe.mitre.org/data/definitions/190.html",
+    "CWE-128: Wrap-around Error — https://cwe.mitre.org/data/definitions/128.html",
+    "Rust std: FromPrimitive conversions (try_from) — https://doc.rust-lang.org/std/convert/trait.TryFrom.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_rust_04",
+      "pattern": "user_size\\s+as\\s+u16",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "rust-04"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

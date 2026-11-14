@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "cpp-01",
+  "title": "Dangling Reference and Iterator Invalidation",
+  "language": "cpp",
+  "platform_conditions": "C++11 and later (string_view is C++17, spans are C++20) on any conforming toolchain; the defect is silent — no runtime check fires",
+  "security_mechanism": "C++ value semantics create temporaries whose lifetime ends at the full expression: binding std::string_view to `std::string(user_input)` constructs a temporary string, the view points into its heap buffer, and the temporary is destroyed at the semicolon, leaving the view dangling while it still type-checks as a valid string-like object. The same gap appears between container mutation and held views: vector::push_back may reallocate, invalidating every iterator, pointer, and reference taken before the call, and a lambda that captures a local by reference outlives the local when it is invoked later (queue, callback, thread). Moved-from objects add a variant: the language leaves a moved-from std::string/vector in a valid but unspecified state, and reading it is a logic bug, not a compile error.",
+  "source_sink_clues": {
+    "source": "Request-derived strings and buffers passed through conversion boundaries (string_view/span parameters), iterators retained across container updates, and lambdas/callbacks stored for later invocation.",
+    "sink": "Read or copy through a std::string_view/std::span bound to a temporary or destroyed string; iterator/pointer/reference used after push_back/insert/erase on the container; lambda reference capture invoked after the captured scope returned"
+  },
+  "tracking_guards": "Check that views/spans are bound only to objects whose lifetime outlives the view (a named string, not a temporary), that no iterator or reference is used after any call that may reallocate (or is re-fetched after the mutation), and that lambdas escaping the current scope capture by value or via shared ownership.",
+  "not_candidate_when": "The view is consumed within the same full expression that binds it, the container's capacity is reserved and no mutation occurs between iterator capture and use, the lambda is invoked before its captured scope exits, or the dangling reference never feeds a security decision or attacker-reachable output.",
+  "synthetic_vulnerable_example": "std::string_view sv = std::string(user_input); return sv;",
+  "synthetic_safe_example": "std::string s = user_input; return s;",
+  "public_references": [
+    "CWE-416: Use After Free — https://cwe.mitre.org/data/definitions/416.html",
+    "cppreference: std::basic_string_view — https://en.cppreference.com/w/cpp/string/basic_string_view",
+    "cppreference: std::vector::push_back (iterator invalidation) — https://en.cppreference.com/w/cpp/container/vector/push_back",
+    "C++ Core Guidelines: Views and spans lifetime rules — https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_cpp_01",
+      "pattern": "std::string_view.*std::string\\(",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "cpp-01"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

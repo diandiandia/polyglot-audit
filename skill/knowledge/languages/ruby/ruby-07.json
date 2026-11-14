@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "id": "ruby-07",
+  "title": "Raw HTML and html_safe Misuse",
+  "language": "ruby",
+  "platform_conditions": "Ruby 3.x; MRI — the html_safe flag is a plain String property; escaping layers honor it wherever the string is rendered",
+  "security_mechanism": "String#html_safe flips a trust flag on the String so the rendering layer skips HTML escaping for it; calling it on anything derived from input (or passing input through raw()) hands attacker bytes to the response as markup. The flag is not contextual: a string marked safe is emitted unescaped in body, attribute and script contexts alike, so single-quote or attribute-boundary payloads survive. A separate attribute-context hazard survives even correct HTML escaping: a javascript: URL placed into an href/src attribute executes on click because the text itself needed scheme validation, not escaping.",
+  "source_sink_clues": {
+    "source": "User-supplied text fields, bios, comments and URLs rendered into HTML responses.",
+    "sink": "html_safe / raw() applied to input-derived strings; unescaped interpolation into attribute contexts; javascript:-scheme URLs placed into href/src attributes"
+  },
+  "tracking_guards": "Require that html_safe/raw is never called on input-derived strings — only on server-generated constant HTML; require allowlist-based sanitization (tag/attribute whitelists) before any HTML must be allowed; require URL scheme validation (http/https/relative only) before placing values into href/src.",
+  "not_candidate_when": "The marked string is a server-side constant template fragment, input passed through a real allowlist sanitizer before being marked safe, or URL attributes are scheme-validated before rendering.",
+  "synthetic_vulnerable_example": "raw_html = user_bio.html_safe",
+  "synthetic_safe_example": "safe_html = sanitize(user_bio)",
+  "public_references": [
+    "CWE-79: Improper Neutralization of Input During Web Page Generation — https://cwe.mitre.org/data/definitions/79.html",
+    "OWASP Cross Site Scripting Prevention Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_ruby_07",
+      "pattern": "user_bio\\.html_safe",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "ruby-07"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "id": "ts-08",
+  "title": "Compiler Flag Relaxation Causing Verification Holes",
+  "language": "typescript",
+  "platform_conditions": "tsconfig.json compile-time settings; strictNullChecks relaxation changes only the checker, emitted JavaScript runs wherever deployed",
+  "security_mechanism": "With strictNullChecks off, the checker removes undefined from every type, so users[id] typed 'User' is believed non-undefined while the runtime lookup returns undefined for attacker-chosen IDs; the annotated return type then 'guarantees' a value the code never checked, and guards that look redundant are actually absent. skipLibCheck hides mismatched declaration files whose types disagree with runtime behavior, and path aliases can resolve a shimmed module -- the compiled output then imports something other than the audited implementation.",
+  "source_sink_clues": {
+    "source": "Lookup keys and IDs from requests, and configuration drift between tsconfig/lib types and the runtime the bundle uses.",
+    "sink": "Index lookups and dereferences typed non-nullable under relaxed flags, feeding authorization or null-dereference-prone logic"
+  },
+  "tracking_guards": "Check tsconfig enables strict (at minimum strictNullChecks), lookups on attacker-influenced keys are handled as possibly undefined at runtime, and declaration files for security-relevant modules match the runtime implementation.",
+  "not_candidate_when": "Strict mode is on and the lookup result is narrowed before use, the key comes from a fixed internal set, or the failure path is non-security and contained.",
+  "synthetic_vulnerable_example": "function get(id: string): User { return users[id]; }",
+  "synthetic_safe_example": "function get(id: string): User | undefined { return users[id]; }",
+  "public_references": [
+    "CWE-754: Improper Check for Unusual or Exceptional Conditions — https://cwe.mitre.org/data/definitions/754.html",
+    "TypeScript Handbook: compiler-options — https://www.typescriptlang.org/docs/handbook/compiler-options.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_ts_08",
+      "pattern": "function\\s+get\\(id:\\s*string\\):\\s*User",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "ts-08"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

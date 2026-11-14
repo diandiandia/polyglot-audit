@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "csharp-03",
+  "title": "XML External Entity (XXE) and Insecure DTD",
+  "language": "csharp",
+  "platform_conditions": ".NET Framework 4.x resolves external entities by default (XmlUrlResolver); modern .NET (Core) defaults to no resolver — the card applies to .NET Framework defaults and to any reader explicitly configured with DtdProcessing.Parse or an XmlResolver on either runtime",
+  "security_mechanism": "XmlDocument.Load and XmlTextReader construct an underlying reader whose DtdProcessing and XmlResolver decide whether DTDs are parsed and whether external entities are fetched. On .NET Framework the default XmlResolver is XmlUrlResolver, so an entity pointing at file:/// or http:// targets reads local files or performs SSRF and the result is echoed back when the parser expands it into content. Even with external resolution off, DtdProcessing.Parse still permits recursive internal entities (billion laughs) that exhaust memory; XslCompiledTransform compiled with enableScript=true additionally runs embedded C# inside transforms.",
+  "source_sink_clues": {
+    "source": "XML documents received from clients: SOAP bodies, SAML or integration payloads, uploaded configuration files, webhooks posting XML.",
+    "sink": "XmlDocument.Load/LoadXml, XmlTextReader/XmlReader created with DtdProcessing.Parse or a non-null XmlResolver, XslCompiledTransform.Load with enableScript=true, all fed untrusted XML"
+  },
+  "tracking_guards": "Check the reader settings that reach the parse: DtdProcessing.Prohibit (or Ignore) and XmlResolver = null on every XmlReaderSettings used for untrusted documents; on .NET Framework confirm no XmlDocument.XmlResolver = new XmlUrlResolver() re-enables resolution; confirm XSLT does not enable script.",
+  "not_candidate_when": "The XML comes from a trusted internal producer and DTDs are absent by construction, the reader runs with DtdProcessing.Prohibit and a null resolver on both runtimes, or the payload is envelope-verified (signed SAML with strict schema validation) before parsing.",
+  "synthetic_vulnerable_example": "XmlDocument doc = new XmlDocument(); doc.Load(xmlStream);",
+  "synthetic_safe_example": "XmlReaderSettings settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit };",
+  "public_references": [
+    "CWE-611: Improper Restriction of XML External Entity Reference — https://cwe.mitre.org/data/definitions/611.html",
+    "CWE-776: Improper Restriction of Recursive Entity References in DTDs — https://cwe.mitre.org/data/definitions/776.html",
+    "OWASP XML External Entity Prevention Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_csharp_03",
+      "pattern": "doc\\.Load\\(xmlStream\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "csharp-03"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

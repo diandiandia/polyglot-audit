@@ -1,0 +1,62 @@
+[
+  {
+    "id": "rust-01",
+    "title": "Unsoundness in Unsafe Memory Operations",
+    "sink_clue": "unsafe { slice::from_raw_parts / from_raw_parts_mut } with an external length; transmute; MaybeUninit::assume_init; get_unchecked(_mut); Vec::set_len",
+    "when_to_open": "When auditing Rust code: Unsoundness in Unsafe Memory Operations. Sink: unsafe { slice::from_raw_parts / from_raw_parts_mut } with an external length; transmute; MaybeUninit::assume_init; get_unchecked(_mut); Vec::set_len"
+  },
+  {
+    "id": "rust-02",
+    "title": "FFI Boundary Lifetime and CString Hazards",
+    "sink_clue": "CString/CStr::as_ptr results used after the owner dropped; Box::from_raw / Vec::from_raw_parts on pointers whose allocation method or count mismatches; extern \"C\" function signatures with non-repr(C) struct parameters",
+    "when_to_open": "When auditing Rust code: FFI Boundary Lifetime and CString Hazards. Sink: CString/CStr::as_ptr results used after the owner dropped; Box::from_raw / Vec::from_raw_parts on pointers whose allocation method or count mismatches; extern \"C\" function signatures with non-repr(C) struct parameters"
+  },
+  {
+    "id": "rust-03",
+    "title": "Denial of Service via Panic on Untrusted Input",
+    "sink_clue": "unwrap()/expect() on input-derived Result/Option; slice/array indexing and str range slicing with external indexes; RefCell double borrow; unbounded recursion on external data",
+    "when_to_open": "When auditing Rust code: Denial of Service via Panic on Untrusted Input. Sink: unwrap()/expect() on input-derived Result/Option; slice/array indexing and str range slicing with external indexes; RefCell double borrow; unbounded recursion on external data"
+  },
+  {
+    "id": "rust-04",
+    "title": "Integer Wrapping and Lossy Casting via 'as'",
+    "sink_clue": "`as` casts between integer types on input-derived values; unchecked arithmetic (a + b, a * b) whose result feeds allocation, indexing, or copy length",
+    "when_to_open": "When auditing Rust code: Integer Wrapping and Lossy Casting via 'as'. Sink: `as` casts between integer types on input-derived values; unchecked arithmetic (a + b, a * b) whose result feeds allocation, indexing, or copy length"
+  },
+  {
+    "id": "rust-05",
+    "title": "Unsound Send and Sync Implementations",
+    "sink_clue": "unsafe impl Send/Sync for types containing raw pointers or non-atomic state; static mut access; atomics with incorrect Ordering guarding other data; Mutex-adjacent check-then-act sequences across .await",
+    "when_to_open": "When auditing Rust code: Unsound Send and Sync Implementations. Sink: unsafe impl Send/Sync for types containing raw pointers or non-atomic state; static mut access; atomics with incorrect Ordering guarding other data; Mutex-adjacent check-then-act sequences across .await"
+  },
+  {
+    "id": "rust-06",
+    "title": "Unbounded Resource Allocation in Collections",
+    "sink_clue": "Vec::with_capacity / String::with_capacity sized from input; read_to_end on untrusted streams; unbounded channel/task creation; decompression into memory without an output budget",
+    "when_to_open": "When auditing Rust code: Unbounded Resource Allocation in Collections. Sink: Vec::with_capacity / String::with_capacity sized from input; read_to_end on untrusted streams; unbounded channel/task creation; decompression into memory without an output budget"
+  },
+  {
+    "id": "rust-07",
+    "title": "Deserialization and Untrusted Parser Assumptions",
+    "sink_clue": "serde_json::from_reader/from_slice/from_str (and equivalent codec deserializers) on peer data with deep nesting, length-prefixed allocations, or untagged enum targets",
+    "when_to_open": "When auditing Rust code: Deserialization and Untrusted Parser Assumptions. Sink: serde_json::from_reader/from_slice/from_str (and equivalent codec deserializers) on peer data with deep nesting, length-prefixed allocations, or untagged enum targets"
+  },
+  {
+    "id": "rust-08",
+    "title": "Command and Path Traversal Hazards",
+    "sink_clue": "std::process::Command::new with an attacker-influenced program or argument; Path::join / PathBuf::push with input followed by file operations; archive entry paths extracted as-is",
+    "when_to_open": "When auditing Rust code: Command and Path Traversal Hazards. Sink: std::process::Command::new with an attacker-influenced program or argument; Path::join / PathBuf::push with input followed by file operations; archive entry paths extracted as-is"
+  },
+  {
+    "id": "rust-09",
+    "title": "Cryptographic Constant-Time Comparison Failures",
+    "sink_clue": "== / != / assert_eq! on digests, MACs, and signature byte slices used to grant access; nonce reuse across encryptions; secrets stored in non-wiped buffers; disabled certificate verification",
+    "when_to_open": "When auditing Rust code: Cryptographic Constant-Time Comparison Failures. Sink: == / != / assert_eq! on digests, MACs, and signature byte slices used to grant access; nonce reuse across encryptions; secrets stored in non-wiped buffers; disabled certificate verification"
+  },
+  {
+    "id": "rust-10",
+    "title": "Unsafe Abstraction Drop and Panic Safety",
+    "sink_clue": "unsafe { ptr::read / ptr::copy_nonoverlapping } followed by manual mem::forget; Drop implementations assuming they always run; Pin projections that move pinned data; invariants restored only in explicit (not drop-guard) code paths",
+    "when_to_open": "When auditing Rust code: Unsafe Abstraction Drop and Panic Safety. Sink: unsafe { ptr::read / ptr::copy_nonoverlapping } followed by manual mem::forget; Drop implementations assuming they always run; Pin projections that move pinned data; invariants restored only in explicit (not drop-guard) code paths"
+  }
+]

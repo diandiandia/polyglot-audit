@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "go-05",
+  "title": "Unbounded Resource Consumption via io.ReadAll",
+  "language": "go",
+  "platform_conditions": "Go 1.x standard library (net/http, io, bufio); applies to all build targets",
+  "security_mechanism": "io.ReadAll grows its buffer without limit, so a client that streams gigabytes (or lies with a small Content-Length while sending more) exhausts server memory one request at a time. http.Server with zero ReadHeaderTimeout/ReadTimeout/IdleTimeout accepts connections that never finish, enabling slowloris-style socket exhaustion; missing http.MaxBytesReader removes the platform's per-request cap. The pattern generalizes: make([]byte, n) or make([]T, n) with n from a header allocates attacker-chosen memory instantly, and goroutines or channels spawned per request with no bound leak until the process is killed.",
+  "source_sink_clues": {
+    "source": "Request bodies, declared sizes in headers or protocol fields, and the request rate itself.",
+    "sink": "io.ReadAll(req.Body) / io/ioutil.ReadAll with no LimitReader; http.Server{...} without ReadHeaderTimeout/ReadTimeout/IdleTimeout; make([]byte, n) with n from input; per-request goroutines or channels with no bound"
+  },
+  "tracking_guards": "Require io.LimitReader or http.MaxBytesReader around every request-body read; require http.Server timeout fields be set; require allocation sizes be validated against fixed constants before make; require worker-pool or semaphore bounding for per-request concurrency.",
+  "not_candidate_when": "The read is wrapped in a LimitReader/MaxBytesReader cap sized to the data's real need, the server sets all relevant http.Server timeouts, the allocation length is clamped to a constant before make, or the endpoint is internal-only behind an enforced network boundary that attacker traffic cannot reach.",
+  "synthetic_vulnerable_example": "body, _ := io.ReadAll(req.Body)",
+  "synthetic_safe_example": "body, _ := io.ReadAll(io.LimitReader(req.Body, 1<<20))",
+  "public_references": [
+    "CWE-400: Uncontrolled Resource Consumption — https://cwe.mitre.org/data/definitions/400.html",
+    "CWE-770: Allocation of Resources Without Limits or Throttling — https://cwe.mitre.org/data/definitions/770.html",
+    "Go standard library: net/http (Server timeouts, MaxBytesReader) — https://pkg.go.dev/net/http",
+    "Go standard library: io — https://pkg.go.dev/io"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_go_05",
+      "pattern": "io\\.ReadAll\\(req\\.Body\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "go-05"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

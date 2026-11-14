@@ -1,0 +1,62 @@
+[
+  {
+    "id": "py-01",
+    "title": "Unsafe Deserialization via pickle/marshal/shelve",
+    "sink_clue": "pickle.loads / pickle.load / marshal.loads / shelve.open on attacker-influenced bytes; yaml.load without an explicit SafeLoader",
+    "when_to_open": "When auditing Python code: Unsafe Deserialization via pickle/marshal/shelve. Sink: pickle.loads / pickle.load / marshal.loads / shelve.open on attacker-influenced bytes; yaml.load without an explicit SafeLoader"
+  },
+  {
+    "id": "py-02",
+    "title": "Code and Expression Injection via eval/exec",
+    "sink_clue": "eval() / exec() / compile() on dynamic strings; __import__ and importlib.import_module with dynamic names; str.format called with an attacker-controlled format string",
+    "when_to_open": "When auditing Python code: Code and Expression Injection via eval/exec. Sink: eval() / exec() / compile() on dynamic strings; __import__ and importlib.import_module with dynamic names; str.format called with an attacker-controlled format string"
+  },
+  {
+    "id": "py-03",
+    "title": "Command Injection in subprocess with shell=True",
+    "sink_clue": "subprocess.run/call/check_output/Popen with shell=True; os.system; os.popen",
+    "when_to_open": "When auditing Python code: Command Injection in subprocess with shell=True. Sink: subprocess.run/call/check_output/Popen with shell=True; os.system; os.popen"
+  },
+  {
+    "id": "py-04",
+    "title": "Path Traversal in os.path.join and Archive Extraction",
+    "sink_clue": "os.path.join(base, attacker_path) whose result reaches open/read/write; tarfile/zipfile extractall on untrusted archives; tempfile.mktemp",
+    "when_to_open": "When auditing Python code: Path Traversal in os.path.join and Archive Extraction. Sink: os.path.join(base, attacker_path) whose result reaches open/read/write; tarfile/zipfile extractall on untrusted archives; tempfile.mktemp"
+  },
+  {
+    "id": "py-05",
+    "title": "SQL Injection in DB-API via f-string Formatting",
+    "sink_clue": "cursor.execute / cursor.executemany / connection cursor text built with f-string, %, .format, or concatenation",
+    "when_to_open": "When auditing Python code: SQL Injection in DB-API via f-string Formatting. Sink: cursor.execute / cursor.executemany / connection cursor text built with f-string, %, .format, or concatenation"
+  },
+  {
+    "id": "py-06",
+    "title": "XML Entity Expansion, External Entities, and Regex Backtracking",
+    "sink_clue": "xml.etree.ElementTree.fromstring/parse, xml.sax.parse/parseString, xml.dom.minidom.parseString on untrusted documents; re.match/search with attacker-influenced pattern or unbounded subject",
+    "when_to_open": "When auditing Python code: XML Entity Expansion, External Entities, and Regex Backtracking. Sink: xml.etree.ElementTree.fromstring/parse, xml.sax.parse/parseString, xml.dom.minidom.parseString on untrusted documents; re.match/search with attacker-influenced pattern or unbounded subject"
+  },
+  {
+    "id": "py-07",
+    "title": "Dynamic Typing and Truthiness Traps on Security Checks",
+    "sink_clue": "assert used as an authorization/authentication gate; if/while truthiness checks over untrusted collections or IDs on security paths; mutable default arguments holding security state",
+    "when_to_open": "When auditing Python code: Dynamic Typing and Truthiness Traps on Security Checks. Sink: assert used as an authorization/authentication gate; if/while truthiness checks over untrusted collections or IDs on security paths; mutable default arguments holding security state"
+  },
+  {
+    "id": "py-08",
+    "title": "SSRF and Protocol/Redirect Handling in urllib",
+    "sink_clue": "urllib.request.urlopen / Request.build_opener fetch of an attacker-influenced URL; ssl contexts created with CERT_NONE or check_hostname=False; security decisions based on urllib.parse output without canonicalization",
+    "when_to_open": "When auditing Python code: SSRF and Protocol/Redirect Handling in urllib. Sink: urllib.request.urlopen / Request.build_opener fetch of an attacker-influenced URL; ssl contexts created with CERT_NONE or check_hostname=False; security decisions based on urllib.parse output without canonicalization"
+  },
+  {
+    "id": "py-09",
+    "title": "Cryptographic Misuse: Weak PRNG, Fast Hashes, Non-constant-time Compare",
+    "sink_clue": "random.choice/random.random/randint feeding tokens or keys; hashlib.md5/sha1 used for password storage; == / != comparisons of digests or MAC tags",
+    "when_to_open": "When auditing Python code: Cryptographic Misuse: Weak PRNG, Fast Hashes, Non-constant-time Compare. Sink: random.choice/random.random/randint feeding tokens or keys; hashlib.md5/sha1 used for password storage; == / != comparisons of digests or MAC tags"
+  },
+  {
+    "id": "py-10",
+    "title": "Native Extension Buffers and Unbounded Resource Processing",
+    "sink_clue": "ctypes memory APIs sized from input; struct.unpack with input-derived formats; file/socket .read() with no cap; zlib/bz2/lzma decompress without output limits; int(str)/str(int) on attacker-sized values",
+    "when_to_open": "When auditing Python code: Native Extension Buffers and Unbounded Resource Processing. Sink: ctypes memory APIs sized from input; struct.unpack with input-derived formats; file/socket .read() with no cap; zlib/bz2/lzma decompress without output limits; int(str)/str(int) on attacker-sized values"
+  }
+]

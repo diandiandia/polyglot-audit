@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "id": "c-10",
+  "title": "Undefined Behavior in Concurrency and Signal Safety",
+  "language": "c",
+  "platform_conditions": "C11 memory model and POSIX signal semantics (Linux, macOS); specific manifestations depend on compiler optimization and CPU memory ordering",
+  "security_mechanism": "Signed arithmetic overflow is undefined behavior, so a bounds check like `if (len + offset < len)` written with signed ints can be deleted by the optimizer, which assumes the condition cannot be true. Unsynchronized access to the same object from two threads is a data race and again undefined behavior: without atomics or a mutex, one thread's write may become visible torn, reordered, or never — so a credentials or configuration flag checked without synchronization can appear set in one thread while another still observes it unset. Signal handlers add reentrancy: the handler runs on the same thread at an arbitrary point, so calling malloc/printf (non-async-signal-safe, both take internal locks) can deadlock or corrupt the heap when the signal arrives mid-allocation.",
+  "source_sink_clues": {
+    "source": "Attacker-controlled magnitudes that overflow signed arithmetic on validation paths, concurrent requests hitting shared state, and signals an adversary can trigger (SIGSEGV via malformed input, timers, SIGINT on exposed service processes).",
+    "sink": "Signed overflow arithmetic guarding security checks; reads/writes of shared flags or pointers without atomics or locks; printf/malloc/memcpy and other non-async-signal-safe calls inside signal handlers"
+  },
+  "tracking_guards": "Check that overflow-sensitive bounds arithmetic uses unsigned types or checked builtins (__builtin_add_overflow) before the comparison, that shared security state is _Atomic or mutex-protected, and that signal handlers restrict themselves to volatile sig_atomic_t flags or write() on a self-pipe.",
+  "not_candidate_when": "The arithmetic is unsigned with wrapping treated explicitly, the shared state is confined to one thread or already synchronized, the handler only sets a sig_atomic_t flag, or the concurrency is unreachable from request paths (single-threaded build, init-only state).",
+  "synthetic_vulnerable_example": "void handler(int sig) { printf(\"Signal: %d\\n\", sig); }",
+  "synthetic_safe_example": "void handler(int sig) { write(STDERR_FILENO, \"sig\\n\", 4); }",
+  "public_references": [
+    "CWE-362: Concurrent Execution using Shared Resource with Improper Synchronization — https://cwe.mitre.org/data/definitions/362.html",
+    "CWE-190: Integer Overflow or Wraparound — https://cwe.mitre.org/data/definitions/190.html",
+    "CWE-479: Signal Handler Use of a Non-reentrant Function — https://cwe.mitre.org/data/definitions/479.html",
+    "man7.org: signal-safety(7) — https://man7.org/linux/man-pages/man7/signal-safety.7.html",
+    "SEI CERT C Coding Standard: SIG30-C (async-signal-safe handlers), MSC21-C (UB in checks)"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_c_10",
+      "pattern": "printf\\(\\\"Signal",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "c-10"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

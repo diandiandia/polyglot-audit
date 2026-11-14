@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "id": "csharp-05",
+  "title": "Path Traversal via Path.Combine Absolute Override",
+  "language": "csharp",
+  "platform_conditions": ".NET Framework 4.x and modern .NET; behavior identical on Windows and Unix apart from drive-letter/root syntax",
+  "security_mechanism": "Path.Combine is a string joiner with one documented trap: if the second argument is rooted (an absolute path like /etc/passwd or C:\\Windows\\x, or even a drive-relative \\\\path), Combine returns the second argument unchanged and the base directory is silently discarded. '..', '.', and reserved-device names pass through untouched, so a single Combine never confines the result to the base; File.Open/StreamReader then operate on an attacker-chosen path. Archive extraction (ZipArchiveEntry.FullName) reintroduces the same shape because entry names may carry '..' or rooted paths that Combine happily accepts.",
+  "source_sink_clues": {
+    "source": "Uploaded filenames, archive entry FullName values, download/path parameters, and any path component derived from a request.",
+    "sink": "Path.Combine(baseDir, attackerPath) whose result feeds File/Directory/StreamReader APIs; ZipFile.ExtractToFile(entry, Path.Combine(dest, entry.FullName)) on untrusted archives"
+  },
+  "tracking_guards": "Check for Path.GetFileName (or GetFullPath with a containment test) before Combine, and require the full-path containment check: Path.GetFullPath(candidate) must start with the base's GetFullPath plus the directory separator; for archives require entry-name validation that rejects rooted names and '..' segments before ExtractToFile.",
+  "not_candidate_when": "The path component is generated server-side (GUID or sequence number), GetFileName strips directories and the GetFullPath containment check rejects escapes, or archive entries are validated/rejected for rooted and '..' names before extraction.",
+  "synthetic_vulnerable_example": "string path = Path.Combine(\"/base/dir\", userPath);",
+  "synthetic_safe_example": "string clean = Path.GetFileName(userPath); string path = Path.Combine(\"/base/dir\", clean);",
+  "public_references": [
+    "CWE-22: Improper Limitation of a Pathname to a Restricted Directory — https://cwe.mitre.org/data/definitions/22.html",
+    "Microsoft: Path.Combine remarks — https://learn.microsoft.com/en-us/dotnet/api/system.io.path.combine"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_csharp_05",
+      "pattern": "Path\\.Combine\\(\\\"/base/dir\\\"",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "csharp-05"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

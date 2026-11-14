@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "kotlin-07",
+  "title": "Process Execution via String Template Commands",
+  "language": "kotlin",
+  "platform_conditions": "Kotlin/JVM semantics over java.lang.Runtime / java.lang.ProcessBuilder; applies on server JVM and Android runtime (Runtime.exec available since API level 1)",
+  "security_mechanism": "Runtime.getRuntime().exec(String) tokenizes the whole command line with StringTokenizer (whitespace splitting, no shell quoting rules), so a value containing spaces or shell metacharacters either breaks into extra argv elements or — when the string is passed through 'sh -c' — is interpreted by the shell with full metacharacter semantics (';', '|', '$(...)'). Kotlin string templates make this splice invisible at the call site: \"sh -c $cmd\" looks like one fixed command while $cmd contributes the actual program. Argument injection also occurs without a shell when an input starting with '-' becomes an option of the launched program.",
+  "source_sink_clues": {
+    "source": "Deep-link/Intent parameters, exported-component extras, or server-side request data that reach the executed command string or an argv element.",
+    "sink": "Runtime.getRuntime().exec with a template or concatenated string, ProcessBuilder with a single shell string, and any exec wrapped in 'sh -c' or 'su -c'"
+  },
+  "tracking_guards": "Check the process is started with ProcessBuilder and an argv list with a fixed executable and the dynamic value as one element (never through a shell); if a shell is unavoidable, verify quoting/escaping and strict allowlist validation of the value; check '-'-prefixed inputs cannot reach a program that parses options (positional separator '--' or validation).",
+  "not_candidate_when": "The command is a fixed constant with no interpolation, the dynamic value is one argv element to a program that takes no options, or the value is validated against a strict allowlist grammar that excludes metacharacters before the call.",
+  "synthetic_vulnerable_example": "Runtime.getRuntime().exec(\"sh -c $cmd\")",
+  "synthetic_safe_example": "ProcessBuilder(\"/bin/safe\", arg).start()",
+  "public_references": [
+    "CWE-78: Improper Neutralization of Special Elements used in an OS Command — https://cwe.mitre.org/data/definitions/78.html",
+    "CWE-88: Argument Injection or Modification — https://cwe.mitre.org/data/definitions/88.html",
+    "JDK documentation: java.lang.Runtime.exec — https://docs.oracle.com/javase/8/docs/api/java/lang/Runtime.html",
+    "JDK documentation: java.lang.ProcessBuilder — https://docs.oracle.com/javase/8/docs/api/java/lang/ProcessBuilder.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_kotlin_07",
+      "pattern": "Runtime\\.getRuntime\\(\\)\\.exec\\(\\\"sh -c \\$cmd\\\"\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "kotlin-07"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

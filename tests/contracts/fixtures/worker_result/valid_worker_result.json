@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "task_id": "task-0001",
+  "attempt_id": "att-0001",
+  "kind": "hunt",
+  "coverage": [
+    {
+      "snapshot_id": "snp-0001",
+      "unit_id": "u-0001",
+      "dimension": "observed_read",
+      "source": "worker",
+      "ranges": [{"path": "app/handlers/upload.py", "line_start": 1, "line_end": 40}],
+      "confidence": "exact"
+    }
+  ],
+  "records": [],
+  "overflow": []
+}

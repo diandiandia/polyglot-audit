@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "go-04",
+  "title": "Integer Conversion Truncation in Boundary Checks",
+  "language": "go",
+  "platform_conditions": "Go 1.x standard library; applies to all build targets (untyped constant conversions are compile-time checked, variable conversions are not)",
+  "security_mechanism": "strconv.Atoi returns int (64-bit on mainstream platforms); converting that result to int16 or int32 silently keeps only the low bits, so 32768 becomes -32768 and a negative-injected value flips sign. The check the developer wrote runs on the pre-conversion value, while the allocation or index uses the truncated one, so the guard and the use disagree. The same shape appears when len() (int) is compared against or converted to uint types — a negative-to-unsigned conversion produces a huge value that passes 'size > 0' style reasoning — and when two's-complement wraparound in an accumulator drives a bounds computation.",
+  "source_sink_clues": {
+    "source": "Numeric request fields, header values (Content-Length, protocol size fields), and IDs from query strings parsed with strconv.",
+    "sink": "int16(idx) / int32(idx) / uint(n) conversions applied to strconv results or lengths; arithmetic on mixed int/uint operands feeding allocations, slices, or access-control comparisons"
+  },
+  "tracking_guards": "Require the range check to run on the value AFTER conversion (or use try-style helpers that reject out-of-range values) so the checked and used values are identical; require explicit sign checks before any unsigned conversion; prefer int throughout and reject values outside the target width via comparison instead of truncating.",
+  "not_candidate_when": "The conversion is followed by an immediate range check on the converted value, the value was already constrained to the target range before conversion (e.g. <= 32767), or the arithmetic operates in constant-typed values that cannot exceed the target width by construction.",
+  "synthetic_vulnerable_example": "idx, _ := strconv.Atoi(s); shortIdx := int16(idx)",
+  "synthetic_safe_example": "idx, _ := strconv.Atoi(s); if idx < 0 || idx > 32767 { return }; shortIdx := int16(idx)",
+  "public_references": [
+    "CWE-190: Integer Overflow or Wraparound — https://cwe.mitre.org/data/definitions/190.html",
+    "CWE-197: Numeric Truncation Error — https://cwe.mitre.org/data/definitions/197.html",
+    "Go standard library: strconv — https://pkg.go.dev/strconv"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_go_04",
+      "pattern": "shortIdx\\s*:=\\s*int16\\(idx\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "go-04"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

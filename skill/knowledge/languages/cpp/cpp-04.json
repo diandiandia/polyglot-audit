@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "cpp-04",
+  "title": "Size Computation Overflow in Container Allocation",
+  "language": "cpp",
+  "platform_conditions": "C++11 and later on any conforming toolchain; signed overflow in the size computation is undefined behavior, unsigned wraps silently",
+  "security_mechanism": "Container capacity math runs in the same machine integers as C: `user_n * sizeof(int)` in size_t wraps modulo 2^64 (or 2^32), so two large attacker values produce a small product and reserve()/resize()/new[] succeed with a fraction of the requested storage. Subsequent indexed writes counted with the original n then run past the small allocation. Mixed-width arithmetic makes it worse: an int count converted to size_t sign-extends a negative value into a near-2^64 number, and a reserve() that throws bad_alloc on one platform silently wraps on another where size_t is narrower.",
+  "source_sink_clues": {
+    "source": "Counts, element counts, or message lengths taken from protocol fields and request bodies (e.g. an item-count header followed by the items).",
+    "sink": "vector::reserve/resize, new T[n], make_unique<T[]>(n), or any allocator call whose argument is a product or sum of attacker values"
+  },
+  "tracking_guards": "Check that the count is bounded by an explicit protocol maximum before any arithmetic, that the multiplication uses a checked builtin (__builtin_mul_overflow) or a pre-division test (n > SIZE_MAX / sizeof(T)), and that the result stays in size_t throughout with no intermediate int conversions.",
+  "not_candidate_when": "The count is validated to a small fixed maximum before allocation, the element size and count are compile-time constants with a provably in-range product, or the allocation feeds an offline tool whose inputs no external party controls.",
+  "synthetic_vulnerable_example": "size_t total = user_n * sizeof(int); vec.reserve(total);",
+  "synthetic_safe_example": "if (__builtin_mul_overflow(user_n, sizeof(int), &total)) throw std::overflow_error(\"overflow\"); vec.reserve(total);",
+  "public_references": [
+    "CWE-190: Integer Overflow or Wraparound — https://cwe.mitre.org/data/definitions/190.html",
+    "CWE-787: Out-of-bounds Write — https://cwe.mitre.org/data/definitions/787.html",
+    "cppreference: std::vector::reserve — https://en.cppreference.com/w/cpp/container/vector/reserve",
+    "C++ Core Guidelines: ES.103 (no overflow) — https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_cpp_04",
+      "pattern": "vec\\.reserve\\(total\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "cpp-04"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

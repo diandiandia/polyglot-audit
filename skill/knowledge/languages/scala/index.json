@@ -1,0 +1,62 @@
+[
+  {
+    "id": "scala-01",
+    "title": "Unsafe Java Deserialization via ObjectInputStream",
+    "sink_clue": "ObjectInputStream.readObject on attacker-influenced streams; remote-message pipelines left on default Java serialization; polymorphic JSON decoders resolving class names from the payload",
+    "when_to_open": "When auditing Scala code: Unsafe Java Deserialization via ObjectInputStream. Sink: ObjectInputStream.readObject on attacker-influenced streams; remote-message pipelines left on default Java serialization; polymorphic JSON decoders resolving class names from the payload"
+  },
+  {
+    "id": "scala-02",
+    "title": "Command Injection via scala.sys.process Interpolator",
+    "sink_clue": "String-typed scala.sys.process builders (\"...\".! / .!! / Process(\"...\")) with interpolation; ToolBox.eval; ScriptEngine.eval on attacker text",
+    "when_to_open": "When auditing Scala code: Command Injection via scala.sys.process Interpolator. Sink: String-typed scala.sys.process builders (\"...\".! / .!! / Process(\"...\")) with interpolation; ToolBox.eval; ScriptEngine.eval on attacker text"
+  },
+  {
+    "id": "scala-03",
+    "title": "SQL Injection in String Interpolation Queries",
+    "sink_clue": "statement.execute / prepareStatement on s-interpolated strings; query interpolators receiving raw string fragments; identifier/ORDER BY concatenation",
+    "when_to_open": "When auditing Scala code: SQL Injection in String Interpolation Queries. Sink: statement.execute / prepareStatement on s-interpolated strings; query interpolators receiving raw string fragments; identifier/ORDER BY concatenation"
+  },
+  {
+    "id": "scala-04",
+    "title": "Implicit Conversion Changing Security Semantics",
+    "sink_clue": "implicit def / Conversion givens defined on security-relevant types; implicit ExecutionContext selection for privileged work; == comparisons across unrelated types in decision logic",
+    "when_to_open": "When auditing Scala code: Implicit Conversion Changing Security Semantics. Sink: implicit def / Conversion givens defined on security-relevant types; implicit ExecutionContext selection for privileged work; == comparisons across unrelated types in decision logic"
+  },
+  {
+    "id": "scala-05",
+    "title": "Non-Exhaustive Pattern Matching and Option.get Panic",
+    "sink_clue": "Option.get / .head / Try.get / .apply on parsed values; non-exhaustive match on input-driven variants; fail-open default branches in authorization matches",
+    "when_to_open": "When auditing Scala code: Non-Exhaustive Pattern Matching and Option.get Panic. Sink: Option.get / .head / Try.get / .apply on parsed values; non-exhaustive match on input-driven variants; fail-open default branches in authorization matches"
+  },
+  {
+    "id": "scala-06",
+    "title": "Concurrency: Escaping Mutable State in Actor Futures",
+    "sink_clue": "Future { ... } closures referencing vars/mutable collections or actor state; blocking operations on the default dispatcher; lazy val first-touch under contention",
+    "when_to_open": "When auditing Scala code: Concurrency: Escaping Mutable State in Actor Futures. Sink: Future { ... } closures referencing vars/mutable collections or actor state; blocking operations on the default dispatcher; lazy val first-touch under contention"
+  },
+  {
+    "id": "scala-07",
+    "title": "XML External Entity Processing in scala.xml.XML",
+    "sink_clue": "scala.xml.XML.load / loadString / withSAXParser on untrusted documents; XML literal construction with interpolated values",
+    "when_to_open": "When auditing Scala code: XML External Entity Processing in scala.xml.XML. Sink: scala.xml.XML.load / loadString / withSAXParser on untrusted documents; XML literal construction with interpolated values"
+  },
+  {
+    "id": "scala-08",
+    "title": "Unbounded Stream and LazyList Resource Exhaustion",
+    "sink_clue": "LazyList.from(...)/memoized chains over request data; stream/frame reads sized from wire headers without caps; unbounded mailbox receive; .r regex over untrusted strings",
+    "when_to_open": "When auditing Scala code: Unbounded Stream and LazyList Resource Exhaustion. Sink: LazyList.from(...)/memoized chains over request data; stream/frame reads sized from wire headers without caps; unbounded mailbox receive; .r regex over untrusted strings"
+  },
+  {
+    "id": "scala-09",
+    "title": "Path Traversal via scala.io.Source",
+    "sink_clue": "scala.io.Source.fromURL / fromFile over attacker-influenced strings; JVM File/Paths operations over archive entry names",
+    "when_to_open": "When auditing Scala code: Path Traversal via scala.io.Source. Sink: scala.io.Source.fromURL / fromFile over attacker-influenced strings; JVM File/Paths operations over archive entry names"
+  },
+  {
+    "id": "scala-10",
+    "title": "Secret Leakage via case class toString()",
+    "sink_clue": "scala.util.Random for security values; case class toString / productElement access exposing secret fields into logs and responses; == / != over digest arrays",
+    "when_to_open": "When auditing Scala code: Secret Leakage via case class toString(). Sink: scala.util.Random for security values; case class toString / productElement access exposing secret fields into logs and responses; == / != over digest arrays"
+  }
+]

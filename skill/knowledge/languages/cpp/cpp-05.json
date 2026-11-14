@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "cpp-05",
+  "title": "Unsafe Type Casting and Type Confusion",
+  "language": "cpp",
+  "platform_conditions": "C++11 and later on any conforming toolchain; RTTI-based dynamic_cast requires the base class to be polymorphic (at least one virtual function)",
+  "security_mechanism": "static_cast<Derived*>(base_ptr) converts the pointer with zero runtime information: if the object is actually a different derived type (or a base), every subsequent member access through the resulting pointer computes offsets for the wrong layout, so a field write lands inside another field — classic type confusion that turns an object of one attacker-influenced type into another. reinterpret_cast and C-style casts are stronger still, permitting pointer-type punning and integer/pointer round-trips that violate strict aliasing. Unions used for type punning read a member of type T from bytes written as type U, which is undefined behavior the compiler may optimize across.",
+  "source_sink_clues": {
+    "source": "Type tags, discriminator fields, or polymorphic handles that arrive from deserialized data, plugin registries, or protocol payloads and then drive a downcast.",
+    "sink": "static_cast / reinterpret_cast / C-style cast to a derived or unrelated pointer type on data whose dynamic type is attacker-influenced; union member reads of a different active member"
+  },
+  "tracking_guards": "Check that polymorphic downcasts use dynamic_cast with a null-result check (requires RTTI enabled), that any tag-driven cast validates the tag against the concrete object (e.g. via a virtual type id comparison that also fails closed), and that data reinterpretation goes through bit_cast (C++20) or explicit serialization rather than union punning.",
+  "not_candidate_when": "The object's dynamic type is guaranteed by construction (factory that only produces Derived) and documented with an assertion, dynamic_cast with failure handling replaces the static_cast, or the cast is between layout-compatible numeric types with no object reuse.",
+  "synthetic_vulnerable_example": "Derived *d = static_cast<Derived*>(base_ptr);",
+  "synthetic_safe_example": "Derived *d = dynamic_cast<Derived*>(base_ptr); if (!d) return;",
+  "public_references": [
+    "CWE-704: Incorrect Type Conversion or Cast — https://cwe.mitre.org/data/definitions/704.html",
+    "CWE-843: Access of Resource Using Incompatible Type ('Type Confusion') — https://cwe.mitre.org/data/definitions/843.html",
+    "cppreference: static_cast — https://en.cppreference.com/w/cpp/language/static_cast",
+    "cppreference: dynamic_cast — https://en.cppreference.com/w/cpp/language/dynamic_cast"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_cpp_05",
+      "pattern": "static_cast<Derived\\*>",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "cpp-05"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

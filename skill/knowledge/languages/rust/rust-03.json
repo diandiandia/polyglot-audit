@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "rust-03",
+  "title": "Denial of Service via Panic on Untrusted Input",
+  "language": "rust",
+  "platform_conditions": "Any Rust toolchain; panic behavior depends on release profile (panic=unwind unwinds to the nearest catch/recover, panic=abort kills the process immediately)",
+  "security_mechanism": "Rust turns several ordinary mistakes into process-level aborts rather than error values: slice indexing out of range, unwrap/expect on None or Err, integer division by zero, RefCell::borrow_mut while already borrowed, and `array[index]` on fixed arrays all panic. On a shared service a panic triggered by one request aborts (panic=abort) or unwinds past the handler (unwind with no catch_unwind in the worker loop), taking the worker or whole process down. Deep recursion on attacker-shaped input (nested parsers) exhausts the fixed thread stack and raises a stack-overflow abort that no catch_unwind can catch, because it is not a Rust panic at all.",
+  "source_sink_clues": {
+    "source": "Request fields that select indexes, drive recursion depth, or arrive in shapes the code assumed impossible: list indexes, numeric fields used as divisors, deeply nested JSON/XML, empty optional payloads.",
+    "sink": "unwrap()/expect() on input-derived Result/Option; slice/array indexing and str range slicing with external indexes; RefCell double borrow; unbounded recursion on external data"
+  },
+  "tracking_guards": "Check that indexing uses .get()/.get_mut() with explicit error handling and division checks for zero, that unwrap/expect is confined to values proven by an earlier check or by construction, that recursion is bounded by an explicit depth limit, and that the worker loop installs catch_unwind (and/or the profile sets panic=unwind deliberately) so one request's panic is contained.",
+  "not_candidate_when": "The index/length was validated against .len() before the access, the unwrap is backed by a preceding check that makes panic unreachable for any input, recursion depth is capped below the stack budget, or the process handles panics per-worker and the input cannot exhaust the stack.",
+  "synthetic_vulnerable_example": "let val = packet[user_index];",
+  "synthetic_safe_example": "let val = packet.get(user_index).ok_or(Error::InvalidIndex)?;",
+  "public_references": [
+    "CWE-755: Improper Handling of Exceptional Conditions — https://cwe.mitre.org/data/definitions/755.html",
+    "CWE-248: Uncaught Exception — https://cwe.mitre.org/data/definitions/248.html",
+    "CWE-674: Uncontrolled Recursion — https://cwe.mitre.org/data/definitions/674.html",
+    "Rust std: panic macro and catch_unwind — https://doc.rust-lang.org/std/panic/fn.catch_unwind.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_rust_03",
+      "pattern": "packet\\[user_index\\]",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "rust-03"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

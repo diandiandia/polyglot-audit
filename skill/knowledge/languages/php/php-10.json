@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "php-10",
+  "title": "strpos False vs Zero Comparison Hazard",
+  "language": "php",
+  "platform_conditions": "PHP 7.4/8.x; preg_match returns false instead of 0 when pcre.backtracking_limit (default 1,000,000) is exceeded",
+  "security_mechanism": "strpos() returns the match offset — 0 for a prefix match — and false when there is none; because 0 == false under loose comparison, if (strpos($url, $prefix) == false) treats the exactly-matching attacker-chosen input as a failure while accepting everything else, inverting the check. Similar quirks compose into fail-open gates: @ suppresses the error from a failed call so execution continues on an invalid value, intval()/(int) stop at the first non-digit ('123abc' becomes 123), and is_numeric accepts exponential notation ('1e3'). preg_match returns false — not 0 — when the backtrack limit is hit, so an adversarial subject makes a validator's return indistinguishable from 'no match' unless the caller compares === 1, and a pattern ending in $ still matches before a trailing newline because $ anchors to the end-or-before-final-newline position.",
+  "source_sink_clues": {
+    "source": "Any attacker-controlled scalar flowing into these idioms: URLs validated by strpos prefixes, filter inputs validated by preg_match, numeric strings passed through (int)/is_numeric.",
+    "sink": "Loose == / != tests of strpos results on security gates; @-suppressed calls whose results feed checks; (int)/intval coercion before authorization decisions; preg_match validators not compared with === 1"
+  },
+  "tracking_guards": "Require !== false / !== 0 three-way comparisons with explicit handling of both outcomes; require that no @ operator sits on a security-relevant call and that null/false results are handled; require preg_match(...) === 1 with \\A...\\z anchors and explicit newline rejection; require strict type validation before numeric coercion.",
+  "not_candidate_when": "Return values are tested with !== and both the false and 0 cases are handled explicitly with the intended meaning, @ is confined to non-security cleanup whose results are validated afterwards, or the validator anchors with \\A/\\z, rejects trailing newlines, and compares preg_match results with === 1.",
+  "synthetic_vulnerable_example": "if (strpos($url, 'https://example.com') == false) { reject(); }",
+  "synthetic_safe_example": "if (strpos($url, 'https://example.com') !== 0) { reject(); }",
+  "public_references": [
+    "CWE-697: Incorrect Comparison — https://cwe.mitre.org/data/definitions/697.html",
+    "CWE-252: Unchecked Return Value — https://cwe.mitre.org/data/definitions/252.html",
+    "PHP manual: strpos — https://www.php.net/manual/en/function.strpos.php",
+    "PHP manual: preg_match — https://www.php.net/manual/en/function.preg-match.php"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_php_10",
+      "pattern": "strpos\\(.*==\\s*false",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "php-10"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

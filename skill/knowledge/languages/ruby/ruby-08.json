@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "ruby-08",
+  "title": "Path Traversal via Pathname#join",
+  "language": "ruby",
+  "platform_conditions": "Ruby 3.x standard library; MRI",
+  "security_mechanism": "Pathname#join replaces the whole path when the argument is absolute — Pathname.new('/safe/dir').join('/etc/passwd') is /etc/passwd — and '..' segments survive in plain File.join/File.read construction, so a single join call never confines the result to the base directory. Dir.glob expands metacharacters (*, ?, [, {) appearing in an attacker-supplied pattern beyond the intended directory, and archive entry names containing absolute paths or '..' escape the extraction root when unpacked verbatim. Temporary names built as Dir.tmpdir plus a fixed string are predictable, letting a local attacker pre-create a symlink at that path.",
+  "source_sink_clues": {
+    "source": "Request-supplied file names, download paths, glob patterns, archive entry names, and any path component from external input.",
+    "sink": "Pathname#join / File.join / File.read with attacker components; Dir.glob with input-derived patterns; archive extraction loops; hard-coded temporary file names"
+  },
+  "tracking_guards": "Require File.basename extraction plus a realpath containment check (candidate.realpath starts_with? base.realpath) before use; require glob patterns to be constant with input escaped (Dir.glob escape) or results filtered; require archive entry names validated against the extraction root; require Tempfile.create for temporary files.",
+  "not_candidate_when": "The component is basename()'d and containment is verified via realpath before any read/write, the glob pattern is constant with input escaped or result-filtered, archive members are validated against the target root, or temporary files come from Tempfile.create.",
+  "synthetic_vulnerable_example": "Pathname.new('/safe/dir').join(params[:path])",
+  "synthetic_safe_example": "File.join('/safe/dir', File.basename(params[:path]))",
+  "public_references": [
+    "CWE-22: Improper Limitation of a Pathname to a Restricted Directory — https://cwe.mitre.org/data/definitions/22.html",
+    "Ruby stdlib documentation: Pathname — https://docs.ruby-lang.org/en/3.2/Pathname.html",
+    "Ruby stdlib documentation: Dir — https://docs.ruby-lang.org/en/3.2/Dir.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_ruby_08",
+      "pattern": "Pathname\\.new\\('/safe/dir'\\)\\.join",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "ruby-08"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "ts-01",
+  "title": "Type Erasure: Confusing Compile-Time Type with Runtime Validation",
+  "language": "typescript",
+  "platform_conditions": "Type annotations erased by tsc at emit time; the runtime behavior is plain JavaScript wherever the compiled output runs",
+  "security_mechanism": "A type assertion (req.body as UserProfile) adds no runtime instruction: tsc emits the value unchanged and the annotation exists only in the checker. Every property the interface declares -- required fields, string-typed role, numeric ID -- is simply absent, of another type, or attacker-chosen at runtime, and downstream code that 'trusted' the annotation dereferences undefined or compares attacker strings against privileged values. The assertion also silences exactly the checker error that would have flagged the missing validation, so the defect is invisible at compile time by construction.",
+  "source_sink_clues": {
+    "source": "Request bodies, JSON payloads, and any external data bound with 'as T' or annotated as T without a runtime schema pass.",
+    "sink": "'as T' assertions and typed parameters on data that crossed the network boundary without runtime validation feeding authorization, persistence, or business logic"
+  },
+  "tracking_guards": "Check the boundary parses through a runtime schema validator (zod/valibot-style .parse, io-ts, or hand-written narrowing) before the value is treated as T; check unknown is used at the boundary instead of any/as.",
+  "not_candidate_when": "The asserted value was produced by an already-validated parse in the same module, the type describes data the code itself constructed (constants), or a validated schema decode is the first operation on the value.",
+  "synthetic_vulnerable_example": "const body = req.body as UserProfile;",
+  "synthetic_safe_example": "const body = UserProfileSchema.parse(req.body);",
+  "public_references": [
+    "CWE-704: Incorrect Type Conversion or Cast — https://cwe.mitre.org/data/definitions/704.html",
+    "TypeScript Handbook: Narrowing — https://www.typescriptlang.org/docs/handbook/2/narrowing.html",
+    "TypeScript Handbook: Everyday Types — https://www.typescriptlang.org/docs/handbook/2/everyday-types.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_ts_01",
+      "pattern": "req\\.body\\s+as\\s+UserProfile",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "ts-01"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

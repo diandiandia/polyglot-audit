@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "csharp-04",
+  "title": "Process and Dynamic Assembly Execution",
+  "language": "csharp",
+  "platform_conditions": ".NET Framework 4.x and modern .NET (UseShellExecute semantics differ: shell-resolved on Windows when true, exec-family style when false)",
+  "security_mechanism": "Process.Start with UseShellExecute=true hands the arguments to the OS shell (cmd.exe / Explorer), so metacharacters and additional commands inside an interpolated argument are executed by the shell rather than passed as data to the target program; even with UseShellExecute=false an argument beginning with '-' becomes an option of the spawned tool. The dynamic-execution family has a second axis: Assembly.Load and Type.GetType(name) followed by reflection (Activator.CreateInstance, MethodInfo.Invoke) turn an attacker-supplied type or assembly name into arbitrary object construction and method invocation inside the process.",
+  "source_sink_clues": {
+    "source": "Request fields used as command arguments, tool names, file paths passed to helper executables, and attacker-influenced type/assembly names resolved via reflection or plugin loading.",
+    "sink": "Process.Start(ProcessStartInfo with UseShellExecute=true) or interpolated arguments; Assembly.Load / Assembly.LoadFrom with dynamic names; Type.GetType plus Activator.CreateInstance / MethodInfo.Invoke"
+  },
+  "tracking_guards": "Require a fixed executable path with UseShellExecute=false and each dynamic value as a separate element of ArgumentList; verify values that could start with '-' are passed after '--' or rejected; for reflection, require an allowlist of type/assembly names resolved from a fixed mapping instead of from input.",
+  "not_candidate_when": "The executable path is constant, UseShellExecute is false, and dynamic values travel as single ArgumentList elements to a tool with no option parsing; reflection targets come from a compiled-in allowlist; or the argument is validated against a strict grammar that cannot introduce shell syntax or option characters.",
+  "synthetic_vulnerable_example": "Process.Start(new ProcessStartInfo(\"cmd.exe\", \"/c \" + userInput) { UseShellExecute = true });",
+  "synthetic_safe_example": "Process.Start(\"trusted.exe\", new[] { userInput });",
+  "public_references": [
+    "CWE-78: Improper Neutralization of Special Elements used in an OS Command — https://cwe.mitre.org/data/definitions/78.html",
+    "CWE-88: Argument Injection or Modification — https://cwe.mitre.org/data/definitions/88.html",
+    "CWE-470: Use of Externally-Controlled Input to Select Classes or Code — https://cwe.mitre.org/data/definitions/470.html",
+    "Microsoft: Process.Start — https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.process.start"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_csharp_04",
+      "pattern": "Process\\.Start\\(.*UseShellExecute",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "csharp-04"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

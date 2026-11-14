@@ -1,0 +1,62 @@
+[
+  {
+    "id": "csharp-01",
+    "title": "Unsafe Deserialization via BinaryFormatter",
+    "sink_clue": "BinaryFormatter.Deserialize / UnsafeDeserialize on attacker-influenced streams; NetDataContractSerializer and LosFormatter with the same payload shapes; JSON/XML deserializers configured with a type-resolution callback",
+    "when_to_open": "When auditing C# code: Unsafe Deserialization via BinaryFormatter. Sink: BinaryFormatter.Deserialize / UnsafeDeserialize on attacker-influenced streams; NetDataContractSerializer and LosFormatter with the same payload shapes; JSON/XML deserializers configured with a type-resolution callback"
+  },
+  {
+    "id": "csharp-02",
+    "title": "SQL Injection via ADO.NET String Interpolation",
+    "sink_clue": "SqlCommand / NpgsqlCommand.CommandText (or the provider's raw-SQL API) assigned from an interpolated or concatenated string, then ExecuteReader/ExecuteNonQuery/ExecuteScalar",
+    "when_to_open": "When auditing C# code: SQL Injection via ADO.NET String Interpolation. Sink: SqlCommand / NpgsqlCommand.CommandText (or the provider's raw-SQL API) assigned from an interpolated or concatenated string, then ExecuteReader/ExecuteNonQuery/ExecuteScalar"
+  },
+  {
+    "id": "csharp-03",
+    "title": "XML External Entity (XXE) and Insecure DTD",
+    "sink_clue": "XmlDocument.Load/LoadXml, XmlTextReader/XmlReader created with DtdProcessing.Parse or a non-null XmlResolver, XslCompiledTransform.Load with enableScript=true, all fed untrusted XML",
+    "when_to_open": "When auditing C# code: XML External Entity (XXE) and Insecure DTD. Sink: XmlDocument.Load/LoadXml, XmlTextReader/XmlReader created with DtdProcessing.Parse or a non-null XmlResolver, XslCompiledTransform.Load with enableScript=true, all fed untrusted XML"
+  },
+  {
+    "id": "csharp-04",
+    "title": "Process and Dynamic Assembly Execution",
+    "sink_clue": "Process.Start(ProcessStartInfo with UseShellExecute=true) or interpolated arguments; Assembly.Load / Assembly.LoadFrom with dynamic names; Type.GetType plus Activator.CreateInstance / MethodInfo.Invoke",
+    "when_to_open": "When auditing C# code: Process and Dynamic Assembly Execution. Sink: Process.Start(ProcessStartInfo with UseShellExecute=true) or interpolated arguments; Assembly.Load / Assembly.LoadFrom with dynamic names; Type.GetType plus Activator.CreateInstance / MethodInfo.Invoke"
+  },
+  {
+    "id": "csharp-05",
+    "title": "Path Traversal via Path.Combine Absolute Override",
+    "sink_clue": "Path.Combine(baseDir, attackerPath) whose result feeds File/Directory/StreamReader APIs; ZipFile.ExtractToFile(entry, Path.Combine(dest, entry.FullName)) on untrusted archives",
+    "when_to_open": "When auditing C# code: Path Traversal via Path.Combine Absolute Override. Sink: Path.Combine(baseDir, attackerPath) whose result feeds File/Directory/StreamReader APIs; ZipFile.ExtractToFile(entry, Path.Combine(dest, entry.FullName)) on untrusted archives"
+  },
+  {
+    "id": "csharp-06",
+    "title": "ASP.NET Over-Posting and Mass Assignment",
+    "sink_clue": "Action parameters bound directly to entity types ([FromForm] User entity, User entity) followed by DbContext.Add/Update or direct persistence; controller classes whose [Authorize]/[ValidateAntiForgeryToken] attributes are re-declared and thereby overridden",
+    "when_to_open": "When auditing C# code: ASP.NET Over-Posting and Mass Assignment. Sink: Action parameters bound directly to entity types ([FromForm] User entity, User entity) followed by DbContext.Add/Update or direct persistence; controller classes whose [Authorize]/[ValidateAntiForgeryToken] attributes are re-declared and thereby overridden"
+  },
+  {
+    "id": "csharp-07",
+    "title": "Raw HTML Output Leading to XSS",
+    "sink_clue": "@Html.Raw(...), new HtmlString(...), [MarkupString]-decorated Blazor fields, and direct @model-to-IHtmlContent assignments rendered into a page",
+    "when_to_open": "When auditing C# code: Raw HTML Output Leading to XSS. Sink: @Html.Raw(...), new HtmlString(...), [MarkupString]-decorated Blazor fields, and direct @model-to-IHtmlContent assignments rendered into a page"
+  },
+  {
+    "id": "csharp-08",
+    "title": "Cryptography and Randomness Misuse",
+    "sink_clue": "new Random() feeding security values; Aes/DESCryptoServiceProvider configured with CipherMode.ECB or a constant IV; certificate-validation callbacks that return true; == / SequenceEqual on digests or MACs",
+    "when_to_open": "When auditing C# code: Cryptography and Randomness Misuse. Sink: new Random() feeding security values; Aes/DESCryptoServiceProvider configured with CipherMode.ECB or a constant IV; certificate-validation callbacks that return true; == / SequenceEqual on digests or MACs"
+  },
+  {
+    "id": "csharp-09",
+    "title": "Unsafe Code and Span Memory Boundary Violations",
+    "sink_clue": "stackalloc byte[userLength] (or stackalloc Span with input length); Marshal.Copy/Marshal.PtrToStructure with input-derived counts; pointer arithmetic inside unsafe blocks over externally sized buffers",
+    "when_to_open": "When auditing C# code: Unsafe Code and Span Memory Boundary Violations. Sink: stackalloc byte[userLength] (or stackalloc Span with input length); Marshal.Copy/Marshal.PtrToStructure with input-derived counts; pointer arithmetic inside unsafe blocks over externally sized buffers"
+  },
+  {
+    "id": "csharp-10",
+    "title": "Resource Exhaustion and Asynchronous Traps",
+    "sink_clue": "Regex.Match/IsMatch/Replace on instances without a matchTimeout; reads and collections grown from request data with no cap; async void handlers on request paths; checked-arithmetic-free comparisons guarding sizes",
+    "when_to_open": "When auditing C# code: Resource Exhaustion and Asynchronous Traps. Sink: Regex.Match/IsMatch/Replace on instances without a matchTimeout; reads and collections grown from request data with no cap; async void handlers on request paths; checked-arithmetic-free comparisons guarding sizes"
+  }
+]

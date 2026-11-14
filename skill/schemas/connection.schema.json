@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polyglot-audit.internal/schemas/connection.schema.json",
+  "description": "SWR-005/SWR-007 版本化数据契约；绑定 DSR-006/007/026/058。connection 记录：frontier 与 sink probe 之间的启发式连接假设。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "connection_id",
+    "frontier_id",
+    "probe_id",
+    "matching_factors",
+    "status"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "connection_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "frontier_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "probe_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "matching_factors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "enum": [
+        "hypothesized",
+        "verified",
+        "rejected",
+        "unresolved"
+      ]
+    }
+  }
+}

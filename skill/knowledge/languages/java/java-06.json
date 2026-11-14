@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "id": "java-06",
+  "title": "Command Execution and Unsafe Reflection",
+  "language": "java",
+  "platform_conditions": "Java SE 8+ standard library (java.lang.Runtime, java.lang.ProcessBuilder, java.lang.Class); applies on all target operating systems",
+  "security_mechanism": "Runtime.getRuntime().exec(String) tokenizes the command with StringTokenizer on whitespace, so a single-string form splits arguments unpredictably, and any form that routes through a shell ('sh', '-c', concatenated) hands the whole string to shell interpretation, where ';', '|', and '$(...)' start attacker commands. Class.forName(name) plus Method.invoke turns a name from input into arbitrary class loading and method invocation in-process, and URLClassLoader with an attacker-influenced URL loads classes from a remote codebase directly.",
+  "source_sink_clues": {
+    "source": "Request fields used as command strings or arguments, class/method names from input resolved via reflection, and codebase URLs from config or requests.",
+    "sink": "Runtime.exec / ProcessBuilder.start with shell-composed strings; Class.forName with a dynamic name followed by reflection; URLClassLoader with attacker-influenced URLs"
+  },
+  "tracking_guards": "Require ProcessBuilder with a fixed executable and an argument list where each dynamic value is one element (no shell, no concatenated single string); require reflection targets be resolved from a compiled-in allowlist mapping rather than from input; require any classloader URL come from validated internal locations.",
+  "not_candidate_when": "The command is a fixed executable with input as a single argv element and no shell involvement, reflected class names come from a fixed allowlist, the classloader loads only from the application's own sealed artifacts, or the input is validated to a grammar that cannot contain whitespace, shell metacharacters, or option prefixes.",
+  "synthetic_vulnerable_example": "Runtime.getRuntime().exec(\"sh -c \" + cmd);",
+  "synthetic_safe_example": "ProcessBuilder pb = new ProcessBuilder(\"/bin/safe\", arg); pb.start();",
+  "public_references": [
+    "CWE-78: Improper Neutralization of Special Elements used in an OS Command — https://cwe.mitre.org/data/definitions/78.html",
+    "CWE-470: Use of Externally-Controlled Input to Select Classes or Code — https://cwe.mitre.org/data/definitions/470.html",
+    "Java SE documentation: Runtime — https://docs.oracle.com/javase/8/docs/api/java/lang/Runtime.html"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_java_06",
+      "pattern": "Runtime\\.getRuntime\\(\\)\\.exec\\(",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "java-06"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

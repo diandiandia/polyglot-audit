@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "php-09",
+  "title": "XML External Entity Injection in simplexml",
+  "language": "php",
+  "platform_conditions": "PHP 7.4/8.x linked against libxml2; external entity loading is disabled by default in libxml2 >= 2.9, so LIBXML_NOENT mainly re-enables substitution — verify the linked libxml version before judging exploitability",
+  "security_mechanism": "Passing LIBXML_NOENT makes the parser substitute entity definitions while parsing: with libxml2 builds where external entity loading is enabled (< 2.9 behavior, or explicit flags), a DTD can declare entities that resolve to file:// or http:// targets, embedding local files into the document or issuing outbound requests. Independent of external loading, recursive entity definitions enable billion-laughs amplification that exhausts memory on one request. SoapClient fetches and parses the WSDL URL passed to its constructor, making it an SSRF primitive when that URL is request-derived, and curl honors many protocols (file://, dict://, ftp://) and follows redirects when CURLOPT_FOLLOWLOCATION is set, so a URL allowlist without CURLOPT_PROTOCOLS/CURLOPT_REDIR_PROTOCOLS pins is insufficient.",
+  "source_sink_clues": {
+    "source": "Client-posted XML documents, WSDL/endpoint URLs from requests, and outbound fetch URLs.",
+    "sink": "simplexml_load_string / DOMDocument::loadXML with LIBXML_NOENT; SoapClient constructed with an input URL; curl transfers with input URLs and unrestricted protocol/redirect options"
+  },
+  "tracking_guards": "Require that untrusted XML is parsed without LIBXML_NOENT (keep LIBXML_NONET, restrict DTD processing) and check the linked libxml2 version; require SoapClient URLs to come from configuration; require curl with CURLOPT_PROTOCOLS limited to https/http and CURLOPT_REDIR_PROTOCOLS set before any redirect following.",
+  "not_candidate_when": "The XML originates from trusted internal producers that emit no DTDs and LIBXML_NOENT is absent, the linked libxml2 is >= 2.9 with external loading disabled and expansion depth is bounded, or curl targets are allowlisted https hosts with protocols and redirects pinned by option.",
+  "synthetic_vulnerable_example": "$xml = simplexml_load_string($data, 'SimpleXMLElement', LIBXML_NOENT);",
+  "synthetic_safe_example": "$xml = simplexml_load_string($data, 'SimpleXMLElement', LIBXML_NONET);",
+  "public_references": [
+    "CWE-611: Improper Restriction of XML External Entity Reference — https://cwe.mitre.org/data/definitions/611.html",
+    "CWE-776: Improper Restriction of Recursive Entity References in DTDs — https://cwe.mitre.org/data/definitions/776.html",
+    "CWE-918: Server-Side Request Forgery (SSRF) — https://cwe.mitre.org/data/definitions/918.html",
+    "PHP manual: simplexml_load_string — https://www.php.net/manual/en/function.simplexml-load-string.php"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_php_09",
+      "pattern": "simplexml_load_string\\(.*LIBXML_NOENT",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "php-09"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}

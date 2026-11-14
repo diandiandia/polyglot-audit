@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "php-06",
+  "title": "Global Variable Injection via extract() and parse_str()",
+  "language": "php",
+  "platform_conditions": "PHP 7.4/8.x; register_globals is gone since PHP 5.4 — extract() and one-argument parse_str() (deprecated since 7.2, still functional) are the remaining symbol-table import paths",
+  "security_mechanism": "extract() imports every array key as a variable in the current scope, and parse_str() called without a destination array registers query-string keys as local variables, so a POST body containing is_admin=1 creates $is_admin that later authorization code reads instead of application state. $_REQUEST merges GET, POST and COOKIE per the request_order ini, so a same-named GET parameter overrides a value the code believed it read from $_POST. Repeated parameters using the a[]= syntax arrive as arrays, producing type confusion where string functions are expected (strlen(array) returns NULL on PHP 7 with a warning), and $_FILES['x']['name'] is client-controlled text that stays dangerous when trusted for storage names.",
+  "source_sink_clues": {
+    "source": "Query strings, form bodies and cookies — any superglobal whose keys the attacker controls — plus multipart field names and client file names.",
+    "sink": "extract() on superglobals; parse_str() without a destination array; security checks reading variables name-matched to request keys via $_REQUEST; code trusting $_FILES name/type fields"
+  },
+  "tracking_guards": "Require explicit key access ($_POST['k']) rather than symbol import; require the two-argument parse_str($s, $out) form; where extraction is unavoidable require EXTR_SKIP with a reserved prefix into a scope with no security-relevant variable names; require stored filenames to be regenerated server-side.",
+  "not_candidate_when": "parse_str always writes into an explicit result array, extract imports into an isolated scope with EXTR_SKIP where no check variable names can collide, and upload names/paths are derived from server-side values rather than $_FILES metadata.",
+  "synthetic_vulnerable_example": "extract($_POST); if ($is_admin) { ... }",
+  "synthetic_safe_example": "/* access $_POST['var'] explicitly */",
+  "public_references": [
+    "CWE-621: Variable Extraction Error — https://cwe.mitre.org/data/definitions/621.html",
+    "CWE-915: Improperly Controlled Modification of Dynamically-Determined Object Attributes — https://cwe.mitre.org/data/definitions/915.html",
+    "PHP manual: extract — https://www.php.net/manual/en/function.extract.php",
+    "PHP manual: parse_str — https://www.php.net/manual/en/function.parse-str.php"
+  ],
+  "signals": [
+    {
+      "pattern_id": "sig_php_06",
+      "pattern": "extract\\(\\$_POST\\)",
+      "kind": "sink",
+      "strength": 3,
+      "card_id": "php-06"
+    }
+  ],
+  "review_record": {
+    "status": "pending_review",
+    "note": "awaiting per-language expert review"
+  }
+}
