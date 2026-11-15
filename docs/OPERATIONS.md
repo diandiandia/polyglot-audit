@@ -72,10 +72,12 @@ python3 -I skill/scripts/audit.py doctor [--host claude|codex] [--probe]
 # 1. 准备：校验三根分离与配置，冻结快照，规划任务单元，评估 G0
 python3 -I skill/scripts/audit.py prepare --target <目标目录> --run-dir <输出目录> --config <config.json>
 
-# 2. 激活并驱动
+# 2. 激活并驱动（IFC-06）
+#    --host session（默认）：只激活 run 并打印会话内执行指引（next/start/submit 由宿主会话自己驱动；CLI 不空转、不伪装执行）
+#    --host claude|codex：进入驱动循环，经 DriverAdapter + AIMD ConcurrencyController 驱动任务直至队列清空/暂停/预算耗尽
 python3 -I skill/scripts/audit.py run --run-dir <输出目录> [--host claude|codex|session] [--concurrency N]
 
-# 3. 领取 / 开始 / 提交（claim 与结果一律走 stdin，凭证不经 argv）
+# 3. 领取 / 开始 / 提交（claim 与结果一律走 stdin，凭证不经 argv；session 模式下由宿主会话逐步执行）
 python3 -I skill/scripts/audit.py next   --run-dir <输出目录> [--batch N]
 python3 -I skill/scripts/audit.py start  --run-dir <输出目录>   < claim.json
 python3 -I skill/scripts/audit.py submit --run-dir <输出目录>   < payload.json
@@ -85,11 +87,15 @@ python3 -I skill/scripts/audit.py host-fail --run-dir <输出目录> [--task <ta
 
 # 4. 观测与控制
 python3 -I skill/scripts/audit.py status --run-dir <输出目录>
+#    pause：透出暂停代次与在途统计（revision / in_flight_tasks / in_flight_attempt_ids）；
+#    --reason 超过 256 字符时非零退出（INVALID_INPUT，退出码 2），不静默截断
 python3 -I skill/scripts/audit.py pause  --run-dir <输出目录> [--reason TEXT]
 python3 -I skill/scripts/audit.py resume --run-dir <输出目录>   # 先校验完整性再恢复
 
 # 5. 收尾：评估 G1..G4 门禁，发布报告；incomplete 会透出 incomplete_reasons/coverage_gaps
 python3 -I skill/scripts/audit.py finalize --run-dir <输出目录>
+#    report：返回 {"generation_id", "report_md"}；generation_id 优先取自工件表最新
+#    REPORT 记录，缺失时回退解析 REPORT.md 头部的 Generation 行
 python3 -I skill/scripts/audit.py report --run-dir <输出目录>
 
 # 6. （候选）MCP stdio 四工具服务器
@@ -121,15 +127,15 @@ OS 级隔离未经验证时 `safety_acceptance.user_approved` 必须为 `true` �
 |---|---|---|---|
 | `doctor` | `--host claude\|codex\|session`、`--probe` | — | 探测宿主环境、Python、CLI 可用性（只读） |
 | `prepare` | `--target`、`--run-dir`、`--config`（均必填） | — | 校验并冻结快照、规划单元、评 G0 |
-| `run` | `--run-dir`、`--host`、`--concurrency` | — | 激活 run 并进入驱动循环 |
+| `run` | `--run-dir`、`--host`、`--concurrency` | — | `--host claude\|codex`：激活并进入驱动循环（宿主 CLI 不在 PATH 时非零退出 `HOST_FAILURE`，不空转）；`--host session`（默认）：只激活并打印会话内 next/start/submit 指引 |
 | `next` | `--run-dir`、`--batch` | — | 事务性领取下一批任务（含 claim_token） |
 | `start` | `--run-dir` | claim JSON | 标记 attempt 为 running |
 | `submit` | `--run-dir` | claim + result JSON | 幂等提交 worker 结果（凭证/claim 不从 argv 读取） |
 | `status` | `--run-dir` | — | 输出 run 状态、revision、任务与预算计数 |
-| `pause` | `--run-dir`、`--reason` | — | 安全暂停调度 |
+| `pause` | `--run-dir`、`--reason` | — | 安全暂停调度；输出含 `revision`、`in_flight_tasks`、`in_flight_attempt_ids`；`--reason` 超 256 字符非零退出 |
 | `resume` | `--run-dir` | — | 校验快照与产物完整性后恢复 |
 | `finalize` | `--run-dir` | — | 评 G1..G4、对账并发布报告（透出 `incomplete_reasons`/`coverage_gaps`） |
-| `report` | `--run-dir` | — | 读取已发布的 `REPORT.md` |
+| `report` | `--run-dir` | — | 返回 `{"generation_id", "report_md"}`（generation_id 取工件表最新 REPORT 记录，回退 REPORT.md 头部 Generation 行） |
 | `mcp` | `--run-dir` | JSON-RPC 行 | stdio MCP 候选服务器（next/submit/status/read_artifact） |
 | `host-fail` | `--run-dir`、`--task`、`--retryable`、`--max-retries` | claim + 失败详情 JSON | 上报宿主失败：可重试则重排（generation+1），否则隔离并记覆盖缺口（DSR-065） |
 | `guide` | `--query`、`--language` | — | 轻量问答；模糊请求返回澄清问题；**不建卷宗** |
