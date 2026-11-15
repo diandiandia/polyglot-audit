@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "task_id": "task-0005",
+  "attempt_id": "att-0005",
+  "kind": "recon",
+  "coverage": [
+    {
+      "schema_version": "1.0",
+      "snapshot_id": "snp-0001",
+      "unit_id": "u-recon-0001",
+      "dimension": "observed_read",
+      "source": "worker",
+      "ranges": [{"path": "app/handlers/upload.py", "line_start": 1, "line_end": 12}],
+      "confidence": "exact"
+    }
+  ],
+  "records": [
+    {
+      "schema_version": "1.0",
+      "guard_id": "guard-input-filter",
+      "status": "observed",
+      "mechanism": "Framework-level input validation middleware",
+      "anchors": [{"path": "app/middleware.py", "line": 8}],
+      "applicability": "app/handlers/",
+      "exceptions": []
+    },
+    {
+      "schema_version": "1.0",
+      "guard_id": "guard-runtime-waf",
+      "status": "unknown",
+      "mechanism": "Deployment may include a reverse-proxy WAF; not measurable statically",
+      "anchors": [],
+      "applicability": "",
+      "exceptions": []
+    }
+  ],
+  "overflow": []
+}

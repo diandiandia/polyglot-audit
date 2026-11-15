@@ -92,6 +92,10 @@ class TestIntegrationWiring(unittest.TestCase):
         self.app.activate(prep["run_id"], config["run_dir"])
         return prep
 
+    @staticmethod
+    def _is_recon(claim):
+        return (claim.get("spec") or {}).get("task_kind") == "recon"
+
     def _hunt_result(self, claim, snapshot_id, records, overflow=None):
         return {
             "schema_version": "1.0",
@@ -101,6 +105,28 @@ class TestIntegrationWiring(unittest.TestCase):
             "coverage": [],
             "records": records,
             "overflow": overflow or [],
+        }
+
+    def _recon_result(self, claim, guards):
+        return {
+            "schema_version": "1.0",
+            "task_id": claim["task_id"],
+            "attempt_id": claim["attempt_id"],
+            "kind": "recon",
+            "coverage": [],
+            "records": guards,
+            "overflow": [],
+        }
+
+    def _recon_guard(self, guard_id="guard-mw", status="observed"):
+        return {
+            "schema_version": "1.0",
+            "guard_id": guard_id,
+            "status": status,
+            "mechanism": "Framework middleware validates input bodies",
+            "anchors": [{"path": "app/middleware.py", "line": 8}],
+            "applicability": "app/handlers/",
+            "exceptions": [],
         }
 
     def _candidate_record(self, claim):
@@ -191,8 +217,18 @@ class TestIntegrationWiring(unittest.TestCase):
         prep = self._prepared(config)
         run_id, run_dir = prep["run_id"], Path(config["run_dir"])
 
+        # --- recon first (DDS-05 S1): guard baseline reported by the worker ---
+        all_claims = self.app.next(run_id, run_dir, batch_size=10)
+        recon_claim = next(c for c in all_claims if self._is_recon(c))
+        self.assertEqual(recon_claim["spec"]["task_kind"], "recon")
+        self.assertTrue(recon_claim["spec"]["knowledge_hints"]["primary_language"])
+        self.app.start(run_dir, recon_claim)
+        self.app.submit(
+            run_dir, recon_claim, self._recon_result(recon_claim, [self._recon_guard()]), "digest-recon-01",
+        )
+
         # --- hunt: candidate produced and submitted with adapter usage ---
-        hunt_claim = self.app.next(run_id, run_dir, batch_size=5)[0]
+        hunt_claim = next(c for c in all_claims if not self._is_recon(c))
         self.app.start(run_dir, hunt_claim)
         candidate = self._candidate_record(hunt_claim)
         adapter = _FakeAdapter({"total_tokens": 500})
@@ -259,17 +295,41 @@ class TestIntegrationWiring(unittest.TestCase):
         self.assertEqual(stored[0]["run_id"], run_id)
         self.assertEqual(stored[0]["finding_id"], finding["finding_id"])
 
+        # The confirmed Critical finding requires an independent second
+        # opinion (DSR-061); its task dispatches above normal verify priority.
+        so_rows = self._events(run_dir, "second_opinion_enqueued")
+        self.assertEqual(len(so_rows), 1)
+        second_opinion_claims = self.app.next(run_id, run_dir, batch_size=5)
+        self.assertEqual(len(second_opinion_claims), 1)
+        so_claim = second_opinion_claims[0]
+        self.assertTrue(so_claim["spec"]["second_opinion"])
+        self.assertEqual(so_claim["spec"]["target_finding_id"], finding["finding_id"])
+        self.app.start(run_dir, so_claim)
+        self.app.submit(
+            run_dir,
+            so_claim,
+            self._hunt_result(so_claim, prep["snapshot_id"],
+                              [{"schema_version": "1.0", "verdict": "confirmed",
+                                "reason": "independent re-derivation reached the same trace"}]),
+            "digest-second-opinion-01",
+        )
+        adjudicated_events = self._events(run_dir, "second_opinion_adjudicated")
+        self.assertEqual(len(adjudicated_events), 1)
+        self.assertEqual(adjudicated_events[0]["resolution"], "corroborated")
+
         # --- finalize: stored findings merged, verify completion accounted ---
         fin = self.app.finalize(run_id, run_dir, findings=[])
         self.assertEqual(fin["final_state"], "complete")
-        self.assertEqual(fin["verify"], {"enqueued": 1, "done": 1, "complete": True})
+        self.assertEqual(fin["verify"], {"enqueued": 2, "done": 2, "complete": True})
+        self.assertEqual(fin["second_opinion_pending"], [])
         self.assertEqual(set(fin["gates"].values()), {"pass"})
-        # Usage settled across both attempts into the tokens dimension.
+        # Usage settled across all three submitted attempts into the tokens
+        # dimension; the second hunt unit stays queued and unreserved.
         tokens = self._budget(run_id, run_dir, "tokens")
         self.assertEqual(tokens["settled"], 800)
         self.assertEqual(tokens["availability"], "exact")
         tasks_budget = self._budget(run_id, run_dir, "tasks")
-        self.assertEqual(tasks_budget["settled"], 2)
+        self.assertEqual(tasks_budget["settled"], 4)
 
     # ------------------------------------------------------------------
     # 2. usage settlement: unavailable usage is recorded with a reason and
@@ -280,25 +340,27 @@ class TestIntegrationWiring(unittest.TestCase):
         prep = self._prepared(config)
         run_id, run_dir = prep["run_id"], Path(config["run_dir"])
 
-        claim = self.app.next(run_id, run_dir, batch_size=5)[0]
-        self.app.start(run_dir, claim)
-        adapter = _FakeAdapter(None)
-        usage = self.app.build_usage(adapter, claim["attempt_id"], dimension="tasks", unit="tasks")
-        self.assertEqual(usage["availability"], "unavailable")
-        self.assertTrue(usage["reason"])
-        self.assertNotIn("value", usage)
-        self.app.submit(
-            run_dir, claim,
-            self._hunt_result(claim, prep["snapshot_id"], []),
-            "digest-no-usage",
-            usage=usage,
-        )
+        claims = self.app.next(run_id, run_dir, batch_size=5)
+        self.assertTrue(claims)
+        self.assertTrue(self._is_recon(claims[0]))
+        for claim in claims:
+            self.app.start(run_dir, claim)
+            adapter = _FakeAdapter(None)
+            usage = self.app.build_usage(adapter, claim["attempt_id"], dimension="tasks", unit="tasks")
+            self.assertEqual(usage["availability"], "unavailable")
+            self.assertTrue(usage["reason"])
+            self.assertNotIn("value", usage)
+            result = (
+                self._recon_result(claim, []) if self._is_recon(claim)
+                else self._hunt_result(claim, prep["snapshot_id"], [])
+            )
+            self.app.submit(run_dir, claim, result, "digest-no-usage", usage=usage)
 
         tasks_budget = self._budget(run_id, run_dir, "tasks")
         self.assertEqual(tasks_budget["availability"], "unavailable")
         self.assertEqual(tasks_budget["source"], "_FakeAdapter")
         # Unknown usage keeps the reserved amount settled, never freed.
-        self.assertEqual(tasks_budget["settled"], 1)
+        self.assertEqual(tasks_budget["settled"], len(claims))
         self.assertEqual(tasks_budget["reserved"], 0)
 
     # ------------------------------------------------------------------
@@ -333,7 +395,14 @@ class TestIntegrationWiring(unittest.TestCase):
         prep = self._prepared(config)
         run_id, run_dir = prep["run_id"], Path(config["run_dir"])
 
-        claim = self.app.next(run_id, run_dir, batch_size=5)[0]
+        all_claims = self.app.next(run_id, run_dir, batch_size=5)
+        recon_claim = next(c for c in all_claims if self._is_recon(c))
+        self.app.start(run_dir, recon_claim)
+        self.app.submit(
+            run_dir, recon_claim, self._recon_result(recon_claim, [self._recon_guard()]), "digest-recon-c",
+        )
+
+        claim = next(c for c in all_claims if not self._is_recon(c))
         self.app.start(run_dir, claim)
         # Two frontiers, one probe: one pair matches, one frontier stays
         # unresolved, and 2 pairing evaluations are charged.
@@ -415,11 +484,15 @@ class TestIntegrationWiring(unittest.TestCase):
         self.assertGreaterEqual(dispositions.get("inventory_only", 0), 1)
         self.assertEqual(plan["hunt_units"], dispositions.get("analyze", 0))
 
-        # Only analyze-disposition units have tasks; all tasks are hunt tasks.
+        # Only analyze-disposition units have hunt tasks; the single recon task
+        # (DDS-05 S1) is the one non-hunt task in the plan.
         tasks = self._task_rows(run_dir)
         self.assertTrue(tasks)
-        self.assertEqual({t["kind"] for t in tasks}, {"hunt"})
-        self.assertEqual(len(tasks), plan["hunt_units"])
+        self.assertEqual({t["kind"] for t in tasks}, {"hunt", "recon"})
+        self.assertEqual(
+            len([t for t in tasks if t["kind"] == "hunt"]), plan["hunt_units"]
+        )
+        self.assertEqual(len([t for t in tasks if t["kind"] == "recon"]), 1)
 
         conn = get_db_connection(run_dir / "events.db")
         try:
@@ -429,7 +502,8 @@ class TestIntegrationWiring(unittest.TestCase):
         analyze_unit_ids = {
             u["unit_id"] for u in plan["units"] if u["disposition"] == "analyze"
         }
-        self.assertEqual({s["unit"]["unit_id"] for s in specs}, analyze_unit_ids)
+        hunt_specs = [s for s in specs if s.get("task_kind") != "recon"]
+        self.assertEqual({s["unit"]["unit_id"] for s in hunt_specs}, analyze_unit_ids)
 
         # T3/T4 markers are explicit events (never silently dropped).
         markers = self._events(run_dir, "unit_disposition")
@@ -459,7 +533,13 @@ class TestIntegrationWiring(unittest.TestCase):
 
         # Hunter-reported overflow becomes an explicit event with the
         # standardized payload shape (dimension / estimated_count / reason).
-        claim = self.app.next(run_id, run_dir, batch_size=5)[0]
+        all_claims = self.app.next(run_id, run_dir, batch_size=5)
+        recon_claim = next(c for c in all_claims if self._is_recon(c))
+        self.app.start(run_dir, recon_claim)
+        self.app.submit(
+            run_dir, recon_claim, self._recon_result(recon_claim, [self._recon_guard()]), "digest-recon-t",
+        )
+        claim = next(c for c in all_claims if not self._is_recon(c))
         self.app.start(run_dir, claim)
         overflow = [{
             "dimension": "candidate",
@@ -517,20 +597,29 @@ class TestIntegrationWiring(unittest.TestCase):
         controller = ConcurrencyController(initial=1, maximum=4)
         adapter = _FakeAdapter({"total_tokens": 120, "availability": "exact"})
 
+        recon_results = {"used": False}
+
         def execute_fn(claim):
+            # The dispatch loop must answer recon claims with recon results and
+            # hunt claims with hunt results (both flow through the same service).
+            if self._is_recon(claim) and not recon_results["used"]:
+                recon_results["used"] = True
+                return self._recon_result(claim, [self._recon_guard()])
             return self._hunt_result(claim, snapshot_id, [])
 
         summary = self.app.run_dispatch_loop(
             run_id, run_dir, execute_fn, adapter=adapter, controller=controller,
             usage_dimension="tokens",
         )
-        self.assertEqual(summary["submitted"], 1)
+        self.assertGreaterEqual(summary["submitted"], 1)
         self.assertEqual(summary["failed"], 0)
-        self.assertEqual(summary["concurrency"], 2)  # AIMD additive increase
+        self.assertEqual(
+            summary["concurrency"], min(1 + summary["submitted"], 4)
+        )  # AIMD additive increase per submitted batch
 
         tokens = self._budget(run_id, run_dir, "tokens")
         self.assertEqual(tokens["availability"], "exact")
-        self.assertEqual(tokens["settled"], 120)
+        self.assertEqual(tokens["settled"], 120 * summary["submitted"])
 
         fin = self.app.finalize(run_id, run_dir, findings=[])
         self.assertEqual(fin["final_state"], "complete")

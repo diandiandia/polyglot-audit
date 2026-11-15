@@ -1,16 +1,22 @@
 """Tests for the run-bound MCP adapter (DSR-031/075): run binding, cross-run
-rejection, payload limits, and artifact path validation."""
+rejection, payload limits, and artifact path validation. The adapter routes
+through AuditAppService (DDS-01/SR-022): an MCP hunt submission must produce a
+verify task exactly like every other transport."""
 
+import json
 import shutil
 import tempfile
 import unittest
 from pathlib import Path
 
+from auditkit.app.service import AuditAppService
 from auditkit.contracts.errors import InvalidInputError, LimitExceededError, PathUnsafeError
 from auditkit.hosts.errors import RunMismatchError
 from auditkit.hosts.mcp_adapter import MCPServer, McpRunAdapter
 from auditkit.ledger.db import get_db_connection, init_database
 from auditkit.ledger.task_queue import TaskQueue
+
+SKILL_DIR = Path("/root/polyglot-audit/skill")
 
 _RESULT_TEMPLATE = {
     "schema_version": "1.0",
@@ -37,14 +43,15 @@ class TestMcpRunAdapter(unittest.TestCase):
                 (run_id,),
             )
         self.queue = TaskQueue(self.conn)
-        self.adapter = McpRunAdapter(self.temp_dir, self.queue, "run-a")
+        self.app = AuditAppService(SKILL_DIR)
+        self.adapter = McpRunAdapter(self.temp_dir, self.app, "run-a")
 
     def tearDown(self):
         self.conn.close()
         shutil.rmtree(self.temp_dir)
 
     def _enqueue_one(self):
-        self.queue.enqueue("run-a", "hunt:u1", "hunt", {"unit": "u1"})
+        self.queue.enqueue("run-a", "hunt:u1", "hunt", {"unit": {"unit_id": "u1"}})
         return self.adapter.next("run-a")["claims"][0]
 
     def test_full_cycle_within_bound_run(self):
@@ -64,7 +71,7 @@ class TestMcpRunAdapter(unittest.TestCase):
 
     def test_cross_run_next_rejected(self):
         """DSR-031: next with a foreign run_id raises RunMismatchError."""
-        self.queue.enqueue("run-b", "hunt:u2", "hunt", {"unit": "u2"})
+        self.queue.enqueue("run-b", "hunt:u2", "hunt", {"unit": {"unit_id": "u2"}})
         with self.assertRaises(RunMismatchError):
             self.adapter.next("run-b")
 
@@ -129,12 +136,83 @@ class TestMcpRunAdapter(unittest.TestCase):
 
     def test_transport_server_read_artifact_unknown_run(self):
         """DSR-031/075: MCPServer-level read_artifact validates the run too."""
-        self.queue.enqueue("run-a", "hunt:u3", "hunt", {"unit": "u3"})
+        self.queue.enqueue("run-a", "hunt:u3", "hunt", {"unit": {"unit_id": "u3"}})
         art = Path(self.temp_dir) / "report.txt"
         art.write_text("Audit summary", encoding="utf-8")
-        server = MCPServer(self.temp_dir, self.queue)
+        server = MCPServer(self.temp_dir, self.app)
         with self.assertRaises(InvalidInputError):
             server.handle_call("read_artifact", {"run_id": "ghost-run", "relative_path": "report.txt"})
+
+    def test_mcp_hunt_submission_enqueues_verify_task_via_service(self):
+        """DDS-01 / SR-022: MCP is not a bypass transport. Submitting a hunt
+        result with a candidate must fan out into a verify task through the
+        application service — the coverage the direct TaskQueue path lost."""
+        run_dir = Path(self.temp_dir) / "mcp-flow"
+        run_dir.mkdir()
+        init_database(run_dir / "events.db")
+        conn = get_db_connection(run_dir / "events.db")
+        conn.execute(
+            """
+            INSERT INTO runs (run_id, snapshot_id, state, schema_version, skill_version, knowledge_version, config_ref, revision, created_at, updated_at)
+            VALUES ('run-mcp', 'snp-mcp', 'active', '1.0', '0.1.0', '1.0', 'cfg', 0, '2026-11-14T00:00:00Z', '2026-11-14T00:00:00Z')
+            """
+        )
+        (run_dir / "snapshot").mkdir()
+        (run_dir / "snapshot" / "app.py").write_text(
+            "import os\nos.system(cmd)\n", encoding="utf-8"
+        )
+        TaskQueue(conn).enqueue(
+            "run-mcp",
+            "hunt:u-mcp",
+            "hunt",
+            {"snapshot_id": "snp-mcp", "unit": {"unit_id": "u-mcp", "language": "python",
+             "ranges": [{"path": "app.py", "line_start": 1, "line_end": 2}]}},
+        )
+
+        app = AuditAppService(SKILL_DIR)
+        adapter = McpRunAdapter(run_dir, app, "run-mcp")
+        claim = adapter.next("run-mcp")["claims"][0]
+        # The claim packet is a real readable artifact under the run directory,
+        # retrievable through the read_artifact tool at claim.packet_ref.
+        self.assertEqual(claim["packet_ref"], f"tasks/{claim['task_id']}/packet.json")
+        packet_path = run_dir / "tasks" / claim["task_id"] / "packet.json"
+        self.assertTrue(packet_path.exists())
+        via_tool = adapter.read_artifact("run-mcp", claim["packet_ref"])
+        packet = json.loads(via_tool["content"])
+        self.assertEqual(packet["task_kind"], "hunt")
+        self.assertIn("os.system", packet["prompt_text"])
+
+        candidate = {
+            "schema_version": "1.0",
+            "candidate_id": "cand-mcp-01",
+            "issue": "py-01",
+            "source": {"path": "app.py", "line": 2, "symbol": "run", "kind": "param", "control": "c"},
+            "sink": {"path": "app.py", "line": 2, "symbol": "os.system", "kind": "rce", "effect": "e"},
+            "steps": [
+                {"path": "app.py", "line": 2, "role": "source", "note": "n1"},
+                {"path": "app.py", "line": 2, "role": "sink", "note": "n2"},
+            ],
+            "guard_analysis": "none",
+            "impact_claim": "RCE",
+            "open_questions": [],
+            "provenance": {"hunt_tasks": [claim["task_id"]]},
+        }
+        receipt = adapter.submit(
+            "run-mcp",
+            claim["task_id"],
+            claim["attempt_id"],
+            claim["generation"],
+            claim["claim_token"],
+            dict(_RESULT_TEMPLATE, task_id=claim["task_id"], attempt_id=claim["attempt_id"], records=[candidate]),
+        )
+        self.assertTrue(receipt["ok"])
+
+        verify_rows = conn.execute(
+            "SELECT task_id, kind, priority FROM tasks WHERE kind = 'verify'"
+        ).fetchall()
+        self.assertEqual(len(verify_rows), 1)
+        self.assertGreater(verify_rows[0]["priority"], 20)
+        conn.close()
 
 
 if __name__ == "__main__":

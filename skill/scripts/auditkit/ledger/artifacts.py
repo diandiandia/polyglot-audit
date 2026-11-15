@@ -73,6 +73,14 @@ class ArtifactManager:
 
         artifact_id = f"art-{uuid.uuid4().hex[:12]}"
 
+        # Republishing the same path replaces the prior reference: integrity
+        # verification hashes the current file, so a stale row for a previous
+        # version of the same relative path would report a false corruption.
+        self.conn.execute(
+            "DELETE FROM artifacts WHERE run_id = ? AND relative_path = ?",
+            (run_id, rel_path),
+        )
+
         # Record in DB
         self.conn.execute(
             """

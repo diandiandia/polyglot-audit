@@ -1,12 +1,16 @@
 """Model Context Protocol (MCP) stdio candidate transport server.
 
-Implements DSR-004 / DSR-031 / DSR-075 / DR-011 / IFC-04:
+Implements DSR-004 / DSR-031 / DSR-075 / DR-011 / IFC-04 / DDS-01 / SR-022:
 - Exposes exactly four strictly scoped tools:
-  1. 'next': Claim tasks
+  1. 'next': Claim tasks (with their published prompt packets)
   2. 'submit': Submit results with claim token
   3. 'status': Read run state and budget metrics
   4. 'read_artifact': Safely retrieve published artifacts strictly within run directory
-- Enforces payload size limits, token validation, and cross-run isolation.
+- Routes every tool call through the AuditAppService (DDS-01 / SR-022): MCP is
+  a transport, never a second state-mutation path. Submissions therefore go
+  through the same schema validation, coverage recording and hunt -> verify
+  fan-out as every other channel.
+- Enforces payload size limits, run binding, and artifact path constraints.
 - Discloses that MCP is a transport protocol, not an OS sandbox.
 """
 
@@ -22,36 +26,36 @@ Implements DSR-004 / DSR-031 / DSR-075 / DR-011 / IFC-04:
 from __future__ import annotations
 import hashlib
 import json
-import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from auditkit.contracts.errors import (
-    AuditError,
     InvalidInputError,
     LimitExceededError,
     PathUnsafeError,
 )
+from auditkit.app.service import AuditAppService
 from auditkit.hosts.errors import RunMismatchError
-from auditkit.ledger.task_queue import TaskQueue
 
 
 MAX_MCP_PAYLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
 
 
 class MCPServer:
-    """Stdio JSON-RPC transport exposing the 4 audit tools."""
+    """Stdio JSON-RPC transport exposing the 4 audit tools via AuditAppService."""
 
-    def __init__(self, run_dir: str | Path, queue: TaskQueue) -> None:
+    def __init__(self, run_dir: str | Path, service: AuditAppService) -> None:
         self.run_dir = Path(run_dir)
-        self.queue = queue
+        self.service = service
 
     def handle_call(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Dispatch tool call."""
+        """Dispatch tool call through the application service."""
         if tool_name == "next":
             run_id = arguments.get("run_id", "")
             batch = int(arguments.get("batch_size", 1))
-            claims = self.queue.claim(run_id, batch_size=batch, worker_id="mcp_worker")
+            claims = self.service.next(
+                run_id, self.run_dir, batch_size=batch, worker_id="mcp_worker"
+            )
             return {"claims": claims}
 
         elif tool_name == "submit":
@@ -67,33 +71,30 @@ class MCPServer:
                 raise LimitExceededError("Submitted result exceeds maximum MCP payload limit of 5MB")
 
             digest = hashlib.sha256(result_bytes).hexdigest()
-            receipt = self.queue.submit(
-                run_id=run_id,
-                task_id=task_id,
-                attempt_id=attempt_id,
-                generation=generation,
-                claim_token=token,
-                worker_result=result,
-                result_digest=digest,
-            )
+            claim = {
+                "run_id": run_id,
+                "task_id": task_id,
+                "attempt_id": attempt_id,
+                "generation": generation,
+                "claim_token": token,
+            }
+            receipt = self.service.submit(self.run_dir, claim, result, digest)
             return receipt
 
         elif tool_name == "status":
             run_id = arguments.get("run_id", "")
-            row = self.queue.conn.execute("SELECT state, revision FROM runs WHERE run_id = ?", (run_id,)).fetchone()
-            if not row:
-                raise InvalidInputError(f"Run '{run_id}' not found")
-            return {"run_id": run_id, "state": row["state"], "revision": row["revision"]}
+            # Unknown runs raise InvalidInputError from the service (validated,
+            # not ignored — DSR-031/075).
+            return self.service.status(run_id, self.run_dir)
 
         elif tool_name == "read_artifact":
             run_id = arguments.get("run_id", "")
             rel_path = arguments.get("relative_path", "")
             # DSR-031/075: the run_id is validated, not ignored — unknown runs
             # cannot read artifacts.
-            row = self.queue.conn.execute(
-                "SELECT run_id FROM runs WHERE run_id = ?", (run_id,)
-            ).fetchone()
-            if not row:
+            try:
+                self.service.status(run_id, self.run_dir)
+            except InvalidInputError:
                 raise InvalidInputError(f"Run '{run_id}' not found")
             if not rel_path or ".." in rel_path or rel_path.startswith("/"):
                 raise PathUnsafeError("Prohibited artifact path traversal")
@@ -118,12 +119,12 @@ class McpRunAdapter:
 
     Binds a single run_id at construction; every tool call must supply the
     same run_id or RunMismatchError is raised (cross-run access is rejected
-    before any queue or filesystem interaction). Also enforces the 5MB submit
-    payload limit and artifact path safety on the bound adapter level.
+    before any service or filesystem interaction). Also enforces the 5MB
+    submit payload limit and artifact path safety on the bound adapter level.
     """
 
-    def __init__(self, run_dir: str | Path, queue: TaskQueue, run_id: str) -> None:
-        self.server = MCPServer(run_dir, queue)
+    def __init__(self, run_dir: str | Path, service: AuditAppService, run_id: str) -> None:
+        self.server = MCPServer(run_dir, service)
         self.run_id = run_id
 
     def _require_run(self, run_id: str) -> None:

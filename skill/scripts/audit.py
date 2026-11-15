@@ -68,7 +68,6 @@ from auditkit.hosts.concurrency import ConcurrencyController
 from auditkit.hosts.mcp_adapter import MCPServer
 from auditkit.ledger.db import get_db_connection
 from auditkit.ledger.event_store import utc_now_iso
-from auditkit.ledger.task_queue import TaskQueue
 
 
 SKILL_DIR = SCRIPT_DIR.parent
@@ -641,9 +640,10 @@ def main() -> int:
             return 0
 
         elif args.subcommand == "mcp":
-            conn = get_db_connection(Path(args.run_dir) / "events.db")
-            queue = TaskQueue(conn)
-            server = MCPServer(args.run_dir, queue)
+            # DDS-01: MCP transport must route through AuditAppService (the
+            # single state-transition entry point), never a bare TaskQueue.
+            app = AuditAppService(SKILL_DIR)
+            server = MCPServer(args.run_dir, app)
             # Run simple stdio loop
             for line in sys.stdin:
                 line = line.strip()

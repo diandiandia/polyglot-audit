@@ -1,7 +1,11 @@
 """In-session execution adapter and task dispatch.
 
-Implements DSR-004 / DSR-030 / SD-09 / IFC-04:
+Implements DSR-004 / DSR-030 / SD-09 / IFC-04 / DDS-01 / SR-022:
 - Coordinates next -> start -> submit cycle within the active LLM session.
+- Routes every operation through the AuditAppService (DDS-01 / SR-022): the
+  in-session path is the same state-mutation entry point as the MCP and CLI
+  transports, so schema validation, coverage recording and the hunt -> verify
+  fan-out apply identically.
 - Supports sub-agent delegation if available, falls back gracefully to
   sequential execution; the active mode is disclosed via the `mode` attribute
   ("subagent" or "sequential_fallback") so the doctor / capability matrix can
@@ -19,11 +23,9 @@ Implements DSR-004 / DSR-030 / SD-09 / IFC-04:
 #
 
 from __future__ import annotations
-import json
 from typing import Any, Callable, Dict, List, Optional
 
-from auditkit.contracts.errors import InvalidStateError
-from auditkit.ledger.task_queue import TaskQueue
+from auditkit.app.service import AuditAppService
 from auditkit.hosts.probes import (
     PROBE_LEVEL_AGGRESSIVE,
     probe_subagent_delegation,
@@ -34,21 +36,26 @@ MODE_SEQUENTIAL_FALLBACK = "sequential_fallback"
 
 
 class InSessionAdapter:
-    """Coordinates in-session task execution against the TaskQueue."""
+    """Coordinates in-session task execution through the AuditAppService."""
 
     def __init__(
         self,
-        task_queue: TaskQueue,
+        service: AuditAppService,
+        run_dir: str,
         supports_subagents: Optional[bool] = None,
     ) -> None:
         """Create the adapter.
 
+        service: the application service every operation routes through
+        (DDS-01: the single state-mutation entry point).
+        run_dir: the run directory this adapter operates on.
         supports_subagents: None (default) means delegation capability has not
         been measured -> the adapter starts in the bounded sequential fallback
         mode and the delegation probe stays UNKNOWN (DSR-004/030: unmeasured
         capabilities are never assumed). True/False record a measured result.
         """
-        self.queue = task_queue
+        self.service = service
+        self.run_dir = run_dir
         if supports_subagents is None:
             self._supports_subagents: Optional[bool] = None
             self._mode = MODE_SEQUENTIAL_FALLBACK
@@ -95,18 +102,14 @@ class InSessionAdapter:
         return feature
 
     def next_task(self, run_id: str, batch_size: int = 1) -> List[Dict[str, Any]]:
-        """Fetch next batch of claims."""
-        return self.queue.claim(run_id, batch_size=batch_size, worker_id="in_session")
+        """Fetch next batch of claims (with published prompt packets)."""
+        return self.service.next(
+            run_id, self.run_dir, batch_size=batch_size, worker_id="in_session"
+        )
 
     def start_task(self, claim: Dict[str, Any]) -> Dict[str, Any]:
         """Mark claimed attempt as active."""
-        return self.queue.start(
-            run_id=claim["run_id"],
-            task_id=claim["task_id"],
-            attempt_id=claim["attempt_id"],
-            generation=claim["generation"],
-            claim_token=claim["claim_token"],
-        )
+        return self.service.start(self.run_dir, claim)
 
     def submit_task(
         self,
@@ -116,13 +119,10 @@ class InSessionAdapter:
         usage: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Submit completed task result."""
-        return self.queue.submit(
-            run_id=claim["run_id"],
-            task_id=claim["task_id"],
-            attempt_id=claim["attempt_id"],
-            generation=claim["generation"],
-            claim_token=claim["claim_token"],
-            worker_result=worker_result,
-            result_digest=result_digest,
+        return self.service.submit(
+            self.run_dir,
+            claim,
+            worker_result,
+            result_digest,
             usage=usage,
         )

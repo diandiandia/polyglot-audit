@@ -229,6 +229,65 @@ class TaskQueue:
         self.conn.execute("COMMIT")
         return claims
 
+    def release_claim(
+        self,
+        run_id: str,
+        task_id: str,
+        attempt_id: str,
+        generation: int,
+        claim_token: str,
+        reason: str,
+    ) -> Dict[str, Any]:
+        """Release a claim back to the queue without a worker result (IFC-02 wiring).
+
+        Used by the application service when a claim cannot be served (e.g. the
+        prompt packet could not be rendered/published): fail closed means no
+        claim is ever handed out without its packet, so the claim is returned
+        to the queue — the attempt is terminated (status 'expired', its budget
+        reservation released) and the task re-queued at generation+1 so stale
+        submissions with the old token are rejected (DSR-019 semantics).
+
+        Returns {"action": "released", ...}.
+        """
+        self._verify_attempt_token(task_id, attempt_id, generation, claim_token)
+
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            new_gen = generation + 1
+            released = self.budget_ledger.release(attempt_id)
+            self.conn.execute(
+                "UPDATE attempts SET status = 'expired' WHERE attempt_id = ?",
+                (attempt_id,),
+            )
+            self.conn.execute(
+                "UPDATE tasks SET state = 'queued', generation = ? WHERE task_id = ?",
+                (new_gen, task_id),
+            )
+            self.event_store.append_event(
+                run_id,
+                "attempt_released",
+                "task_queue",
+                {
+                    "task_id": task_id,
+                    "attempt_id": attempt_id,
+                    "generation": new_gen,
+                    "reason": reason,
+                    "reservations_released": released,
+                },
+            )
+        except BaseException:
+            self.conn.execute("ROLLBACK")
+            raise
+
+        self.conn.execute("COMMIT")
+        return {
+            "action": "released",
+            "task_id": task_id,
+            "attempt_id": attempt_id,
+            "generation": generation + 1,
+            "reservations_released": released,
+        }
+
     def reclaim_expired_attempts(self, run_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Expire stale claimed/running attempts and return their tasks to the queue (DSR-019).
 

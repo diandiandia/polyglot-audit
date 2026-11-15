@@ -14,6 +14,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from auditkit.app.service import AuditAppService
 from auditkit.contracts.errors import (
     PathUnsafeError,
     SafetyApprovalRequiredError,
@@ -23,6 +24,8 @@ from auditkit.hosts.doctor import Doctor
 from auditkit.hosts.mcp_adapter import MCPServer
 from auditkit.ledger.db import get_db_connection, init_database
 from auditkit.ledger.task_queue import TaskQueue
+
+SKILL_DIR = Path("/root/polyglot-audit/skill")
 
 
 class TestHosts(unittest.TestCase):
@@ -66,9 +69,9 @@ class TestHosts(unittest.TestCase):
 
     def test_mcp_four_tools(self):
         queue = TaskQueue(self.conn)
-        queue.enqueue(self.run_id, "hunt:u1", "hunt", {"unit": "u1"})
+        queue.enqueue(self.run_id, "hunt:u1", "hunt", {"unit": {"unit_id": "u1"}})
 
-        server = MCPServer(self.temp_dir, queue)
+        server = MCPServer(self.temp_dir, AuditAppService(SKILL_DIR))
 
         # Tool 1: next
         res_next = server.handle_call("next", {"run_id": self.run_id, "batch_size": 1})
