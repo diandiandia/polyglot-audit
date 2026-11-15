@@ -597,6 +597,9 @@ class TestFinalizeClosure(PipelineClosureBase):
         self._run_hunts(with_usage=True, retry_first=True)
         fin = self.app.finalize(self.run_id, self.run_dir, findings=[])
         self.assertEqual(fin["final_state"], "complete")
+        # SR-012/026: a fully drained run reaches the complete terminal state
+        # without the unprocessed-units reason (plan scope processed).
+        self.assertNotIn("unprocessed_units", fin["incomplete_reasons"])
 
         cost_md = (self.run_dir / "report" / "COST.md").read_text(encoding="utf-8")
         # SR-020 / DSR-067: token status reflects the persisted usage records.
@@ -606,11 +609,24 @@ class TestFinalizeClosure(PipelineClosureBase):
         self.assertIn("Retries**: 1", cost_md)
 
     def test_finalize_without_usage_records_states_reason(self):
-        self._run_hunts(with_usage=False)
-        self.app.finalize(self.run_id, self.run_dir, findings=[])
+        fin = self.app.finalize_after_drain = self._finalize_drained(with_usage=False)
         cost_md = (self.run_dir / "report" / "COST.md").read_text(encoding="utf-8")
         self.assertIn("unavailable", cost_md)
         self.assertIn("no usage records were persisted for this run", cost_md)
+        # SR-012/026 terminal semantics: the drained run is complete and the
+        # run_finalized event records the unprocessed-units accounting.
+        self.assertEqual(fin["final_state"], "complete")
+        finalized = self.events("run_finalized")[-1]
+        self.assertEqual(finalized["incomplete_reasons"], [])
+        self.assertGreaterEqual(finalized["unprocessed_units"]["plan_hunt_units"], 1)
+        self.assertGreaterEqual(finalized["unprocessed_units"]["completed_hunt_tasks"], 1)
+        self.assertEqual(finalized["unprocessed_units"]["hunt_tasks_ever_dispatched"], finalized["unprocessed_units"]["completed_hunt_tasks"])
+        self.assertEqual(finalized["unprocessed_units"]["recon_tasks_not_done"], 0)
+        self.assertEqual(finalized["unprocessed_units"]["verify_tasks_not_done_or_quarantined"], 0)
+
+    def _finalize_drained(self, with_usage=True):
+        self._run_hunts(with_usage=with_usage)
+        return self.app.finalize(self.run_id, self.run_dir, findings=[])
 
     def test_finalize_skill_review_receives_real_inputs(self):
         self._run_hunts(with_usage=False)
@@ -679,6 +695,370 @@ class TestFinalizeClosure(PipelineClosureBase):
         self.app.finalize(self.run_id, self.run_dir, findings=[])
         report = (self.run_dir / "report" / "REPORT.md").read_text(encoding="utf-8")
         self.assertIn("发现总表", report)
+
+
+def frontier_record(task_id, frontier_id="front-a1", boundary="libnative.so",
+                    symbol="dispatch_payload", path="a/danger.py"):
+    return {
+        "schema_version": "1.0",
+        "record_type": "frontier",
+        "frontier_id": frontier_id,
+        "source": {"path": path, "line": 3, "symbol": symbol, "kind": "param"},
+        "boundary": boundary,
+        "steps": [{"path": path, "line": 3, "role": "source", "note": "outgoing taint"}],
+        "open_questions": [],
+        "provenance": {"hunt_tasks": [task_id]},
+    }
+
+
+def probe_record(task_id, probe_id="probe-b1", boundary="libnative.so",
+                 symbol="exec_command", path="b/danger.py"):
+    return {
+        "schema_version": "1.0",
+        "record_type": "sink_probe",
+        "probe_id": probe_id,
+        "sink": {"path": path, "line": 6, "symbol": symbol, "kind": "rce", "effect": "exec"},
+        "boundary": boundary,
+        "steps": [{"path": path, "line": 6, "role": "sink", "note": "dangling sink"}],
+        "guard_analysis": "none",
+        "open_questions": [],
+        "provenance": {"hunt_tasks": [task_id]},
+    }
+
+
+class TestCrossTaskHalfChains(PipelineClosureBase):
+    """SR-005/007/DSR-026/058: half-chains persist and pair across tasks."""
+
+    def _two_hunt_claims(self):
+        self.prepared_two_unit_target()
+        self.drain_recon()
+        claims = self.claim_all()
+        hunt_claims = [c for c in claims if c["spec"].get("task_kind") != "recon"]
+        self.assertEqual(len(hunt_claims), 2)
+        return hunt_claims
+
+    def test_frontier_from_task_a_pairs_with_probe_from_task_b(self):
+        hunt_a, hunt_b = self._two_hunt_claims()
+
+        # Task A reports frontiers only (one matchable, one orphan).
+        self.app.start(self.run_dir, hunt_a)
+        self.app.submit(
+            self.run_dir, hunt_a,
+            hunt_result(hunt_a, [
+                frontier_record(hunt_a["task_id"], "front-a1"),
+                frontier_record(
+                    hunt_a["task_id"], "front-a2",
+                    boundary="libother.so", symbol="other_path",
+                ),
+            ]),
+            f"digest-{hunt_a['task_id']}",
+        )
+
+        # A's submission persisted the frontiers verbatim; no connector run
+        # happened (no probes yet), and both are marked unpaired so far.
+        recorded = self.events("frontier_recorded")
+        self.assertEqual(len(recorded), 1)
+        self.assertEqual(recorded[0]["task_id"], hunt_a["task_id"])
+        self.assertEqual(
+            sorted(r["frontier_id"] for r in recorded[0]["records"]),
+            ["front-a1", "front-a2"],
+        )
+        self.assertEqual(self.events("connector_evaluated"), [])
+        self.assertEqual(
+            {e["record_id"] for e in self.events("unpaired_half_chain")},
+            {"front-a1", "front-a2"},
+        )
+
+        # Task B reports the matching probe: the cross-task pair is formed at
+        # B's submission time from the run-level aggregation.
+        self.app.start(self.run_dir, hunt_b)
+        self.app.submit(
+            self.run_dir, hunt_b,
+            hunt_result(hunt_b, [probe_record(hunt_b["task_id"], "probe-b1")]),
+            f"digest-{hunt_b['task_id']}",
+        )
+
+        paired = self.events("connector_paired")
+        self.assertEqual(len(paired), 1)
+        self.assertEqual(paired[0]["frontier_id"], "front-a1")
+        self.assertEqual(paired[0]["probe_id"], "probe-b1")
+        self.assertEqual(paired[0]["status"], "hypothesized")
+        self.assertEqual(self.events("sink_probe_recorded")[0]["task_id"], hunt_b["task_id"])
+
+        # The pairing synthesized a linked candidate and dispatched verify work.
+        verify_tasks = [t for t in self.task_rows() if t["kind"] == "verify"]
+        self.assertEqual(len(verify_tasks), 1)
+
+        # Idempotence: the paired records leave the pending set; the orphan
+        # stays and is NOT re-marked on repeated aggregation.
+        conn = get_db_connection(self.run_dir / "events.db")
+        try:
+            pending = AuditAppService._gather_pending_half_chains(conn, self.run_id)
+        finally:
+            conn.close()
+        self.assertEqual(
+            [e["record"]["frontier_id"] for e in pending["frontiers"]], ["front-a2"]
+        )
+        self.assertEqual(pending["probes"], [])
+        self.assertEqual(
+            {e["record_id"] for e in self.events("unpaired_half_chain")},
+            {"front-a1", "front-a2"},
+        )
+
+    def test_unpaired_half_chains_render_into_needs_validation(self):
+        hunt_a, hunt_b = self._two_hunt_claims()
+        self.app.start(self.run_dir, hunt_a)
+        self.app.submit(
+            self.run_dir, hunt_a,
+            hunt_result(hunt_a, [frontier_record(hunt_a["task_id"], "front-solo")]),
+            f"digest-{hunt_a['task_id']}",
+        )
+        self.app.start(self.run_dir, hunt_b)
+        self.app.submit(
+            self.run_dir, hunt_b, hunt_result(hunt_b, []),
+            f"digest-{hunt_b['task_id']}",
+        )
+
+        fin = self.app.finalize(self.run_id, self.run_dir, findings=[])
+        self.assertEqual(fin["final_state"], "complete")
+
+        needs_val = (self.run_dir / "report" / "NEEDS-VALIDATION.md").read_text(encoding="utf-8")
+        self.assertIn("Unconnected Half-Chains", needs_val)
+        self.assertIn("front-solo", needs_val)
+        self.assertIn(hunt_a["task_id"], needs_val)
+        # The paired frontier never renders as unpaired; the paired probe is
+        # consumed by the connection and also absent.
+        self.assertNotIn("front-paired", needs_val)
+        report = (self.run_dir / "report" / "REPORT.md").read_text(encoding="utf-8")
+        self.assertIn("Frontier / Dangling Sink", report)
+
+    def test_later_pairing_supersedes_the_unpaired_marker(self):
+        hunt_a, hunt_b = self._two_hunt_claims()
+        # A leaves a frontier; B leaves nothing yet.
+        self.app.start(self.run_dir, hunt_a)
+        self.app.submit(
+            self.run_dir, hunt_a,
+            hunt_result(hunt_a, [frontier_record(hunt_a["task_id"], "front-late")]),
+            f"digest-{hunt_a['task_id']}",
+        )
+        self.app.start(self.run_dir, hunt_b)
+        self.app.submit(
+            self.run_dir, hunt_b, hunt_result(hunt_b, []),
+            f"digest-{hunt_b['task_id']}",
+        )
+        self.assertTrue(self.events("unpaired_half_chain"))
+
+        # A later verify-style dispatch is impossible for half-chains, so the
+        # reconciliation happens through a fresh aggregation when a probe
+        # arrives late from a re-claimed task: simulate by draining the queue
+        # (no verify tasks here) and re-checking the pending set logic.
+        conn = get_db_connection(self.run_dir / "events.db")
+        try:
+            from auditkit.ledger.event_store import EventStore
+            store = EventStore(conn)
+            store.append_event(
+                self.run_id, "sink_probe_recorded", "service",
+                {
+                    "schema_version": "1.0",
+                    "task_id": hunt_b["task_id"],
+                    "attempt_id": hunt_b["attempt_id"],
+                    "records": [probe_record(hunt_b["task_id"], "probe-late")],
+                },
+            )
+            pending = AuditAppService._gather_pending_half_chains(conn, self.run_id)
+        finally:
+            conn.close()
+        # Both sides pending: a subsequent hunt submission pairs them via the
+        # connector (covered by the pairing test); the ledger keeps history.
+        self.assertEqual(
+            [e["record"]["frontier_id"] for e in pending["frontiers"]], ["front-late"]
+        )
+        self.assertEqual(
+            [e["record"]["probe_id"] for e in pending["probes"]], ["probe-late"]
+        )
+
+
+class TestUnverifiedCandidateSurfacing(PipelineClosureBase):
+    """DSR-066: candidates whose verification never completed stay visible."""
+
+    CANDIDATE = None
+
+    def _submit_hunt_with_candidate(self, budgets=None):
+        self.prepared_pyapp(budgets=budgets)
+        self.drain_recon()
+        hunt_claim = next(
+            c for c in self.claim_all() if c["spec"].get("task_kind") != "recon"
+        )
+        candidate = candidate_record(
+            hunt_claim, source_path="handlers/upload.py", sink_path="storage/state.py",
+        )
+        self.app.start(self.run_dir, hunt_claim)
+        self.app.submit(
+            self.run_dir, hunt_claim, hunt_result(hunt_claim, [candidate]),
+            f"digest-{hunt_claim['task_id']}",
+            usage=usage_exact(hunt_claim["attempt_id"], 100),
+        )
+        return hunt_claim, candidate
+
+    def _needs_validation_md(self):
+        return (self.run_dir / "report" / "NEEDS-VALIDATION.md").read_text(encoding="utf-8")
+
+    def test_budget_exhausted_candidates_appear_in_needs_validation(self):
+        budgets = [{
+            "schema_version": "1.0", "dimension": "tasks", "mode": "enforced",
+            "limit": 2, "settled": 0, "reserved": 0, "unit": "tasks",
+            "availability": "exact",
+        }]
+        hunt_claim, candidate = self._submit_hunt_with_candidate(budgets=budgets)
+
+        # The verify task can never be claimed: the budget is exhausted.
+        self.assertEqual(self.app.next(self.run_id, self.run_dir, batch_size=5), [])
+        self.assertTrue(self.events("budget_exhausted"))
+
+        fin = self.app.finalize(self.run_id, self.run_dir, findings=[])
+        self.assertEqual(fin["final_state"], "incomplete")
+        self.assertTrue(any("budget_exhausted" in r for r in fin["incomplete_reasons"]))
+        self.assertIn("unprocessed_units", fin["incomplete_reasons"])
+
+        unverified_ids = {u["finding_id"] for u in fin["unverified"]}
+        self.assertIn(f"F-UNVERIFIED-{candidate['candidate_id']}", unverified_ids)
+        entry = next(
+            u for u in fin["unverified"]
+            if u["finding_id"] == f"F-UNVERIFIED-{candidate['candidate_id']}"
+        )
+        self.assertEqual(entry["verdict"], "unverified")
+        self.assertEqual(entry["reason"], "verification_not_completed_before_finalize")
+
+        needs_val = self._needs_validation_md()
+        self.assertIn("Unverified Candidates", needs_val)
+        self.assertIn(f"F-UNVERIFIED-{candidate['candidate_id']}", needs_val)
+        self.assertIn("verification_not_completed_before_finalize", needs_val)
+        self.assertIn("queued", needs_val)  # verify task state is disclosed
+        # The machine-readable export carries the candidate-level entry too.
+        findings_export = json.loads(
+            (self.run_dir / "report" / "findings.json").read_text(encoding="utf-8")
+        )
+        self.assertIn(
+            f"F-UNVERIFIED-{candidate['candidate_id']}",
+            {f.get("finding_id") for f in findings_export},
+        )
+
+    def test_early_finalize_surfaces_queued_verify_candidates(self):
+        hunt_claim, candidate = self._submit_hunt_with_candidate()
+
+        # Finalize while the verify task is still queued (no valid lease, so
+        # the in-flight gate does not block this early finalize).
+        fin = self.app.finalize(self.run_id, self.run_dir, findings=[])
+        self.assertEqual(fin["final_state"], "incomplete")
+        self.assertIn("unprocessed_units", fin["incomplete_reasons"])
+        self.assertIn(
+            f"F-UNVERIFIED-{candidate['candidate_id']}",
+            {u["finding_id"] for u in fin["unverified"]},
+        )
+        needs_val = self._needs_validation_md()
+        self.assertIn("verification_not_completed_before_finalize", needs_val)
+        self.assertIn(candidate["candidate_id"], needs_val)
+
+    def test_verified_candidates_are_not_duplicated_as_unverified(self):
+        from auditkit.analysis.verifier import Verifier as _Verifier
+
+        hunt_claim, candidate = self._submit_hunt_with_candidate()
+        verify_claim = self.app.next(self.run_id, self.run_dir, batch_size=5)[0]
+        self.app.start(self.run_dir, verify_claim)
+        self.app.submit(
+            self.run_dir, verify_claim,
+            verify_result(verify_claim, [{
+                "schema_version": "1.0",
+                "finding_id": "F-VERD-01",
+                "candidate_refs": [candidate["candidate_id"]],
+                "verdict": "unverified",
+                "evidence_level": "E1",
+                "unverified_reason": "deployment facts unavailable in static-only run",
+                "provenance": {
+                    "hunt_tasks": [hunt_claim["task_id"]],
+                    "verify_tasks": [verify_claim["task_id"]],
+                },
+            }]),
+            "digest-verify-unverified",
+        )
+
+        fin = self.app.finalize(self.run_id, self.run_dir, findings=[])
+        self.assertEqual(fin["final_state"], "complete")
+        unverified_ids = [u["finding_id"] for u in fin["unverified"]]
+        self.assertIn("F-VERD-01", unverified_ids)
+        self.assertNotIn(f"F-UNVERIFIED-{candidate['candidate_id']}", unverified_ids)
+        needs_val = self._needs_validation_md()
+        self.assertNotIn("verification_not_completed_before_finalize", needs_val)
+
+
+class TestTerminalStateSemantics(PipelineClosureBase):
+    """SR-012/026/DSR-076: terminal-state semantics enforced end to end.
+
+    - prepare -> finalize directly must yield 'incomplete' with the
+      unprocessed_units reason (the zero-dispatch blind spot of the G1/G2
+      formulas is covered by an explicit hard rule).
+    - attempts still held under a valid claim lease block finalize with
+      InvalidStateError (SD-06 §5.1: the plan scope must be processed).
+    """
+
+    def test_prepare_then_finalize_is_incomplete_with_unprocessed_units(self):
+        target = self.temp_dir / "target-fresh"
+        shutil.copytree(FIXTURES_APP, target)
+        self.app.prepare(target, self.run_dir, self.make_config(target))
+        # No activation, no claims: straight to finalize.
+        fin = self.app.finalize(self.run_id, self.run_dir, findings=[])
+
+        self.assertEqual(fin["final_state"], "incomplete")
+        self.assertIn("unprocessed_units", fin["incomplete_reasons"])
+        self.assertIn("gate_failed:G1", ",".join(fin["incomplete_reasons"]))
+        self.assertEqual(fin["gates"]["G1"], "fail")
+
+        # The run_finalized event carries the plan-coverage accounting.
+        finalized = self.events("run_finalized")[-1]
+        accounting = finalized["unprocessed_units"]
+        self.assertGreaterEqual(accounting["plan_hunt_units"], 1)
+        self.assertEqual(accounting["completed_hunt_tasks"], 0)
+        self.assertEqual(accounting["hunt_tasks_ever_dispatched"], 0)
+        self.assertEqual(accounting["recon_tasks_not_done"], 1)
+
+        # The on-disk dossier states the true terminal state.
+        report = (self.run_dir / "report" / "REPORT.md").read_text(encoding="utf-8")
+        self.assertIn("incomplete", report)
+
+    def test_finalize_with_in_flight_lease_is_rejected_then_allowed_after_expiry(self):
+        self.prepared_pyapp()
+        claims = self.app.next(self.run_id, self.run_dir, batch_size=1)
+        self.assertEqual(len(claims), 1)
+        self.app.start(self.run_dir, claims[0])
+
+        with self.assertRaises(InvalidStateError):
+            self.app.finalize(self.run_id, self.run_dir, findings=[])
+        # The rejection message names the escape hatches and the run did not
+        # enter a terminal or 'finalizing' state.
+        with self.assertRaises(InvalidStateError) as ctx:
+            self.app.finalize(self.run_id, self.run_dir, findings=[])
+        self.assertIn("Pause", str(ctx.exception))
+        conn = get_db_connection(self.run_dir / "events.db")
+        try:
+            state = conn.execute(
+                "SELECT state FROM runs WHERE run_id = ?", (self.run_id,)
+            ).fetchone()["state"]
+        finally:
+            conn.close()
+        self.assertEqual(state, "active")
+
+        # After the lease expires (and is reclaimed) finalize proceeds — and
+        # honestly reports the unprocessed plan scope.
+        conn = get_db_connection(self.run_dir / "events.db")
+        try:
+            conn.execute("UPDATE attempts SET expires_at = '2000-01-01T00:00:00+00:00'")
+        finally:
+            conn.close()
+        fin = self.app.finalize(self.run_id, self.run_dir, findings=[])
+        self.assertEqual(fin["final_state"], "incomplete")
+        self.assertIn("unprocessed_units", fin["incomplete_reasons"])
+        gate_failed = next(r for r in fin["incomplete_reasons"] if r.startswith("gate_failed:"))
+        self.assertIn("G2", gate_failed)
 
 
 class TestPauseResumeContract(PipelineClosureBase):

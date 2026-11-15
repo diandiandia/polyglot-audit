@@ -53,7 +53,69 @@ class TestServiceFinalize(unittest.TestCase):
         config = self._make_config(fixture, limit)
         prep = self.app.prepare(config["target"], config["run_dir"], config)
         self.app.activate(prep["run_id"], config["run_dir"])
+        self._active_run_id = prep["run_id"]
+        self._active_run_dir = Path(config["run_dir"])
         return prep, config
+
+    def _recon_result(self, claim: dict) -> dict:
+        return {
+            "schema_version": "1.0",
+            "task_id": claim["task_id"],
+            "attempt_id": claim["attempt_id"],
+            "kind": "recon",
+            "coverage": [],
+            "records": [],
+            "overflow": [],
+        }
+
+    def _empty_hunt_result(self, claim: dict) -> dict:
+        return {
+            "schema_version": "1.0",
+            "task_id": claim["task_id"],
+            "attempt_id": claim["attempt_id"],
+            "kind": "hunt",
+            "coverage": [],
+            "records": [],
+            "overflow": [],
+        }
+
+    def _drain_all(self, snapshot_id: str = "", usage_value: int = 0):
+        """Claim and submit every queued task until the queue is drained.
+
+        Required by the SR-012/026 terminal-state semantics: finalize demands
+        the plan scope (recon + every hunt, plus any verify fan-out) to be
+        fully processed, so 'complete' fixtures must not leave queued work.
+        """
+        submitted = []
+        while True:
+            claims = self.app.next(
+                self._active_run_id, self._active_run_dir, batch_size=20
+            )
+            if not claims:
+                break
+            for claim in claims:
+                self.app.start(self._active_run_dir, claim)
+                if (claim.get("spec") or {}).get("task_kind") == "recon":
+                    result = self._recon_result(claim)
+                else:
+                    result = self._empty_hunt_result(claim)
+                usage = None
+                if usage_value:
+                    usage = {
+                        "schema_version": "1.0",
+                        "attempt_id": claim["attempt_id"],
+                        "dimension": "tasks",
+                        "availability": "exact",
+                        "value": usage_value,
+                        "unit": "tasks",
+                        "source": "host_cli_report",
+                    }
+                self.app.submit(
+                    self._active_run_dir, claim, result, f"digest-{claim['attempt_id']}",
+                    usage=usage,
+                )
+                submitted.append(claim)
+        return submitted
 
     def _hunt_result(self, claim: dict, snapshot_id: str) -> dict:
         return {
@@ -169,24 +231,29 @@ class TestServiceFinalize(unittest.TestCase):
     def test_finalize_complete_with_usage(self):
         prep, config = self._prepared_run()
         run_id, run_dir = prep["run_id"], Path(config["run_dir"])
-        claim = self.app.next(run_id, run_dir, batch_size=1)[0]
-        self.app.start(run_dir, claim)
 
-        result = self._hunt_result(claim, prep["snapshot_id"])
-        usage = {
-            "schema_version": "1.0",
-            "attempt_id": claim["attempt_id"],
-            "dimension": "tasks",
-            "availability": "exact",
-            "value": 1,
-            "unit": "tasks",
-            "source": "host_cli_report",
-        }
-        receipt = self.app.submit(run_dir, claim, result, "digest-complete", usage=usage)
-        self.assertTrue(receipt["ok"])
+        # SR-012/026 terminal semantics: the plan scope (recon + all hunts)
+        # must be processed before finalize, every attempt with exact usage.
+        submitted = self._drain_all(usage_value=1)
+        self.assertTrue(submitted)
 
         finding = Verifier().create_finding_from_candidate(
-            result["records"][0], "confirmed", "t-verify-1",
+            {
+                "schema_version": "1.0",
+                "candidate_id": "cand-01",
+                "issue": "py-01",
+                "source": {"path": "caller.py", "line": 8, "symbol": "s", "kind": "param", "control": "c"},
+                "sink": {"path": "callee.c", "line": 10, "symbol": "t", "kind": "deserialization", "effect": "e"},
+                "steps": [
+                    {"path": "caller.py", "line": 8, "role": "source", "note": "n1"},
+                    {"path": "callee.c", "line": 10, "role": "sink", "note": "n2"},
+                ],
+                "guard_analysis": "none",
+                "impact_claim": "RCE",
+                "open_questions": [],
+                "provenance": {"hunt_tasks": [submitted[0]["task_id"]]},
+            },
+            "confirmed", "t-verify-1",
             impact=4, exploitability=4,
             impact_why="RCE", exploitability_why="unauthenticated",
         )
@@ -194,6 +261,7 @@ class TestServiceFinalize(unittest.TestCase):
         self.assertEqual(fin["final_state"], "complete")
         self.assertEqual(set(fin["gates"].values()), {"pass"})
         self.assertEqual(fin["incomplete_reasons"], [])
+        self.assertNotIn("unprocessed_units", fin["incomplete_reasons"])
         self.assertTrue((run_dir / "report" / "REPORT.md").exists())
 
         # Usage is reflected in budget status
@@ -214,12 +282,11 @@ class TestServiceFinalize(unittest.TestCase):
             self.app.next(run_id, run_dir, batch_size=1)
 
         self.app.activate(run_id, run_dir)
-        claim = self.app.next(run_id, run_dir, batch_size=1)[0]
-        self.app.start(run_dir, claim)
-        self.app.submit(run_dir, claim, self._hunt_result(claim, prep["snapshot_id"]), "d2")
+        self._drain_all()
 
         fin = self.app.finalize(run_id, run_dir, findings=[])
         self.assertEqual(fin["final_state"], "complete")
+        self.assertNotIn("unprocessed_units", fin["incomplete_reasons"])
         with self.assertRaises(InvalidStateError):
             self.app.next(run_id, run_dir, batch_size=1)
 
@@ -258,17 +325,22 @@ class TestServiceFinalize(unittest.TestCase):
             run_dir, claim, HostFailureError("transient", retryable=True), max_retries=2
         )
         claim2 = self.app.next(run_id, run_dir, batch_size=1)[0]
+        self.assertEqual(claim2["task_id"], claim["task_id"])
         self.app.start(run_dir, claim2)
-        result = self._hunt_result(claim2, prep["snapshot_id"])
-        self.app.submit(run_dir, claim2, result, "digest-retry-ok")
+        self.app.submit(run_dir, claim2, self._recon_result(claim2), "digest-retry-ok")
+
+        # Drain the remaining plan scope so finalize can reach 'complete'.
+        self._drain_all()
 
         finding = Verifier().create_finding_from_candidate(
-            result["records"][0], "confirmed", "t-verify-2",
+            self._hunt_result(claim2, prep["snapshot_id"])["records"][0],
+            "confirmed", "t-verify-2",
             impact=2, exploitability=3,
             impact_why="x", exploitability_why="y",
         )
         fin = self.app.finalize(run_id, run_dir, findings=[finding])
         self.assertEqual(fin["final_state"], "complete")
+        self.assertNotIn("unprocessed_units", fin["incomplete_reasons"])
 
 
 if __name__ == "__main__":

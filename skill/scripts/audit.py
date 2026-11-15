@@ -14,9 +14,22 @@ Implements IFC-04 / IFC-06 / DSR-074:
 - `report` returns {"generation_id", "report_md"}; generation_id comes from the
   artifacts ledger (latest REPORT record) with the REPORT.md header Generation
   line as fallback.
-- Standard JSON envelope on stdout:
+- Dual output format (DSR-074): every subcommand accepts --format {json,human}
+  with json as the default, so the frozen JSON envelope contract for automation
+  consumers is untouched. --format human renders compact human-readable text:
+  custom renderers for status/finalize/report/pause/run, a generic fallback
+  (top-level scalars as `key: value`, nested dict/list as indented JSON) for
+  the rest, and errors as `ERROR <code>: <message>` with indented details.
+  Exit codes are format-independent. The legacy --json switch is kept (it is
+  the historical default); an explicit --format takes precedence.
+- JSON envelope on stdout (default, --format json):
   {"schema_version": "1.0", "ok": true, "value": {...}}
   {"schema_version": "1.0", "ok": false, "error": {"code": "...", "message": "...", "retryable": false, "details": {}}}
+- `mcp` runs a standard MCP JSON-RPC 2.0 stdio server (initialize /
+  notifications/initialized / tools/list / tools/call over the four tools
+  next/submit/status/read_artifact; unknown methods -> -32601). The legacy
+  custom transport (JSON-RPC method IS the tool name) stays compatible.
+  Its wire format is fixed by JSON-RPC 2.0, so --format only accepts json.
 - Exit codes: 0 (success), 2 (input/schema), 3 (state/concurrency), 4 (budget/capability),
               5 (host failure), 6 (storage/corrupt), 7 (gate failed), 130 (cancel).
 - Diagnostics strictly to stderr.
@@ -65,7 +78,7 @@ from auditkit.contracts.errors import (
 from auditkit.hosts.claude_adapter import ClaudeDriverAdapter
 from auditkit.hosts.codex_adapter import CodexDriverAdapter
 from auditkit.hosts.concurrency import ConcurrencyController
-from auditkit.hosts.mcp_adapter import MCPServer
+from auditkit.hosts.mcp_adapter import MCPServer, MCPMethodNotFoundError
 from auditkit.ledger.db import get_db_connection
 from auditkit.ledger.event_store import utc_now_iso
 
@@ -81,6 +94,22 @@ _GENERATION_HEADER_RE = re.compile(r"Generation\)?\*\*: `([^`]+)`")
 
 # pause --reason upper bound (chars); service raises InvalidInputError past it.
 PAUSE_REASON_MAX_CHARS = 256
+
+# DSR-074 dual output format. json is the default on every subcommand (frozen
+# envelope contract); human renders compact human-readable text. The mcp
+# subcommand's wire format is fixed by JSON-RPC 2.0, so it accepts json only.
+_FORMAT_HELP = (
+    "Output format: 'json' envelope (default, automation contract) or "
+    "'human' compact human-readable text (DSR-074)"
+)
+
+
+def _add_format_argument(parser, choices=("json", "human")) -> None:
+    if list(choices) == ["json"]:
+        help_text = "Output format; the MCP stdio wire protocol is fixed JSON-RPC 2.0"
+    else:
+        help_text = _FORMAT_HELP
+    parser.add_argument("--format", choices=list(choices), default="json", help=help_text)
 
 
 def emit_json_success(value: dict) -> None:
@@ -106,6 +135,234 @@ def emit_json_error(code: str, message: str, retryable: bool = False, details: d
     }
     sys.stdout.write(json.dumps(envelope, ensure_ascii=False) + "\n")
     sys.stdout.flush()
+
+
+# ---------------------------------------------------------------------------
+# DSR-074 human output format (--format human). json stays the default so the
+# frozen envelope contract and every automation consumer are untouched. Human
+# rendering is a compact diagnostics view: per-command renderers for the four
+# high-frequency commands plus run, and a generic fallback (top-level scalars
+# as aligned `key: value`, dict/list values as indented JSON). Errors render
+# as `ERROR <code>: <message>` with indented details. Rendering is defensive
+# (missing keys / shape drift degrade to the generic view, never crash).
+# ---------------------------------------------------------------------------
+
+_KV_WIDTH = 24
+
+
+def _human_scalar(value) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def _human_kv(key: str, value) -> str:
+    label = f"{key}:"
+    return f"{label:<{_KV_WIDTH}}{_human_scalar(value)}"
+
+
+def _human_nested(obj, indent: str = "  ") -> str:
+    body = json.dumps(obj, ensure_ascii=False, indent=2, sort_keys=True)
+    return "\n".join(indent + line for line in body.splitlines())
+
+
+def _render_remaining(lines: list, value: dict, consumed: set) -> list:
+    """Append generic rendering of keys not handled by a custom renderer."""
+    for key, val in value.items():
+        if key in consumed:
+            continue
+        if isinstance(val, (dict, list)):
+            if not val:
+                lines.append(_human_kv(key, "[]" if isinstance(val, list) else "{}"))
+            else:
+                lines.append(f"{key}:")
+                lines.append(_human_nested(val, "  "))
+        else:
+            lines.append(_human_kv(key, val))
+    return lines
+
+
+def render_human_generic(value: dict) -> str:
+    lines = []
+    for key, val in value.items():
+        if isinstance(val, (dict, list)):
+            if not val:
+                lines.append(_human_kv(key, "[]" if isinstance(val, list) else "{}"))
+            else:
+                lines.append(f"{key}:")
+                lines.append(_human_nested(val, "  "))
+        else:
+            lines.append(_human_kv(key, val))
+    return "\n".join(lines)
+
+
+def render_human_status(value: dict) -> str:
+    lines = [
+        _human_kv("run_id", value.get("run_id")),
+        _human_kv("snapshot_id", value.get("snapshot_id")),
+        _human_kv("state", value.get("state")),
+        _human_kv("revision", value.get("revision")),
+    ]
+    tasks = value.get("tasks") or {}
+    lines.append("tasks:")
+    if tasks:
+        lines.extend(f"  {state}: {count}" for state, count in sorted(tasks.items()))
+    else:
+        lines.append("  (none)")
+    budgets = value.get("budgets") or []
+    lines.append("budgets:")
+    if budgets:
+        for budget in budgets:
+            label = budget.get("dimension") or "?"
+            lines.append(
+                f"  {label}: limit={_human_scalar(budget.get('limit'))} "
+                f"settled={_human_scalar(budget.get('settled'))} "
+                f"reserved={_human_scalar(budget.get('reserved'))} "
+                f"mode={_human_scalar(budget.get('mode'))} "
+                f"availability={_human_scalar(budget.get('availability'))}"
+            )
+    else:
+        lines.append("  (none)")
+    return "\n".join(
+        _render_remaining(lines, value, {"run_id", "snapshot_id", "state", "revision", "tasks", "budgets"})
+    )
+
+
+def render_human_finalize(value: dict) -> str:
+    lines = [
+        _human_kv("run_id", value.get("run_id")),
+        _human_kv("final_state", value.get("final_state")),
+        _human_kv("generation_id", value.get("generation_id")),
+        "gates:",
+    ]
+    gates = value.get("gates") or {}
+    if gates:
+        lines.extend(f"  {name}: {_human_scalar(gates[name])}" for name in sorted(gates))
+    else:
+        lines.append("  (none)")
+    reasons = value.get("incomplete_reasons") or []
+    lines.append("incomplete_reasons:")
+    if reasons:
+        lines.extend(f"  - {reason}" for reason in reasons)
+    else:
+        lines.append("  (none)")
+    unverified = value.get("unverified") or []
+    lines.append(f"unverified_findings: {len(unverified)}")
+    gaps = value.get("coverage_gaps") or []
+    lines.append(f"coverage_gaps: {len(gaps)}")
+    if gaps:
+        lines.append(_human_nested(gaps, "  "))
+    return "\n".join(
+        _render_remaining(
+            lines,
+            value,
+            {"run_id", "final_state", "generation_id", "gates", "incomplete_reasons", "unverified", "coverage_gaps"},
+        )
+    )
+
+
+def render_human_report(value: dict) -> str:
+    body = value.get("report_md") or ""
+    lines = [
+        _human_kv("generation_id", value.get("generation_id")),
+        _human_kv("report_md_chars", len(body)),
+        _human_kv("report_md_lines", len(body.splitlines())),
+        "",
+        "---",
+        body.rstrip("\n"),
+        "---",
+    ]
+    return "\n".join(_render_remaining(lines, value, {"generation_id", "report_md"}))
+
+
+def render_human_pause(value: dict) -> str:
+    attempts = value.get("in_flight_attempt_ids") or []
+    lines = [
+        (
+            f"paused {_human_scalar(value.get('run_id'))} at revision "
+            f"{_human_scalar(value.get('revision'))} (in_flight: "
+            f"{_human_scalar(value.get('in_flight_tasks'))} task(s); attempt_ids: "
+            f"{', '.join(attempts) if attempts else 'none'})"
+        ),
+        _human_kv("run_id", value.get("run_id")),
+        _human_kv("state", value.get("state")),
+        _human_kv("revision", value.get("revision")),
+        _human_kv("in_flight_tasks", value.get("in_flight_tasks")),
+        _human_kv("in_flight_attempt_ids", json.dumps(attempts, ensure_ascii=False)),
+    ]
+    return "\n".join(
+        _render_remaining(
+            lines,
+            value,
+            {"run_id", "state", "revision", "in_flight_tasks", "in_flight_attempt_ids"},
+        )
+    )
+
+
+def render_human_run(value: dict) -> str:
+    lines = [
+        (
+            f"run {_human_scalar(value.get('run_id'))} -> "
+            f"state={_human_scalar(value.get('state'))} mode={_human_scalar(value.get('mode'))}"
+        ),
+    ]
+    if value.get("message"):
+        lines.append(str(value["message"]))
+    for key in ("concurrency", "queued_tasks"):
+        if key in value:
+            lines.append(_human_kv(key, value[key]))
+    steps = value.get("next_steps") or []
+    if steps:
+        lines.append("next_steps:")
+        lines.extend(f"  - {step}" for step in steps)
+    if "dispatch" in value:
+        lines.append("dispatch:")
+        lines.append(_human_nested(value["dispatch"], "  "))
+    return "\n".join(
+        _render_remaining(lines, value, {"run_id", "state", "mode", "message", "next_steps", "concurrency", "queued_tasks", "dispatch"})
+    )
+
+
+_HUMAN_RENDERERS = {
+    "status": render_human_status,
+    "finalize": render_human_finalize,
+    "report": render_human_report,
+    "pause": render_human_pause,
+    "run": render_human_run,
+}
+
+
+def render_human_error(code: str, message: str, retryable: bool = False, details: dict = None) -> str:
+    lines = [
+        f"ERROR {code}: {message}",
+        f"  retryable: {'true' if retryable else 'false'}",
+    ]
+    if details:
+        lines.append("  details:")
+        lines.append(_human_nested(details, "    "))
+    return "\n".join(lines)
+
+
+def emit_result(value: dict, fmt: str, command: str) -> None:
+    """Emit a successful command result: JSON envelope (default) or the
+    DSR-074 human rendering for --format human."""
+    if fmt == "human":
+        renderer = _HUMAN_RENDERERS.get(command, render_human_generic)
+        sys.stdout.write(renderer(value) + "\n")
+        sys.stdout.flush()
+    else:
+        emit_json_success(value)
+
+
+def emit_failure(code: str, message: str, retryable: bool = False, details: dict = None, fmt: str = "json") -> None:
+    """Emit a command failure in the requested format (DSR-074)."""
+    if fmt == "human":
+        sys.stdout.write(render_human_error(code, message, retryable, details) + "\n")
+        sys.stdout.flush()
+    else:
+        emit_json_error(code, message, retryable, details)
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +567,7 @@ def main() -> int:
     p_doc.add_argument("--host", choices=["claude", "codex", "session"], default="session")
     p_doc.add_argument("--probe", action="store_true", help="Perform active CLI version check")
     p_doc.add_argument("--json", action="store_true", default=True)
+    _add_format_argument(p_doc)
 
     # prepare
     p_prep = subparsers.add_parser("prepare", help="Create new run, freeze snapshot, and generate plan")
@@ -317,6 +575,7 @@ def main() -> int:
     p_prep.add_argument("--run-dir", required=True, help="Output run directory")
     p_prep.add_argument("--config", required=True, help="Path to RunConfig JSON")
     p_prep.add_argument("--json", action="store_true", default=True)
+    _add_format_argument(p_prep)
 
     # run
     p_run = subparsers.add_parser("run", help="Activate run and execute driver loop")
@@ -324,52 +583,64 @@ def main() -> int:
     p_run.add_argument("--host", choices=["claude", "codex", "session"], default="session")
     p_run.add_argument("--concurrency", type=int, default=1)
     p_run.add_argument("--json", action="store_true", default=True)
+    _add_format_argument(p_run)
 
     # next
     p_next = subparsers.add_parser("next", help="Claim next batch of tasks")
     p_next.add_argument("--run-dir", required=True, help="Run directory")
     p_next.add_argument("--batch", type=int, default=1, help="Batch size")
     p_next.add_argument("--json", action="store_true", default=True)
+    _add_format_argument(p_next)
 
     # start
     p_start = subparsers.add_parser("start", help="Mark task attempt as started (stdin for claim)")
     p_start.add_argument("--run-dir", required=True, help="Run directory")
     p_start.add_argument("--json", action="store_true", default=True)
+    _add_format_argument(p_start)
 
     # submit
     p_sub = subparsers.add_parser("submit", help="Submit task result (stdin for claim + result)")
     p_sub.add_argument("--run-dir", required=True, help="Run directory")
     p_sub.add_argument("--json", action="store_true", default=True)
+    _add_format_argument(p_sub)
 
     # status
     p_stat = subparsers.add_parser("status", help="Get run status and budget metrics")
     p_stat.add_argument("--run-dir", required=True, help="Run directory")
     p_stat.add_argument("--json", action="store_true", default=True)
+    _add_format_argument(p_stat)
 
     # pause
     p_pause = subparsers.add_parser("pause", help="Pause run dispatch")
     p_pause.add_argument("--run-dir", required=True, help="Run directory")
     p_pause.add_argument("--reason", default="user_requested")
     p_pause.add_argument("--json", action="store_true", default=True)
+    _add_format_argument(p_pause)
 
     # resume
     p_res = subparsers.add_parser("resume", help="Verify integrity and resume paused run")
     p_res.add_argument("--run-dir", required=True, help="Run directory")
     p_res.add_argument("--json", action="store_true", default=True)
+    _add_format_argument(p_res)
 
     # finalize
     p_fin = subparsers.add_parser("finalize", help="Evaluate gates and publish reports")
     p_fin.add_argument("--run-dir", required=True, help="Run directory")
     p_fin.add_argument("--json", action="store_true", default=True)
+    _add_format_argument(p_fin)
 
     # report
     p_rep = subparsers.add_parser("report", help="Read latest published report")
     p_rep.add_argument("--run-dir", required=True, help="Run directory")
     p_rep.add_argument("--json", action="store_true", default=True)
+    _add_format_argument(p_rep)
 
     # mcp
-    p_mcp = subparsers.add_parser("mcp", help="Run MCP stdio 4-tool server")
+    # The MCP wire protocol is fixed JSON-RPC 2.0 (standard MCP methods plus
+    # legacy direct tool names), so --format only accepts json here.
+    p_mcp = subparsers.add_parser("mcp", help="Run MCP stdio server (standard MCP protocol + legacy direct tools)")
     p_mcp.add_argument("--run-dir", required=True, help="Run directory")
+    _add_format_argument(p_mcp, choices=("json",))
 
     # host-fail (DSR-065 / SWR-022): report a host/worker failure for a claim.
     # Credentials/claim payloads are read from stdin, never from argv (DSR-074).
@@ -382,12 +653,14 @@ def main() -> int:
     p_hfail.add_argument("--retryable", action="store_true", help="Mark the failure retryable")
     p_hfail.add_argument("--max-retries", type=int, default=2, help="Maximum retry attempts")
     p_hfail.add_argument("--json", action="store_true", default=True)
+    _add_format_argument(p_hfail)
 
     # guide
     p_guide = subparsers.add_parser("guide", help="Interactive lightweight security guidance")
     p_guide.add_argument("--query", required=True, help="Security question or code topic")
     p_guide.add_argument("--language", default="python", help="Target language")
     p_guide.add_argument("--json", action="store_true", default=True)
+    _add_format_argument(p_guide)
 
     args = parser.parse_args()
     if not args.subcommand:
@@ -399,20 +672,20 @@ def main() -> int:
     try:
         if args.subcommand == "doctor":
             res = app.doctor(probe_cli=args.probe)
-            emit_json_success({"capabilities": res})
+            emit_result({"capabilities": res}, args.format, args.subcommand)
             return 0
 
         elif args.subcommand == "guide":
             guide_svc = GuideService(SKILL_DIR / "knowledge")
             res = guide_svc.answer_query(args.query, language=args.language)
-            emit_json_success(res)
+            emit_result(res, args.format, args.subcommand)
             return 0
 
         elif args.subcommand == "prepare":
             with open(args.config, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
             res = app.prepare(args.target, args.run_dir, cfg)
-            emit_json_success(res)
+            emit_result(res, args.format, args.subcommand)
             return 0
 
         elif args.subcommand == "run":
@@ -434,7 +707,7 @@ def main() -> int:
                     raise InvalidStateError(
                         f"Cannot drive run '{run_id}' in state '{run_row['state']}'"
                     )
-                emit_json_success({
+                emit_result({
                     "run_id": run_id,
                     "state": "active",
                     "mode": "session",
@@ -451,7 +724,7 @@ def main() -> int:
                             f"then audit finalize --run-dir {args.run_dir}"
                         ),
                     ],
-                })
+                }, args.format, args.subcommand)
                 return 0
 
             binary = _resolve_host_binary(args.host)
@@ -484,14 +757,14 @@ def main() -> int:
             final_state = conn.execute(
                 "SELECT state FROM runs WHERE run_id = ?", (run_id,)
             ).fetchone()["state"]
-            emit_json_success({
+            emit_result({
                 "run_id": run_id,
                 "state": final_state,
                 "mode": args.host,
                 "concurrency": controller.current,
                 "queued_tasks": queued,
                 "dispatch": summary,
-            })
+            }, args.format, args.subcommand)
             return 0
 
         elif args.subcommand == "next":
@@ -500,7 +773,7 @@ def main() -> int:
             if not run_row:
                 raise InvalidInputError("No run found in database")
             claims = app.next(run_row["run_id"], args.run_dir, batch_size=args.batch)
-            emit_json_success({"claims": claims})
+            emit_result({"claims": claims}, args.format, args.subcommand)
             return 0
 
         elif args.subcommand == "start":
@@ -510,7 +783,7 @@ def main() -> int:
                 raise InvalidInputError("stdin required for start credentials")
             claim_data = json.loads(input_text)
             res = app.start(args.run_dir, claim_data)
-            emit_json_success(res)
+            emit_result(res, args.format, args.subcommand)
             return 0
 
         elif args.subcommand == "submit":
@@ -525,7 +798,7 @@ def main() -> int:
             if not digest:
                 digest = payload.get("claim", {}).get("result_digest") or "digest-omitted"
             res = app.submit(args.run_dir, claim, worker_result, digest, usage=payload.get("usage"))
-            emit_json_success(res)
+            emit_result(res, args.format, args.subcommand)
             return 0
 
         elif args.subcommand == "status":
@@ -534,7 +807,7 @@ def main() -> int:
             if not run_row:
                 raise InvalidInputError("No run found in database")
             res = app.status(run_row["run_id"], args.run_dir)
-            emit_json_success(res)
+            emit_result(res, args.format, args.subcommand)
             return 0
 
         elif args.subcommand == "pause":
@@ -571,7 +844,7 @@ def main() -> int:
                     "in_flight_tasks": n_tasks,
                     "in_flight_attempt_ids": attempt_ids,
                 }
-            emit_json_success(value)
+            emit_result(value, args.format, args.subcommand)
             return 0
 
         elif args.subcommand == "resume":
@@ -580,7 +853,7 @@ def main() -> int:
             if not run_row:
                 raise InvalidInputError("No run found in database")
             res = app.resume(run_row["run_id"], args.run_dir)
-            emit_json_success(res)
+            emit_result(res, args.format, args.subcommand)
             return 0
 
         elif args.subcommand == "finalize":
@@ -591,7 +864,7 @@ def main() -> int:
             # res transparently carries incomplete_reasons and coverage_gaps
             # (SWR-012: incomplete runs must state why, never fake complete).
             res = app.finalize(run_row["run_id"], args.run_dir)
-            emit_json_success(res)
+            emit_result(res, args.format, args.subcommand)
             return 0
 
         elif args.subcommand == "host-fail":
@@ -623,7 +896,7 @@ def main() -> int:
                 failure,
                 max_retries=args.max_retries,
             )
-            emit_json_success(res)
+            emit_result(res, args.format, args.subcommand)
             return 0
 
         elif args.subcommand == "report":
@@ -636,7 +909,7 @@ def main() -> int:
             # artifacts ledger (latest REPORT record) is authoritative; the
             # REPORT.md header Generation line is the fallback source.
             generation_id = _resolve_generation_id(args.run_dir, content)
-            emit_json_success({"generation_id": generation_id, "report_md": content})
+            emit_result({"generation_id": generation_id, "report_md": content}, args.format, args.subcommand)
             return 0
 
         elif args.subcommand == "mcp":
@@ -644,31 +917,61 @@ def main() -> int:
             # single state-transition entry point), never a bare TaskQueue.
             app = AuditAppService(SKILL_DIR)
             server = MCPServer(args.run_dir, app)
-            # Run simple stdio loop
+            # Standard JSON-RPC 2.0 stdio loop (DSR-031 / SR-022 / SR-023):
+            # initialize -> notifications/initialized -> tools/list ->
+            # tools/call. The legacy custom transport (method IS the tool
+            # name) stays compatible via handle_protocol. Requests without an
+            # "id" are JSON-RPC notifications and never get a response, which
+            # is what keeps standard clients from desyncing on the stream.
             for line in sys.stdin:
                 line = line.strip()
                 if not line:
                     continue
-                req = json.loads(line)
-                method = req.get("method")
-                params = req.get("params", {})
-                req_id = req.get("id")
                 try:
-                    result = server.handle_call(method, params)
+                    req = json.loads(line)
+                except ValueError:
+                    resp = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}
+                    sys.stdout.write(json.dumps(resp) + "\n")
+                    sys.stdout.flush()
+                    continue
+                if not isinstance(req, dict):
+                    resp = {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "Invalid Request"}}
+                    sys.stdout.write(json.dumps(resp) + "\n")
+                    sys.stdout.flush()
+                    continue
+                req_id = req.get("id")
+                method = req.get("method")
+                params = req.get("params")
+                if not isinstance(params, dict):
+                    params = {}
+                try:
+                    result = server.handle_protocol(method, params)
                     resp = {"jsonrpc": "2.0", "id": req_id, "result": result}
+                except MCPMethodNotFoundError as mnf:
+                    resp = {
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "error": {
+                            "code": -32601,
+                            "message": "Method not found",
+                            "data": {"method": str(mnf.method)},
+                        },
+                    }
                 except AuditError as ae:
                     resp = {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": ae.message, "data": ae.to_dict()}}
                 except Exception as ex:
                     resp = {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32603, "message": str(ex)}}
-                sys.stdout.write(json.dumps(resp) + "\n")
-                sys.stdout.flush()
+                if "id" in req:
+                    # JSON-RPC notifications (no id) never receive a response.
+                    sys.stdout.write(json.dumps(resp) + "\n")
+                    sys.stdout.flush()
             return 0
 
     except AuditError as ae:
-        emit_json_error(ae.code, ae.message, ae.retryable, ae.details)
+        emit_failure(ae.code, ae.message, ae.retryable, ae.details, fmt=args.format)
         return ae.exit_code
     except Exception as ex:
-        emit_json_error("INTERNAL_ERROR", str(ex), retryable=False)
+        emit_failure("INTERNAL_ERROR", str(ex), retryable=False, fmt=args.format)
         return 1
 
     return 0

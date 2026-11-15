@@ -317,19 +317,36 @@ class TestIntegrationWiring(unittest.TestCase):
         self.assertEqual(len(adjudicated_events), 1)
         self.assertEqual(adjudicated_events[0]["resolution"], "corroborated")
 
+        # Submit any remaining hunt claims of the plan: SR-012/026 terminal
+        # semantics require the full plan scope to be processed before
+        # finalize (the pyapp fixture may plan a single hunt unit).
+        for remaining in (
+            c for c in all_claims
+            if not self._is_recon(c) and c["task_id"] != hunt_claim["task_id"]
+        ):
+            self.app.start(run_dir, remaining)
+            self.app.submit(
+                run_dir, remaining,
+                self._hunt_result(remaining, prep["snapshot_id"], []),
+                "digest-hunt-02",
+            )
+
         # --- finalize: stored findings merged, verify completion accounted ---
         fin = self.app.finalize(run_id, run_dir, findings=[])
         self.assertEqual(fin["final_state"], "complete")
+        self.assertNotIn("unprocessed_units", fin["incomplete_reasons"])
         self.assertEqual(fin["verify"], {"enqueued": 2, "done": 2, "complete": True})
         self.assertEqual(fin["second_opinion_pending"], [])
         self.assertEqual(set(fin["gates"].values()), {"pass"})
         # Usage settled across all three submitted attempts into the tokens
-        # dimension; the second hunt unit stays queued and unreserved.
+        # dimension; the second hunt unit settled the tasks dimension without
+        # a tokens usage record (unavailable usage, reservation consumed).
         tokens = self._budget(run_id, run_dir, "tokens")
         self.assertEqual(tokens["settled"], 800)
         self.assertEqual(tokens["availability"], "exact")
         tasks_budget = self._budget(run_id, run_dir, "tasks")
-        self.assertEqual(tasks_budget["settled"], 4)
+        # One settled task per claim: recon + hunts + verify + second opinion.
+        self.assertEqual(tasks_budget["settled"], len(all_claims) + 2)
 
     # ------------------------------------------------------------------
     # 2. usage settlement: unavailable usage is recorded with a reason and
@@ -456,8 +473,40 @@ class TestIntegrationWiring(unittest.TestCase):
         verify_tasks = [t for t in self._task_rows(run_dir) if t["kind"] == "verify"]
         self.assertEqual(len(verify_tasks), 1)
 
+        # Submit the remaining plan scope: the other hunt claim already held
+        # from all_claims, plus the verify fan-out granted below, so finalize
+        # can reach the complete terminal state.
+        for held in (c for c in all_claims if not self._is_recon(c) and c["task_id"] != claim["task_id"]):
+            self.app.start(run_dir, held)
+            self.app.submit(
+                run_dir, held,
+                self._hunt_result(held, prep["snapshot_id"], []),
+                f"digest-held-{held['attempt_id']}",
+            )
+        while True:
+            open_claims = self.app.next(run_id, run_dir, batch_size=10)
+            if not open_claims:
+                break
+            for open_claim in open_claims:
+                self.app.start(run_dir, open_claim)
+                task_kind = (open_claim.get("spec") or {}).get("task_kind") or "verify"
+                self.app.submit(
+                    run_dir, open_claim,
+                    {
+                        "schema_version": "1.0",
+                        "task_id": open_claim["task_id"],
+                        "attempt_id": open_claim["attempt_id"],
+                        "kind": task_kind,
+                        "coverage": [],
+                        "records": [],
+                        "overflow": [],
+                    },
+                    f"digest-drain-{open_claim['attempt_id']}",
+                )
+
         fin = self.app.finalize(run_id, run_dir, findings=[])
         self.assertEqual(fin["final_state"], "complete")
+        self.assertNotIn("unprocessed_units", fin["incomplete_reasons"])
         self.assertTrue(fin["verify"]["enqueued"] >= 1)
 
     # ------------------------------------------------------------------
@@ -556,6 +605,28 @@ class TestIntegrationWiring(unittest.TestCase):
         self.assertEqual(overflow_events[-1]["dimension"], "candidate")
         self.assertEqual(overflow_events[-1]["estimated_count"], 3)
 
+        # Submit the remaining plan scope so finalize is allowed to run.
+        while True:
+            open_claims = self.app.next(run_id, run_dir, batch_size=10)
+            if not open_claims:
+                break
+            for open_claim in open_claims:
+                self.app.start(run_dir, open_claim)
+                task_kind = (open_claim.get("spec") or {}).get("task_kind") or "verify"
+                self.app.submit(
+                    run_dir, open_claim,
+                    {
+                        "schema_version": "1.0",
+                        "task_id": open_claim["task_id"],
+                        "attempt_id": open_claim["attempt_id"],
+                        "kind": task_kind,
+                        "coverage": [],
+                        "records": [],
+                        "overflow": [],
+                    },
+                    f"digest-drain-{open_claim['attempt_id']}",
+                )
+
         # Both triage records and overflow are surfaced by finalize accounting.
         fin = self.app.finalize(run_id, run_dir, findings=[])
         gap_dimensions = {g.get("dimension") for g in fin["coverage_gaps"]}
@@ -648,10 +719,97 @@ class TestIntegrationWiring(unittest.TestCase):
         self.assertNotIn(retained_task_id, {c["task_id"] for c in next_claims})
         self.assertEqual(self.app.next(run_id, run_dir, batch_size=5), [])
 
+        # Submit the granted hunt claims so only the retained quarantine work
+        # keeps the run from completing (SR-012/026 in-flight gate).
+        for c in next_claims:
+            self.app.start(run_dir, c)
+            self.app.submit(
+                run_dir, c,
+                self._hunt_result(c, prep["snapshot_id"], []),
+                f"digest-drain-{c['attempt_id']}",
+            )
+
         fin = self.app.finalize(run_id, run_dir, findings=[])
         self.assertEqual(fin["final_state"], "incomplete")
         self.assertIn("termination_uncertain_budget_retained", fin["incomplete_reasons"])
+        self.assertIn("unprocessed_units", fin["incomplete_reasons"])
         self.assertTrue(fin["budget_retained"])
+
+
+class TestTaskSpecEnqueueGate(unittest.TestCase):
+    """DSR-073: invalid task specs are rejected at the enqueue points."""
+
+    def setUp(self):
+        self.temp_dir = Path(tempfile.mkdtemp())
+        self.app = AuditAppService(SKILL_DIR)
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_validated_task_spec_rejects_invalid_shapes(self):
+        for bad in (
+            {},
+            {"schema_version": "1.0"},
+            # The retired speculative shape (never produced by the service).
+            {
+                "schema_version": "1.0", "kind": "hunt", "unit_ids": ["u-1"],
+                "packet_digest": "a" * 64, "priority": 10,
+                "limits": {"max_candidates": 5, "timeout_seconds": 120},
+            },
+            # A hunt spec missing its unit cannot be served with a packet.
+            {"schema_version": "1.0", "task_kind": "hunt", "snapshot_id": "snp"},
+        ):
+            with self.subTest(spec=bad):
+                with self.assertRaises(InvalidInputError):
+                    self.app._validated_task_spec(bad)
+
+    def test_verify_fan_out_rejects_invalid_spec_with_event(self):
+        from unittest import mock
+
+        from auditkit.analysis.verifier import Verifier
+        from auditkit.ledger.db import init_database
+
+        run_dir = self.temp_dir / "run"
+        run_dir.mkdir()
+        init_database(run_dir / "events.db")
+        conn = get_db_connection(run_dir / "events.db")
+        try:
+            conn.execute(
+                """
+                INSERT INTO runs (run_id, snapshot_id, state, schema_version, skill_version,
+                                  knowledge_version, config_ref, revision, created_at, updated_at)
+                VALUES ('run-spec', 'snp', 'active', '1.0', '0.1.0', '1.0', 'cfg', 1,
+                        '2026-11-15T00:00:00Z', '2026-11-15T00:00:00Z')
+                """
+            )
+            conn.commit() if hasattr(conn, "commit") else None
+
+            with mock.patch.object(
+                Verifier, "build_verify_task",
+                return_value={"schema_version": "1.0", "task_kind": "verify"},
+            ):
+                enqueued = self.app._enqueue_verify_tasks(
+                    conn, "run-spec",
+                    [{"candidate_id": "cand-broken", "provenance": {"hunt_tasks": ["t"]}}],
+                    "task-origin",
+                )
+            self.assertEqual(enqueued, [])
+
+            rows = conn.execute(
+                "SELECT payload_json FROM events WHERE event_type = 'verify_task_spec_rejected'"
+            ).fetchall()
+            self.assertEqual(len(rows), 1)
+            payload = json.loads(rows[0]["payload_json"])
+            self.assertEqual(payload["candidate_id"], "cand-broken")
+            self.assertIn("Schema validation failed", payload["reason"])
+
+            # Nothing was enqueued under the candidate's task key.
+            remaining = conn.execute(
+                "SELECT count(*) AS cnt FROM tasks WHERE task_key LIKE 'verify:task-origin:%'"
+            ).fetchone()["cnt"]
+            self.assertEqual(remaining, 0)
+        finally:
+            conn.close()
 
 
 if __name__ == "__main__":

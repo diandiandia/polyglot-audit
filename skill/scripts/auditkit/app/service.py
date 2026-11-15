@@ -25,14 +25,31 @@ Cross-domain wiring owned here (ANA/LED, SNP/INT, HST/LED):
   verify task (DSR-061); its submission adjudicates the finding (conflict
   demotes to needs_validation with both sides preserved); a pending second
   opinion is recorded and forces an incomplete run;
+- hunt submissions persist EVERY frontier and sink probe as ledger events
+  (SR-005/007/DSR-026/058) BEFORE connection; the connector evaluates the
+  run-level PENDING half-chain set (history + this submission, already-paired
+  records excluded via connector_paired events), so task A's frontier can pair
+  with task B's probe; records still unpaired after aggregation are marked
+  unpaired_half_chain and rendered into NEEDS-VALIDATION;
 - verify submissions are stamped with the current run_id and merged at
   finalize (adjudicated findings override verified ones), making the semantic
   validator's cross-run check real;
-- finalize feeds the report stage with real self-review inputs (SR-014 /
-  DSR-070), aggregates usage_records and ledger retries into cost telemetry
-  (SR-020 / DSR-067), reads report_language from the run config (SR-012), and
-  evaluates G4 AFTER the reports are published, against the published
-  artifacts (user-confirmed ordering fix);
+- every task spec is validated against the task_spec contract at its enqueue
+  point (DSR-073); invalid specs are rejected with InvalidInputError and never
+  enqueued;
+- finalize blocks on in-flight claim leases (InvalidStateError), enforces the
+  plan-coverage invariant via the unprocessed_units hard rule, synthesizes
+  unverified entries for candidates whose verify task never completed
+  (DSR-066), and feeds the report stage with real self-review inputs
+  (SR-014 / DSR-070); it aggregates usage_records and ledger retries into cost
+  telemetry (SR-020 / DSR-067), reads report_language from the run config
+  (SR-012), and evaluates G4 AFTER the reports are published, against the
+  published artifacts (user-confirmed ordering fix);
+- prepare detects JVM build evidence in the snapshot (SR-003 / SD-02) and
+  threads the three-state platform result into both platform-conditional
+  catalog call sites (recon enqueue and hunt packet rendering); without
+  evidence Kotlin/Scala targets do NOT inherit the Java base index and the
+  packet discloses the unknown platform;
 - run_dispatch_loop drives claims with AIMD concurrency, adapter retry/backoff
   parameters, trusted usage objects, and TerminationUncertainError budget
   retention; pause returns the in-flight attempt contract and resume verifies
@@ -158,6 +175,59 @@ ERROR_EVENT_TYPES = (
 )
 # Self-review flow accounting treats the report stage as executed work.
 REPORT_STAGE_TASKS = 1
+# SR-012/SR-026/DSR-076: finalize enforces the plan-coverage invariant that
+# DDS-06's G1/G2 formulas miss (zero-dispatch blind spot): planned work that
+# was never dispatched, and recon/verify tasks that never reached a terminal
+# or quarantine state, force the 'incomplete' terminal state.
+UNPROCESSED_UNITS_REASON = "unprocessed_units"
+# SR-005/SR-007/DSR-026/DSR-058: every frontier and sink probe of a hunt
+# submission is persisted as an event BEFORE any connection attempt, so
+# one-sided half-chains survive and can be paired later by another task's
+# submission. connector_paired marks the records a connection consumed
+# (idempotent re-connection guard); unpaired_half_chain records the records
+# still unpaired after run-level aggregation.
+FRONTIER_RECORDED_EVENT = "frontier_recorded"
+SINK_PROBE_RECORDED_EVENT = "sink_probe_recorded"
+CONNECTOR_PAIRED_EVENT = "connector_paired"
+UNPAIRED_HALF_CHAIN_EVENT = "unpaired_half_chain"
+HALF_CHAIN_EVENT_TYPES = (FRONTIER_RECORDED_EVENT, SINK_PROBE_RECORDED_EVENT)
+# DSR-066: synthetic verdict stamped onto candidates whose verify task never
+# completed before finalize; they surface in NEEDS-VALIDATION instead of
+# silently disappearing.
+UNVERIFIED_SYNTHETIC_REASON = "verification_not_completed_before_finalize"
+# SR-003 / SD-02 (platform conditioning): JVM build-evidence markers scanned
+# from the snapshot manifest. Kotlin/Scala targets without any of these
+# markers are NOT assumed to be JVM targets (honest unknown instead).
+JVM_BUILD_FILE_MARKERS = (
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "settings.gradle",
+    "settings.gradle.kts",
+)
+JVM_BUILD_SUFFIX_MARKERS = (".sbt",)
+JVM_BUILD_PATH_PREFIX_MARKERS = (".mvn/",)
+JVM_CONDITIONAL_LANGUAGES = ("kotlin", "scala")
+
+
+def detect_jvm_build_evidence_files(paths: List[str]) -> List[str]:
+    """Return the snapshot paths that carry a JVM build marker (SR-003 / SD-02).
+
+    Markers: pom.xml, Gradle build/settings scripts, .sbt build files and the
+    .mvn/ directory. An empty result means NO JVM build evidence was found —
+    the caller must then keep the platform unknown for Kotlin/Scala targets
+    instead of assuming JVM.
+    """
+    evidence: List[str] = []
+    for p in sorted(set(paths)):
+        normalized = p[2:] if p.startswith("./") else p
+        name = normalized.rsplit("/", 1)[-1]
+        if name in JVM_BUILD_FILE_MARKERS or normalized.startswith(JVM_BUILD_PATH_PREFIX_MARKERS):
+            evidence.append(p)
+            continue
+        if name.endswith(JVM_BUILD_SUFFIX_MARKERS):
+            evidence.append(p)
+    return sorted(evidence)
 
 
 class AuditAppService:
@@ -167,6 +237,23 @@ class AuditAppService:
         self.skill_dir = Path(os.path.realpath(os.path.abspath(skill_dir)))
         self.schemas_dir = self.skill_dir / "schemas"
         self.knowledge_dir = self.skill_dir / "knowledge"
+        self._task_spec_validator: Optional[SchemaValidator] = None
+
+    # ------------------------------------------------------------------
+    # DSR-073: task_spec contract enforcement at every enqueue point.
+    # ------------------------------------------------------------------
+    def _validated_task_spec(self, spec: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate a task spec against the real task_spec contract (DSR-073).
+
+        The schema is the single source of truth for the actual hunt/recon/
+        verify spec shapes built by this service; an invalid spec raises
+        InvalidInputError and is never enqueued.
+        """
+        if self._task_spec_validator is None:
+            with open(self.schemas_dir / "task_spec.schema.json", "r", encoding="utf-8") as f:
+                self._task_spec_validator = SchemaValidator(json.load(f))
+        self._task_spec_validator.validate_or_raise(spec)
+        return spec
 
     def _open_run_db(self, run_dir: str | Path) -> Any:
         """Open a run database and verify its recorded versions (DSR-072).
@@ -376,6 +463,13 @@ class AuditAppService:
             dispositions[d] = dispositions.get(d, 0) + 1
         analyze_units = [u for u in units if u.get("disposition", "analyze") == "analyze"]
 
+        # SR-003 / SD-02: JVM platform evidence is detected once, recorded in
+        # the plan, and reused for every platform-conditional index decision.
+        jvm_evidence_files = detect_jvm_build_evidence_files(
+            [f["path"] for f in manifest.files]
+        )
+        platform_is_jvm: Optional[bool] = True if jvm_evidence_files else None
+
         # Save plan artifact
         plan_summary = {
             "snapshot_id": snapshot_id,
@@ -389,6 +483,16 @@ class AuditAppService:
             "snapshot_gaps": snapshot_gaps,
             "drift_detected": manifest.drift_detected,
             "inventory_reconciliation": inventory_reconciliation,
+            "platform_evidence": {
+                "is_jvm": platform_is_jvm,
+                "build_marker_files": jvm_evidence_files,
+                "basis": (
+                    "JVM build markers found in the snapshot manifest"
+                    if jvm_evidence_files
+                    else "no JVM build markers found; platform stays unknown for "
+                    "Kotlin/Scala targets (SD-02: state uncertainty when unknown)"
+                ),
+            },
         }
         with open(run_path / "plan.json", "w", encoding="utf-8") as f:
             json.dump(plan_summary, f, indent=2)
@@ -422,7 +526,12 @@ class AuditAppService:
                 run_id=run_id,
                 task_key=f"hunt:{u['unit_id']}",
                 kind="hunt",
-                spec={"unit": u, "snapshot_id": snapshot_id},
+                spec=self._validated_task_spec({
+                    "schema_version": "1.0",
+                    "task_kind": "hunt",
+                    "snapshot_id": snapshot_id,
+                    "unit": u,
+                }),
                 priority=20 if "T1" in u.get("tier", "") else 10,
             )
 
@@ -434,15 +543,20 @@ class AuditAppService:
         # deterministically from the plan.
         recon_unit = self._build_recon_unit(units, snapshot_id)
         catalog = KnowledgeCatalog(self.knowledge_dir)
+        # SR-003 / SD-02 (platform conditioning): the Java base index is only
+        # applicable to JVM targets. Evidence comes from JVM build markers in
+        # the frozen snapshot; a Kotlin/Scala target without any marker stays
+        # honestly unknown (is_jvm=None) — the base index is not expanded and
+        # the packet says so.
         recon_primary_index, recon_base_index = catalog.get_applicable_indices(
-            recon_unit.get("language", "unknown")
+            recon_unit.get("language", "unknown"), is_jvm=platform_is_jvm
         )
         catalog_languages = self._catalog_languages()
         recon_task_id = task_queue.enqueue(
             run_id=run_id,
             task_key=RECON_TASK_KEY,
             kind="recon",
-            spec={
+            spec=self._validated_task_spec({
                 "schema_version": "1.0",
                 "task_kind": "recon",
                 "role": "hunt",  # recon packets declare the hunt output contract (DSR-059)
@@ -457,7 +571,7 @@ class AuditAppService:
                     ),
                     "catalog_languages": catalog_languages,
                 },
-            },
+            }),
             priority=RECON_TASK_PRIORITY,
         )
 
@@ -683,7 +797,8 @@ class AuditAppService:
             )
         else:
             primary_index, base_index = catalog.get_applicable_indices(
-                unit.get("language", "unknown")
+                unit.get("language", "unknown"),
+                is_jvm=self._snapshot_platform_is_jvm(run_path),
             )
             packet, _digest, overflow = builder.build_hunt_packet(
                 snapshot_id,
@@ -779,6 +894,24 @@ class AuditAppService:
             with open(snapshot_dest / path, "r", encoding="utf-8", errors="replace") as sf:
                 contents[path] = sf.read()
         return contents
+
+    @staticmethod
+    def _snapshot_platform_is_jvm(run_path: Path) -> Optional[bool]:
+        """Resolve JVM platform evidence from the frozen snapshot (SR-003/SD-02).
+
+        True when JVM build markers exist in the snapshot manifest; None
+        (honest unknown) when they do not. The value only changes behavior for
+        platform-conditional base languages (Kotlin/Scala -> Java).
+        """
+        manifest_path = run_path / "snapshot" / "manifest.json"
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                files = json.load(f).get("files", [])
+        except (OSError, ValueError):
+            return None
+        if detect_jvm_build_evidence_files([f.get("path", "") for f in files if isinstance(f, dict)]):
+            return True
+        return None
 
     def _load_guard_summary(self, conn: Any, run_id: str) -> str:
         """Read the guard baseline summary from the ledger (DDS-05).
@@ -936,12 +1069,53 @@ class AuditAppService:
                         "reason": ov.get("reason", ""),
                     },
                 )
+            # SR-005/SR-007/DSR-026/DSR-058: persist EVERY frontier and sink
+            # probe of this submission as a ledger event BEFORE any connection
+            # attempt — including one-sided submissions. A half-chain without a
+            # counterpart yet is recorded data, never silently dropped input.
+            if frontiers:
+                store.append_event(
+                    run_id,
+                    FRONTIER_RECORDED_EVENT,
+                    "service",
+                    {
+                        "schema_version": "1.0",
+                        "task_id": claim["task_id"],
+                        "attempt_id": claim["attempt_id"],
+                        "records": frontiers,
+                    },
+                )
+            if probes:
+                store.append_event(
+                    run_id,
+                    SINK_PROBE_RECORDED_EVENT,
+                    "service",
+                    {
+                        "schema_version": "1.0",
+                        "task_id": claim["task_id"],
+                        "attempt_id": claim["attempt_id"],
+                        "records": probes,
+                    },
+                )
             # DSR-063: duplicate candidates are reconciled before any verify
             # work is dispatched; only deduplicated representatives continue.
             candidates = self._deduplicate_candidates(conn, run_id, candidates, store)
             self._enqueue_verify_tasks(conn, run_id, candidates, claim["task_id"])
-            if frontiers and probes:
-                self._run_connector(conn, run_id, claim, frontiers, probes, store)
+            # Cross-task connection (SR-005/DSR-026): aggregate this run's
+            # half-chains from the event ledger (history + this submission)
+            # before evaluating pairings, so a frontier reported by task A can
+            # pair with a probe reported by task B at B's submission time.
+            pending = self._gather_pending_half_chains(conn, run_id)
+            if (frontiers or probes) and pending["frontiers"] and pending["probes"]:
+                result = self._run_connector(
+                    conn, run_id, claim,
+                    [e["record"] for e in pending["frontiers"]],
+                    [e["record"] for e in pending["probes"]],
+                    store,
+                )
+            else:
+                result = {"connections": []}
+            self._record_unpaired_half_chains(run_id, pending, result, store)
         elif kind == "verify":
             spec = self._task_spec(conn, claim)
             if spec.get("second_opinion"):
@@ -964,6 +1138,141 @@ class AuditAppService:
             except ValueError:
                 return {}
         return {}
+
+    # ------------------------------------------------------------------
+    # SR-005/SR-007/DSR-026/DSR-058 wiring: run-level half-chain ledger.
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _gather_pending_half_chains(conn: Any, run_id: str) -> Dict[str, Any]:
+        """Aggregate a run's recorded half-chains from the event ledger.
+
+        Returns the pending (not yet paired) frontier and sink-probe records
+        with the task id that reported them, plus the record ids already
+        covered by an earlier ``unpaired_half_chain`` event (so the marker is
+        written once per record, not once per submission).
+        """
+        frontiers: Dict[str, Dict[str, Any]] = {}
+        probes: Dict[str, Dict[str, Any]] = {}
+        paired_frontier_ids: set = set()
+        paired_probe_ids: set = set()
+        marked_unpaired: set = set()
+
+        placeholders = ",".join("?" * 3)
+        for row in conn.execute(
+            f"""
+            SELECT event_type, payload_json FROM events
+            WHERE run_id = ? AND event_type IN ({placeholders})
+            ORDER BY revision
+            """,
+            (run_id, FRONTIER_RECORDED_EVENT, SINK_PROBE_RECORDED_EVENT, CONNECTOR_PAIRED_EVENT),
+        ).fetchall():
+            try:
+                payload = json.loads(row["payload_json"])
+            except ValueError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            event_type = row["event_type"]
+            if event_type == CONNECTOR_PAIRED_EVENT:
+                if payload.get("frontier_id"):
+                    paired_frontier_ids.add(payload["frontier_id"])
+                if payload.get("probe_id"):
+                    paired_probe_ids.add(payload["probe_id"])
+                continue
+            source_task_id = str(payload.get("task_id", ""))
+            bucket = frontiers if event_type == FRONTIER_RECORDED_EVENT else probes
+            for rec in payload.get("records", []) or []:
+                if not isinstance(rec, dict):
+                    continue
+                record_id = str(rec.get("frontier_id") or rec.get("probe_id") or "")
+                if not record_id or record_id in bucket:
+                    continue  # first occurrence wins (idempotent re-reporting)
+                bucket[record_id] = {"record": rec, "task_id": source_task_id}
+
+        for row in conn.execute(
+            "SELECT payload_json FROM events WHERE run_id = ? AND event_type = ? ORDER BY revision",
+            (run_id, UNPAIRED_HALF_CHAIN_EVENT),
+        ).fetchall():
+            try:
+                payload = json.loads(row["payload_json"])
+            except ValueError:
+                continue
+            if isinstance(payload, dict) and payload.get("record_id"):
+                marked_unpaired.add(str(payload["record_id"]))
+
+        pending_frontiers = [
+            frontiers[fid] for fid in sorted(frontiers) if fid not in paired_frontier_ids
+        ]
+        pending_probes = [
+            probes[pid] for pid in sorted(probes) if pid not in paired_probe_ids
+        ]
+        return {
+            "frontiers": pending_frontiers,
+            "probes": pending_probes,
+            "marked_unpaired": marked_unpaired,
+        }
+
+    @staticmethod
+    def _record_unpaired_half_chains(
+        run_id: str,
+        pending: Dict[str, Any],
+        connector_result: Dict[str, Any],
+        store: EventStore,
+    ) -> List[str]:
+        """Persist ``unpaired_half_chain`` events for still-unpaired records.
+
+        Called after the run-level aggregation/connection step: records that
+        the connector did not pair (either side missing, capped, unresolved or
+        incompatible) get an explicit marker event with their provenance so
+        the NEEDS-VALIDATION report can render them. Records already marked
+        and still pending are not re-marked; a record paired LATER supersedes
+        its marker through the connector_paired event the renderer reconciles.
+        """
+        newly_paired_frontiers = {
+            c.get("frontier_id", "") for c in connector_result.get("connections", [])
+        }
+        newly_paired_probes = {
+            c.get("probe_id", "") for c in connector_result.get("connections", [])
+        }
+        marked = pending.get("marked_unpaired") or set()
+        recorded: List[str] = []
+
+        entries: List[tuple] = [
+            ("frontier", e["record"], e["task_id"]) for e in pending.get("frontiers", [])
+        ] + [("sink_probe", e["record"], e["task_id"]) for e in pending.get("probes", [])]
+
+        for record_kind, rec, source_task_id in entries:
+            record_id = str(rec.get("frontier_id") or rec.get("probe_id") or "")
+            if not record_id or record_id in marked:
+                continue
+            if record_kind == "frontier" and record_id in newly_paired_frontiers:
+                continue
+            if record_kind == "sink_probe" and record_id in newly_paired_probes:
+                continue
+            endpoint = rec.get("source") if record_kind == "frontier" else rec.get("sink")
+            endpoint = endpoint if isinstance(endpoint, dict) else {}
+            store.append_event(
+                run_id,
+                UNPAIRED_HALF_CHAIN_EVENT,
+                "service",
+                {
+                    "schema_version": "1.0",
+                    "record_kind": record_kind,
+                    "record_id": record_id,
+                    "boundary": rec.get("boundary", ""),
+                    "symbol": endpoint.get("symbol", ""),
+                    "path": endpoint.get("path", ""),
+                    "line": endpoint.get("line"),
+                    "source_task_id": source_task_id,
+                    "reason": (
+                        "run-level aggregation found no compatible counterpart "
+                        "for this half-chain (DSR-058: unmatched records are "
+                        "never silently dropped)"
+                    ),
+                },
+            )
+            recorded.append(record_id)
+        return recorded
 
     # ------------------------------------------------------------------
     # DDS-05 S1 / DSR-024 / SR-006 wiring: recon results establish the
@@ -1154,15 +1463,34 @@ class AuditAppService:
 
         Task keys are scoped by the producing hunt task, so identical
         worker-supplied candidate ids from different hunt tasks never collide.
+
+        DSR-073: every spec is validated against the task_spec contract before
+        enqueue; a spec that does not match the real contract is rejected with
+        InvalidInputError and recorded as an explicit event instead of being
+        enqueued (fail visible, never silently enqueued).
         """
         verifier = Verifier(enforce_attempt_gate=True)
         queue = TaskQueue(conn)
+        store = EventStore(conn)
         enqueued: List[Dict[str, Any]] = []
         for cand in candidates:
             cand_id = cand.get("candidate_id", "")
             if not cand_id:
                 continue
-            spec = verifier.build_verify_task(cand)
+            try:
+                spec = self._validated_task_spec(verifier.build_verify_task(cand))
+            except InvalidInputError as e:
+                store.append_event(
+                    run_id,
+                    "verify_task_spec_rejected",
+                    "service",
+                    {
+                        "candidate_id": cand_id,
+                        "origin_task_id": origin_task_id,
+                        "reason": str(getattr(e, "message", e)),
+                    },
+                )
+                continue
             task_id = queue.enqueue(
                 run_id=run_id,
                 task_key=f"verify:{origin_task_id}:{cand_id}",
@@ -1186,9 +1514,15 @@ class AuditAppService:
     ) -> Dict[str, Any]:
         """Run hypothesis connection with a full LED budget lifecycle (ANA -> LED).
 
-        reserve -> settle (actual pairing evaluations) on success, reserve ->
-        release on failure. Unresolved / incompatible / capped records are
-        persisted as events and never silently dropped (DSR-058).
+        ``frontiers``/``probes`` are the run-level PENDING half-chain sets
+        (history + current submission, already-paired records excluded), so a
+        frontier reported by one task can pair with a probe reported by
+        another. reserve -> settle (actual pairing evaluations) on success,
+        reserve -> release on failure. Every formed connection is recorded as
+        a ``connector_paired`` event — the idempotence guard that keeps
+        repeated submissions from re-pairing the same records. Unresolved /
+        incompatible / capped records are persisted as events and never
+        silently dropped (DSR-058).
         """
         ledger = BudgetLedger(conn)
         connector = HypothesisConnector()
@@ -1222,6 +1556,25 @@ class AuditAppService:
                 "candidates": result["stats"]["candidates"],
             },
         )
+
+        # SR-005/DSR-026: mark the records each connection consumed. The
+        # pending-set gathering excludes ids present in these events, which is
+        # what makes cross-task connection idempotent across submissions.
+        for conn_rec in result["connections"]:
+            store.append_event(
+                run_id,
+                CONNECTOR_PAIRED_EVENT,
+                "service",
+                {
+                    "schema_version": "1.0",
+                    "connection_id": conn_rec.get("connection_id", ""),
+                    "frontier_id": conn_rec.get("frontier_id", ""),
+                    "probe_id": conn_rec.get("probe_id", ""),
+                    "status": conn_rec.get("status", ""),
+                    "task_id": claim["task_id"],
+                    "attempt_id": claim["attempt_id"],
+                },
+            )
 
         for rec in result["unresolved"]:
             payload = {k: v for k, v in rec.items() if k != "record"}
@@ -1310,8 +1663,9 @@ class AuditAppService:
         """Enqueue an independent second-opinion verify task per High/Critical confirmation.
 
         The task key carries the second-opinion marker and its priority is
-        higher than normal verify work. If the task cannot be enqueued, the
-        fact is recorded as a second_opinion_pending event — the run never
+        higher than normal verify work. If the task cannot be enqueued —
+        including a spec that fails the task_spec contract (DSR-073) — the
+        fact is recorded as a second_opinion_pending event: the run never
         pretends a finding was double-reviewed when it was not.
         """
         enqueued: List[str] = []
@@ -1322,24 +1676,24 @@ class AuditAppService:
             if severity not in SECOND_OPINION_SEVERITIES:
                 continue
             finding_id = f.get("finding_id", "")
-            spec = {
-                "schema_version": "1.0",
-                "task_kind": "verify",
-                "role": "verify",
-                "verify_task_id": f"vt-{uuid.uuid4().hex[:8]}",
-                "candidate_id": (f.get("candidate_refs") or [""])[0],
-                "second_opinion": True,
-                "target_finding_id": finding_id,
-                "target_severity": severity,
-                "output_contract": (
-                    "Independently re-derive a verdict (confirmed | needs_validation | "
-                    "rejected | unverified) for the target finding; agreement corroborates, "
-                    "conflict demotes the finding to needs_validation with both sides kept."
-                ),
-                "requires_new_attempt": True,
-                "input": {"finding": f},
-            }
             try:
+                spec = self._validated_task_spec({
+                    "schema_version": "1.0",
+                    "task_kind": "verify",
+                    "role": "verify",
+                    "verify_task_id": f"vt-{uuid.uuid4().hex[:8]}",
+                    "candidate_id": (f.get("candidate_refs") or [""])[0],
+                    "second_opinion": True,
+                    "target_finding_id": finding_id,
+                    "target_severity": severity,
+                    "output_contract": (
+                        "Independently re-derive a verdict (confirmed | needs_validation | "
+                        "rejected | unverified) for the target finding; agreement corroborates, "
+                        "conflict demotes the finding to needs_validation with both sides kept."
+                    ),
+                    "requires_new_attempt": True,
+                    "input": {"finding": f},
+                })
                 queue = TaskQueue(conn)
                 task_id = queue.enqueue(
                     run_id=run_id,
@@ -1825,17 +2179,23 @@ class AuditAppService:
         """Finalize run, evaluate gates against real data, and publish reports (DSR-076).
 
         Artifact integrity is verified before anything else: a corrupt run is
-        moved to state 'corrupt' and refuses to produce any report. G1..G3 are
-        fed with real run data (plan/DB unit reconciliation, dispatched vs
-        submitted task reconciliation, semantic validation pass accounting).
+        moved to state 'corrupt' and refuses to produce any report. Attempts
+        still held under a valid claim lease block finalize outright
+        (InvalidStateError): SD-06 §5.1 requires the planned scope to be fully
+        processed before a terminal state is reached. G1..G3 are fed with real
+        run data (plan vs COMPLETED hunt tasks, dispatched vs submitted task
+        reconciliation, semantic validation pass accounting); a planned scope
+        that was never dispatched (or whose recon/verify work never finished)
+        additionally forces the 'unprocessed_units' incomplete reason.
         G4 (user-confirmed ordering fix) is evaluated AFTER the report stage
         published its artifacts: the gate reads back the published REPORT.md
         (generation marker + sanitization spot check) and reconciles the
         artifacts table generation. A failing G4 forces the terminal state to
         'incomplete' (incomplete_reasons gains 'g4_failed') and the reports
         are re-published so the on-disk dossier states the true terminal
-        state. Runs with gate failures, budget exhaustion, or unverified
-        candidates end 'incomplete', never 'complete'.
+        state. Runs with gate failures, budget exhaustion, unverified
+        candidates, or unprocessed plan scope end 'incomplete', never
+        'complete'.
         """
         run_path = Path(run_dir)
         conn = self._open_run_db(run_path)
@@ -1846,6 +2206,27 @@ class AuditAppService:
             raise InvalidInputError(f"Run {run_id} not found")
         if run_row["state"] in ("complete", "corrupt"):
             raise InvalidStateError(f"Run {run_id} already reached terminal state '{run_row['state']}'")
+
+        # SD-06 §5.1 / SR-012: the 'complete' terminal state means the planned
+        # scope finished processing. Attempts still held under a valid claim
+        # lease may still produce results, so finalizing over them would
+        # silently discard in-flight work — fail closed instead.
+        in_flight_claims = conn.execute(
+            """
+            SELECT count(*) AS cnt
+            FROM attempts a
+            JOIN tasks t ON a.task_id = t.task_id
+            WHERE t.run_id = ? AND a.status IN ('claimed', 'running') AND a.expires_at >= ?
+            """,
+            (run_id, utc_now_iso()),
+        ).fetchone()["cnt"]
+        if in_flight_claims:
+            raise InvalidStateError(
+                f"Run {run_id} still holds {in_flight_claims} attempt(s) under a valid "
+                "claim lease; finalize requires the plan scope to be fully processed. "
+                "Pause the run first, or wait for the leases to expire and reclaim "
+                "the attempts, then finalize."
+            )
 
         conn.execute("UPDATE runs SET state = 'finalizing' WHERE run_id = ?", (run_id,))
 
@@ -1892,6 +2273,58 @@ class AuditAppService:
                 for f in stored if isinstance(stored, list) else []:
                     merged_findings[f.get("finding_id") or f"anon-{len(merged_findings)}"] = f
         all_findings = list(merged_findings.values())
+
+        # DSR-066: candidates whose verify task never completed before finalize
+        # are surfaced as explicit unverified findings instead of silently
+        # disappearing with the queued/failed verify work. Candidates that
+        # already carry a verified/adjudicated result are not duplicated.
+        verified_candidate_ids = {
+            cid
+            for f in all_findings
+            for cid in (f.get("candidate_refs") or [])
+            if isinstance(cid, str) and cid
+        }
+        for row in conn.execute(
+            """
+            SELECT task_id, state, spec_json FROM tasks
+            WHERE run_id = ? AND kind = 'verify' AND state NOT IN ('done', 'quarantined')
+            ORDER BY task_id
+            """,
+            (run_id,),
+        ).fetchall():
+            try:
+                spec = json.loads(row["spec_json"])
+            except ValueError:
+                continue
+            spec_input = spec.get("input") if isinstance(spec.get("input"), dict) else {}
+            cand = spec_input.get("candidate")
+            if not isinstance(cand, dict):
+                # Second-opinion tasks are accounted via second_opinion_pending.
+                continue
+            cand_id = str(cand.get("candidate_id") or spec.get("candidate_id") or "")
+            if not cand_id or cand_id in verified_candidate_ids:
+                continue
+            verified_candidate_ids.add(cand_id)
+            verify_task_id = str(spec.get("verify_task_id", ""))
+            all_findings.append({
+                "schema_version": "1.0",
+                "finding_id": f"F-UNVERIFIED-{cand_id}",
+                "candidate_refs": [cand_id],
+                "verdict": "unverified",
+                "evidence_level": "E1",
+                "unverified_reason": UNVERIFIED_SYNTHETIC_REASON,
+                "issue": cand.get("issue", "unknown"),
+                "source": cand.get("source", {}),
+                "sink": cand.get("sink", {}),
+                "verify_task_id": verify_task_id,
+                "verify_task_state": row["state"],
+                "provenance": {
+                    "candidates": [cand_id],
+                    "hunt_tasks": list((cand.get("provenance") or {}).get("hunt_tasks", [])),
+                    "verify_tasks": [verify_task_id],
+                },
+            })
+
         for f in all_findings:
             f.setdefault("run_id", run_id)
 
@@ -1921,15 +2354,42 @@ class AuditAppService:
         )
 
         # --- Real gate inputs (DSR-076) -------------------------------------
-        # G1: plan/report unit inventory vs DB enqueued task inventory. Only
-        # analyze-disposition units are planned as hunt work (DSR-056); older
-        # plans without the hunt_units field fall back to the full unit count.
+        # G1: plan/report unit inventory vs DB COMPLETED hunt task inventory.
+        # Only analyze-disposition units are planned as hunt work (DSR-056);
+        # older plans without the hunt_units field fall back to the full unit
+        # count. Counting only state='done' tasks closes the zero-dispatch
+        # blind spot: enqueued-but-never-processed units no longer reconcile.
         plan_units = plan_dict.get("hunt_units", len(plan_dict.get("units", [])))
         db_hunt_tasks = conn.execute(
-            "SELECT count(*) AS cnt FROM tasks WHERE run_id = ? AND kind = 'hunt'",
+            "SELECT count(*) AS cnt FROM tasks WHERE run_id = ? AND kind = 'hunt' AND state = 'done'",
             (run_id,),
         ).fetchone()["cnt"]
         g1_res = GateEvaluator.evaluate_g1(plan_units, db_hunt_tasks, [], current_rev)
+
+        # SR-012/SR-026/DSR-076 (plan-coverage invariant): planned hunt work
+        # with no attempt record at all was never dispatched; recon/verify
+        # tasks that never reached done (verify: or an explicit quarantine)
+        # mean the plan scope was not fully processed. Either way the run
+        # cannot claim the 'complete' terminal state.
+        hunt_attempt_count = conn.execute(
+            """
+            SELECT count(*) AS cnt
+            FROM attempts a JOIN tasks t ON a.task_id = t.task_id
+            WHERE t.run_id = ? AND t.kind = 'hunt'
+            """,
+            (run_id,),
+        ).fetchone()["cnt"]
+        recon_unprocessed = conn.execute(
+            "SELECT count(*) AS cnt FROM tasks WHERE run_id = ? AND kind = 'recon' AND state != 'done'",
+            (run_id,),
+        ).fetchone()["cnt"]
+        verify_unprocessed = conn.execute(
+            """
+            SELECT count(*) AS cnt FROM tasks
+            WHERE run_id = ? AND kind = 'verify' AND state NOT IN ('done', 'quarantined')
+            """,
+            (run_id,),
+        ).fetchone()["cnt"]
 
         # G2: submitted vs dispatched task reconciliation + finding integrity.
         dispatched_count = conn.execute(
@@ -2035,6 +2495,15 @@ class AuditAppService:
                 if g.status != "pass"
             ]
             incomplete_reasons.append("gate_failed:" + ",".join(failed_gates))
+
+        # Zero-dispatch / unprocessed plan scope (double guard with G1 above):
+        # the gate formula alone cannot see "planned but never dispatched".
+        if (
+            (plan_units > 0 and hunt_attempt_count == 0)
+            or recon_unprocessed
+            or verify_unprocessed
+        ):
+            incomplete_reasons.append(UNPROCESSED_UNITS_REASON)
 
         has_budget_exhausted = any(e["event_type"] == "budget_exhausted" for e in events)
         if has_budget_exhausted:
@@ -2182,6 +2651,13 @@ class AuditAppService:
                 "generation_id": gen_id,
                 "reason": reason,
                 "incomplete_reasons": incomplete_reasons,
+                "unprocessed_units": {
+                    "plan_hunt_units": plan_units,
+                    "completed_hunt_tasks": db_hunt_tasks,
+                    "hunt_tasks_ever_dispatched": hunt_attempt_count,
+                    "recon_tasks_not_done": recon_unprocessed,
+                    "verify_tasks_not_done_or_quarantined": verify_unprocessed,
+                },
                 "verify": verify_stats,
                 "second_opinion_pending": second_opinion_pending,
                 "g4_evaluation": g4_detail,

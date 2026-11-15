@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "task_kind": "recon",
+  "role": "hunt",
+  "snapshot_id": "snp-0001",
+  "unit": {
+    "schema_version": "1.0",
+    "unit_id": "recon-0001",
+    "snapshot_id": "snp-0001",
+    "tier": "recon",
+    "disposition": "recon",
+    "language": "python",
+    "ranges": [
+      {"path": "app/handlers/upload.py", "line_start": 1, "line_end": 9}
+    ]
+  },
+  "language_index": ["- py-01: pickle deserialization (Sink: pickle.loads)"],
+  "base_language_index": [],
+  "knowledge_hints": {
+    "primary_language": "python",
+    "languages_in_scope": ["python"],
+    "catalog_languages": ["python"]
+  }
+}

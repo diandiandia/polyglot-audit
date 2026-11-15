@@ -1,61 +1,187 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://polyglot-audit.internal/schemas/task_spec.schema.json",
-  "description": "SWR-007/SWR-018 版本化数据契约；绑定 DSR-006/007/017/025/073。task_spec 记录：分派给 worker 的任务规格与执行限额。",
+  "description": "SWR-007/SWR-018 版本化数据契约；绑定 DSR-006/007/017/025/073。task_spec 的唯一真实来源：与 app/service.py 三个入队点（hunt/recon/verify）与 second-opinion 入队点的实际构造一一对应。公共 required 收敛为所有入队点实际保证的字段（schema_version + task_kind）；其余字段按 kind 分支声明。无效 spec 在服务入队点被 SchemaValidator 拒绝（InvalidInputError），不再存在'从未被验证'的注记。",
   "type": "object",
-  "required": [
-    "schema_version",
-    "task_id",
-    "kind",
-    "unit_ids",
-    "packet_digest",
-    "priority",
-    "limits"
+  "oneOf": [
+    {
+      "$ref": "#/$defs/hunt_spec"
+    },
+    {
+      "$ref": "#/$defs/recon_spec"
+    },
+    {
+      "$ref": "#/$defs/verify_spec"
+    }
   ],
-  "additionalProperties": false,
-  "properties": {
-    "schema_version": {
-      "const": "1.0"
-    },
-    "task_id": {
-      "type": "string",
-      "minLength": 1
-    },
-    "kind": {
-      "enum": [
-        "recon",
-        "hunt",
-        "verify"
-      ]
-    },
-    "unit_ids": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "packet_digest": {
-      "type": "string",
-      "pattern": "^[0-9a-f]{64}$"
-    },
-    "priority": {
-      "type": "integer"
-    },
-    "limits": {
+  "$defs": {
+    "hunt_spec": {
       "type": "object",
+      "description": "hunt 任务规格（prepare 每个 analyze 单元入队；DSR-056）：绑定快照与计划单元。",
       "required": [
-        "max_candidates",
-        "timeout_seconds"
+        "schema_version",
+        "task_kind",
+        "snapshot_id",
+        "unit"
       ],
       "additionalProperties": false,
       "properties": {
-        "max_candidates": {
-          "type": "integer",
-          "minimum": 1
+        "schema_version": {
+          "const": "1.0"
         },
-        "timeout_seconds": {
-          "type": "integer",
-          "minimum": 1
+        "task_kind": {
+          "const": "hunt"
+        },
+        "snapshot_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "unit": {
+          "$ref": "#/$defs/packet_unit"
+        }
+      }
+    },
+    "recon_spec": {
+      "type": "object",
+      "description": "recon 任务规格（每 run 恰一个，DDS-05 S1 / DSR-024）：携带快照 id、主语言索引、基座语言索引与知识目录线索。",
+      "required": [
+        "schema_version",
+        "task_kind",
+        "role",
+        "snapshot_id",
+        "unit",
+        "language_index",
+        "base_language_index",
+        "knowledge_hints"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "task_kind": {
+          "const": "recon"
+        },
+        "role": {
+          "const": "hunt",
+          "description": "recon 包声明 hunt 输出契约（DSR-059）。"
+        },
+        "snapshot_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "unit": {
+          "$ref": "#/$defs/packet_unit"
+        },
+        "language_index": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "base_language_index": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "knowledge_hints": {
+          "type": "object",
+          "required": [
+            "primary_language",
+            "languages_in_scope",
+            "catalog_languages"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "primary_language": {
+              "type": "string",
+              "minLength": 1
+            },
+            "languages_in_scope": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "catalog_languages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "verify_spec": {
+      "type": "object",
+      "description": "verify 任务规格（ hunt 候选派生的常规验证，或 High/Critical 的独立第二意见 DSR-061）：声明输出契约并要求与 hunt 不同的新 attempt（E2）。",
+      "required": [
+        "schema_version",
+        "task_kind",
+        "role",
+        "verify_task_id",
+        "candidate_id",
+        "output_contract",
+        "requires_new_attempt",
+        "input"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "task_kind": {
+          "const": "verify"
+        },
+        "role": {
+          "const": "verify"
+        },
+        "verify_task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "output_contract": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requires_new_attempt": {
+          "type": "boolean"
+        },
+        "input": {
+          "type": "object",
+          "description": "常规验证携带 input.candidate；second opinion 携带 input.finding。"
+        },
+        "second_opinion": {
+          "type": "boolean"
+        },
+        "target_finding_id": {
+          "type": "string"
+        },
+        "target_severity": {
+          "type": "string"
+        }
+      }
+    },
+    "packet_unit": {
+      "type": "object",
+      "description": "提示包单元（inventory/slicer 产物）。仅约束所有单元实际保证的标识与区间字段。",
+      "required": [
+        "unit_id",
+        "ranges"
+      ],
+      "properties": {
+        "unit_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ranges": {
+          "type": "array"
         }
       }
     }

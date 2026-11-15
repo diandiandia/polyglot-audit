@@ -98,8 +98,27 @@ python3 -I skill/scripts/audit.py finalize --run-dir <输出目录>
 #    REPORT 记录，缺失时回退解析 REPORT.md 头部的 Generation 行
 python3 -I skill/scripts/audit.py report --run-dir <输出目录>
 
-# 6. （候选）MCP stdio 四工具服务器
+# 6. （候选）MCP stdio 服务器（标准 MCP 协议：initialize / notifications/initialized /
+#    tools/list / tools/call；同时兼容旧式"method=工具名"直连；未知 method 返回 -32601）
 python3 -I skill/scripts/audit.py mcp --run-dir <输出目录>
+```
+
+### 输出格式（DSR-074：JSON / human 双格式）
+
+全部子命令支持 `--format {json,human}`，**默认 `json`**——冻结的 JSON 信封契约与全部自动化消费者零影响。`--format human` 输出紧凑人读文本：
+
+- `status`：对齐的键值块（run_id / snapshot_id / state / revision + 逐任务态计数 + 逐预算行）；
+- `finalize`：终态（final_state / generation_id）+ 门禁逐行（G1..G4）+ incomplete_reasons + 缺口计数；
+- `report`：generation_id 与行数/字符数等元信息 + `---` 分隔的报告正文原文；
+- `pause` / `run`：首行单行摘要（如 `paused run-xxx at revision N (in_flight: 0 task(s))`）+ 关键字段行；
+- 其余子命令通用回退：顶层标量键逐行 `key: value`，dict/list 值以缩进 JSON 展示；
+- 错误统一渲染为 `ERROR <code>: <message>` + `retryable` 行 + 缩进 details（如有）。
+
+退出码与格式无关。`mcp` 子命令线上格式由 JSON-RPC 2.0 固定，`--format` 仅接受 `json`。旧开关 `--json` 保留（历史默认）；显式给出 `--format` 时以 `--format` 为准。示例：
+
+```bash
+python3 -I skill/scripts/audit.py status   --run-dir <输出目录> --format human
+python3 -I skill/scripts/audit.py finalize --run-dir <输出目录> --format human
 ```
 
 `config.json` 最小示例（与 tests/e2e 用法一致）：
@@ -121,7 +140,7 @@ OS 级隔离未经验证时 `safety_acceptance.user_approved` 必须为 `true` �
 
 ## 5. 命令参考表（冻结接口，DSR-074）
 
-全部子命令输出统一 JSON 信封：成功 `{"schema_version":"1.0","ok":true,"value":{...}}`；失败 `{"schema_version":"1.0","ok":false,"error":{"code","message","retryable","details"}}`。诊断信息只写 stderr。
+全部子命令输出统一 JSON 信封（默认，`--format json`）：成功 `{"schema_version":"1.0","ok":true,"value":{...}}`；失败 `{"schema_version":"1.0","ok":false,"error":{"code","message","retryable","details"}}`。`--format human` 输出紧凑人读文本（见 §4"输出格式"）；退出码与格式无关。诊断信息只写 stderr。
 
 | 子命令 | 关键参数 | stdin | 作用 |
 |---|---|---|---|
@@ -136,7 +155,7 @@ OS 级隔离未经验证时 `safety_acceptance.user_approved` 必须为 `true` �
 | `resume` | `--run-dir` | — | 校验快照与产物完整性后恢复 |
 | `finalize` | `--run-dir` | — | 评 G1..G4、对账并发布报告（透出 `incomplete_reasons`/`coverage_gaps`） |
 | `report` | `--run-dir` | — | 返回 `{"generation_id", "report_md"}`（generation_id 取工件表最新 REPORT 记录，回退 REPORT.md 头部 Generation 行） |
-| `mcp` | `--run-dir` | JSON-RPC 行 | stdio MCP 候选服务器（next/submit/status/read_artifact） |
+| `mcp` | `--run-dir` | JSON-RPC 行 | stdio MCP 服务器。**标准 MCP 协议**：`initialize`（回显 protocolVersion，默认 `2024-11-05`；serverInfo= polyglot-audit-mcp + skill/VERSION）→ `notifications/initialized`（无 id 通知不回包）→ `tools/list`（四工具 name/description/inputSchema）→ `tools/call`（结果包 `{content:[{type:"text",text:<JSON>}], isError}`；工具内部错误置 `isError:true`，不中断 stdio 循环）；未知 method 返回 JSON-RPC `-32601`。**兼容旧式直连**：无斜杠 method 直接命中四工具名（next/submit/status/read_artifact）时按旧语义返回原始工具结果。线上格式固定 JSON-RPC 2.0，`--format` 仅接受 `json` |
 | `host-fail` | `--run-dir`、`--task`、`--retryable`、`--max-retries` | claim + 失败详情 JSON | 上报宿主失败：可重试则重排（generation+1），否则隔离并记覆盖缺口（DSR-065） |
 | `guide` | `--query`、`--language` | — | 轻量问答；模糊请求返回澄清问题；**不建卷宗** |
 

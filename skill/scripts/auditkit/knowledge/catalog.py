@@ -5,7 +5,9 @@ Implements DSR-038 / DSR-041 / DSR-042 / SD-02 / DR-014:
 - Resolves composite base language indices:
   - TypeScript includes JavaScript index.
   - C++ includes C index.
-  - Kotlin/Scala includes Java index (JVM platforms).
+  - Kotlin/Scala include the Java index ONLY for JVM platforms; with unknown
+    platform evidence (is_jvm=None) the Java index is not expanded and the
+    packet carries an explicit "platform unknown" note (SR-003 / SD-02).
 """
 
 # 需求追踪 (Requirement Traceability)
@@ -53,20 +55,42 @@ class KnowledgeCatalog:
             self._indices_cache[lang] = data
             return data
 
-    def get_applicable_indices(self, lang: str, is_jvm: bool = True) -> Tuple[List[str], List[str]]:
-        """Return primary language lines and base language lines for prompt packet."""
+    def get_applicable_indices(
+        self, lang: str, is_jvm: Optional[bool] = None
+    ) -> Tuple[List[str], List[str]]:
+        """Return primary language lines and base language lines for prompt packet.
+
+        ``is_jvm`` is three-state (SR-003 / SD-02: state uncertainty when platform
+        unknown):
+        - True: JVM platform confirmed — Kotlin/Scala expand the Java base index.
+        - False: known non-JVM — Kotlin/Scala do NOT expand the Java base index.
+        - None (default, unknown): the Java base index is NOT expanded and the
+          returned packet lines carry an explicit "platform unknown" note, so
+          the omission is disclosed instead of silently assumed.
+        For languages without a platform-conditional base (TypeScript, C++, ...)
+        the flag has no effect.
+        """
         primary_items = self.get_language_index(lang)
         primary_lines = [
             f"- {item['id']}: {item['title']} (Sink: {item.get('sink_clue', 'N/A')})"
             for item in primary_items
         ]
 
-        base_langs = get_base_languages(lang, platform_is_jvm=is_jvm)
         base_lines: List[str] = []
-        for base in base_langs:
-            base_items = self.get_language_index(base)
-            for item in base_items:
-                base_lines.append(f"- [{base.upper()}] {item['id']}: {item['title']}")
+        if lang in ("kotlin", "scala") and is_jvm is None:
+            base_lines.append(
+                "- [PLATFORM UNKNOWN] No JVM build evidence (pom.xml / build.gradle / "
+                ".sbt / .mvn) was found in the snapshot; whether this Kotlin/Scala "
+                "target runs on a JVM is unknown, so the Java base-language index is "
+                "NOT loaded. Java-runtime risks may therefore be missed for this "
+                "target and are explicitly not claimed (SR-003 / SD-02)."
+            )
+        else:
+            base_langs = get_base_languages(lang, platform_is_jvm=bool(is_jvm))
+            for base in base_langs:
+                base_items = self.get_language_index(base)
+                for item in base_items:
+                    base_lines.append(f"- [{base.upper()}] {item['id']}: {item['title']}")
 
         return primary_lines, base_lines
 

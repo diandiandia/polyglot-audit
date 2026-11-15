@@ -1,8 +1,9 @@
 {
   "schema_version": "1.0",
-  "task_id": "task-0002",
-  "kind": "hunt",
-  "unit_ids": ["u-0001"],
-  "packet_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "limits": {"max_candidates": 5, "timeout_seconds": 120}
+  "task_kind": "verify",
+  "role": "verify",
+  "verify_task_id": "vt-0002",
+  "candidate_id": "cand-0002",
+  "output_contract": "Return a verdict object.",
+  "requires_new_attempt": true
 }

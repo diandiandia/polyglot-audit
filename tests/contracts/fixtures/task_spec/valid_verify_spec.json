@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "task_kind": "verify",
+  "role": "verify",
+  "verify_task_id": "vt-0001",
+  "candidate_id": "cand-0001",
+  "output_contract": "Return a verdict object (confirmed | needs_validation | rejected | unverified) with evidence anchors and provenance.",
+  "requires_new_attempt": true,
+  "input": {
+    "candidate": {
+      "schema_version": "1.0",
+      "candidate_id": "cand-0001",
+      "issue": "py-01",
+      "source": {"path": "app/handlers/upload.py", "line": 8, "symbol": "handle_upload", "kind": "param", "control": "body"},
+      "sink": {"path": "app/storage/state.py", "line": 10, "symbol": "restore_state", "kind": "deserialization", "effect": "e"},
+      "steps": [
+        {"path": "app/handlers/upload.py", "line": 8, "role": "source", "note": "n1"},
+        {"path": "app/storage/state.py", "line": 10, "role": "sink", "note": "n2"}
+      ],
+      "guard_analysis": "none",
+      "impact_claim": "RCE",
+      "open_questions": [],
+      "provenance": {"hunt_tasks": ["task-0001"]}
+    },
+    "hunt_tasks": ["task-0001"]
+  }
+}

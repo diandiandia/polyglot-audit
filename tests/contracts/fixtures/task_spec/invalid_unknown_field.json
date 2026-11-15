@@ -1,10 +1,7 @@
 {
   "schema_version": "1.0",
-  "task_id": "task-0003",
-  "kind": "verify",
-  "unit_ids": ["u-0002"],
-  "packet_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "priority": 10,
-  "limits": {"max_candidates": 1, "timeout_seconds": 30},
-  "worker_hint": "extra field not in schema"
+  "task_kind": "hunt",
+  "snapshot_id": "snp-0001",
+  "unit": {"unit_id": "unit-0001", "ranges": []},
+  "worker_hint": "extra field not in the real contract"
 }

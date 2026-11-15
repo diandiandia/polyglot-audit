@@ -253,8 +253,8 @@ class TestCLILifecycle(unittest.TestCase):
         run_res = self.cli_ok(["run", "--run-dir", str(self.run_dir)])
         self.assertEqual(run_res["state"], "active")
 
-        # next (claim)
-        claims = self.cli_ok(["next", "--run-dir", str(self.run_dir), "--batch", "2"])["claims"]
+        # next (claim) -- batch 1 so no unused claim is left holding a lease
+        claims = self.cli_ok(["next", "--run-dir", str(self.run_dir), "--batch", "1"])["claims"]
         self.assertTrue(claims)
         claim = claims[0]
 
@@ -273,7 +273,7 @@ class TestCLILifecycle(unittest.TestCase):
         self.assertIn(hf.get("action"), ("requeued", "quarantined"))
 
         # re-claim after failure
-        claims2 = self.cli_ok(["next", "--run-dir", str(self.run_dir), "--batch", "2"])["claims"]
+        claims2 = self.cli_ok(["next", "--run-dir", str(self.run_dir), "--batch", "1"])["claims"]
         self.assertTrue(claims2)
         claim2 = next(
             (c for c in claims2 if c["task_id"] == claim["task_id"]),
@@ -285,11 +285,12 @@ class TestCLILifecycle(unittest.TestCase):
         )
 
         # submit (payload from stdin)
+        result_kind = (claim2.get("spec") or {}).get("task_kind") or claim2.get("task_kind") or "hunt"
         worker_result = {
             "schema_version": "1.0",
             "task_id": claim2["task_id"],
             "attempt_id": claim2["attempt_id"],
-            "kind": "hunt",
+            "kind": result_kind,
             "coverage": [{
                 "schema_version": "1.0",
                 "snapshot_id": prep["snapshot_id"],
@@ -311,6 +312,37 @@ class TestCLILifecycle(unittest.TestCase):
             }),
         )
         self.assertTrue(sub["ok"])
+
+        # Drain remaining in-flight claims: finalize now enforces the terminal
+        # state semantics (SD-06 §5.1 / DSR-076) and refuses to run while a
+        # valid claim lease is held (INVALID_STATE).
+        for _ in range(10):
+            batch = self.cli_ok(["next", "--run-dir", str(self.run_dir), "--batch", "5"])["claims"]
+            if not batch:
+                break
+            for c in batch:
+                self.cli_ok(
+                    ["start", "--run-dir", str(self.run_dir)],
+                    stdin_text=json.dumps(c),
+                )
+                kind = (c.get("spec") or {}).get("task_kind") or c.get("task_kind") or "hunt"
+                res = {
+                    "schema_version": "1.0",
+                    "task_id": c["task_id"],
+                    "attempt_id": c["attempt_id"],
+                    "kind": kind,
+                    "coverage": [],
+                    "records": [],
+                    "overflow": [],
+                }
+                self.cli_ok(
+                    ["submit", "--run-dir", str(self.run_dir)],
+                    stdin_text=json.dumps({
+                        "claim": c,
+                        "result": res,
+                        "result_digest": f"digest-drain-{c['task_id']}",
+                    }),
+                )
 
         # status
         st = self.cli_ok(["status", "--run-dir", str(self.run_dir)])

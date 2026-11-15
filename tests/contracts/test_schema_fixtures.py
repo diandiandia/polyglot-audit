@@ -93,11 +93,66 @@ class TestSchemaFixtures(unittest.TestCase):
         """DSR-006: booleans are never valid integers."""
         schema = load_schema("task_spec")
         validator = SchemaValidator(schema)
-        with open(self._fixture_dir("task_spec") / "valid_task_spec.json", "r", encoding="utf-8") as f:
+        with open(self._fixture_dir("task_spec") / "valid_verify_spec.json", "r", encoding="utf-8") as f:
             instance = json.load(f)
-        instance["priority"] = True
+        instance["requires_new_attempt"] = 1
         errors = validator.validate(instance)
-        self.assertTrue(any("integer" in e.message for e in errors))
+        self.assertTrue(errors)
+        # oneOf reports the branch mismatch; drill into the verify branch for
+        # the precise boolean/integer type error (DSR-006).
+        branch_validator = SchemaValidator(schema["$defs"]["verify_spec"], root_schema=schema)
+        branch_errors = branch_validator.validate(instance)
+        self.assertTrue(any("integer" in e.message for e in branch_errors))
+
+    def test_task_spec_matches_real_enqueue_shapes(self):
+        """DSR-073: the schema is the single source of the REAL contract.
+
+        The three branch shapes must accept exactly the specs the service
+        enqueue points construct (hunt / recon / verify incl. second opinion)
+        and reject the pre-DSR-073 speculative shape (kind/unit_ids/packet_
+        digest/limits) that was never validated.
+        """
+        schema = load_schema("task_spec")
+        validator = SchemaValidator(schema)
+
+        hunt_spec = {
+            "schema_version": "1.0", "task_kind": "hunt", "snapshot_id": "snp-1",
+            "unit": {"unit_id": "unit-1", "ranges": []},
+        }
+        recon_spec = {
+            "schema_version": "1.0", "task_kind": "recon", "role": "hunt",
+            "snapshot_id": "snp-1", "unit": {"unit_id": "recon-1", "ranges": []},
+            "language_index": ["- py-01: x"], "base_language_index": [],
+            "knowledge_hints": {
+                "primary_language": "python",
+                "languages_in_scope": ["python"],
+                "catalog_languages": ["python"],
+            },
+        }
+        verify_spec = {
+            "schema_version": "1.0", "task_kind": "verify", "role": "verify",
+            "verify_task_id": "vt-1", "candidate_id": "cand-1",
+            "output_contract": "verdict", "requires_new_attempt": True,
+            "input": {"candidate": {"candidate_id": "cand-1"}},
+            "second_opinion": True, "target_finding_id": "F-1",
+            "target_severity": "High",
+        }
+        for spec in (hunt_spec, recon_spec, verify_spec):
+            self.assertEqual(validator.validate(spec), [], str(spec))
+
+        # The retired speculative shape (never produced by any enqueue point)
+        # must be rejected by every branch.
+        legacy = {
+            "schema_version": "1.0", "kind": "hunt", "unit_ids": ["u-1"],
+            "packet_digest": "a" * 64, "priority": 10,
+            "limits": {"max_candidates": 5, "timeout_seconds": 120},
+        }
+        errors = validator.validate(legacy)
+        self.assertTrue(any(e.keyword == "oneOf" for e in errors))
+
+        # A hunt spec cannot masquerade as recon/verify: exactly one branch.
+        cross = dict(recon_spec, task_kind="hunt")
+        self.assertTrue(validator.validate(cross))
 
 
 class TestMetaSchema(unittest.TestCase):

@@ -12,6 +12,10 @@ DSR-069 / DSR-070 / DSR-071 / SD-08 / SD-11 / SWR-010 / SWR-012 / SWR-014 / SWR-
   before it touches disk (DSR-069 / SWR-010).
 - Findings-first presentation in REPORT.md with per-finding provenance and
   audit-trail traceability down to candidate/attempt anchors (DSR-035).
+- NEEDS-VALIDATION.md renders three kinds of pending work: needs_validation /
+  unverified findings (DSR-066), unconnected half-chains reconciled from the
+  event ledger (SR-005 / DSR-058), and unverified candidates with their
+  reasons.
 - Minimal i18n: zh/en label tables, ``en`` default, unknown language falls
   back to ``zh`` and the fallback is recorded (DSR-068 / SWR-012).
 - The portable skill-review JSON export is opt-in and strictly whitelist-only
@@ -138,17 +142,27 @@ class ReportGenerator:
         """Return (kind, rel_path, carries_generation_marker, content) tuples."""
         payloads: List[Tuple[str, str, bool, bytes]] = []
 
+        # SR-005/DSR-058/DSR-066: unconnected half-chains are reconciled from
+        # the event ledger (events are already a generate_all input), and
+        # unverified candidates from the findings themselves — no extra
+        # parameters or caller changes are required.
+        half_chains = self._collect_unpaired_half_chains(events)
+        unverified_candidates = [f for f in findings if f.get("verdict") == "unverified"]
+
         # 1. findings.json — DSR-069: JSON media masked by value recursion.
         findings_payload = mask_tree(findings)
         findings_json_bytes = json.dumps(findings_payload, indent=2, ensure_ascii=False).encode("utf-8")
         payloads.append(("report_json", "report/findings.json", False, findings_json_bytes))
 
         # 2. REPORT.md
-        report_md = self._render_main_report(findings, coverage_summary, generation_id)
+        report_md = self._render_main_report(findings, coverage_summary, generation_id, half_chains)
         payloads.append(("report_md", "report/REPORT.md", True, mask_secrets(report_md).encode("utf-8")))
 
         # 3. NEEDS-VALIDATION.md (DSR-068: generation id in header)
-        needs_val_md = self._render_needs_validation(findings, generation_id)
+        needs_val_md = self._render_needs_validation(
+            findings, generation_id, half_chains=half_chains,
+            unverified_candidates=unverified_candidates,
+        )
         payloads.append(("report_needs_validation", "report/NEEDS-VALIDATION.md", True, mask_secrets(needs_val_md).encode("utf-8")))
 
         # 4. COVERAGE.md & coverage.csv
@@ -268,15 +282,46 @@ class ReportGenerator:
         )
 
     # ------------------------------------------------------------ renderers
+    @staticmethod
+    def _collect_unpaired_half_chains(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Reconcile the CURRENT unconnected half-chains from the event ledger.
+
+        ``unpaired_half_chain`` events mark records that were unpaired at the
+        time they were recorded; a record that a LATER submission paired
+        carries a ``connector_paired`` event and is excluded here, so the
+        rendered section always reflects the run's final pairing state.
+        """
+        paired_ids = {
+            str(e.get("payload", {}).get("frontier_id") or "")
+            for e in events
+            if e.get("event_type") == "connector_paired"
+        } | {
+            str(e.get("payload", {}).get("probe_id") or "")
+            for e in events
+            if e.get("event_type") == "connector_paired"
+        }
+        paired_ids.discard("")
+        unpaired: List[Dict[str, Any]] = []
+        for e in events:
+            if e.get("event_type") != "unpaired_half_chain":
+                continue
+            payload = e.get("payload", {}) or {}
+            if str(payload.get("record_id") or "") in paired_ids:
+                continue
+            unpaired.append(payload)
+        return unpaired
+
     def _render_main_report(
         self,
         findings: List[Dict[str, Any]],
         coverage_summary: Dict[str, Any],
         generation_id: str,
+        half_chains: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
         t = self._lang.t
         confirmed = [f for f in findings if f.get("verdict") == "confirmed"]
         needs_val = [f for f in findings if f.get("verdict") == "needs_validation"]
+        unverified = [f for f in findings if f.get("verdict") == "unverified"]
 
         # Sort confirmed by urgency P0 -> P1 -> P2 -> P3
         def urgency_key(f: Dict[str, Any]) -> int:
@@ -294,7 +339,10 @@ class ReportGenerator:
             f"- **{t('generation')}**: `{generation_id}`",
             f"- **{t('confirmed_findings')}**: {len(confirmed)}",
             f"- **{t('needs_validation')}**: {len(needs_val)}",
+            f"- **{t('unverified_count')}**: {len(unverified)}",
         ]
+        if half_chains:
+            lines.append(f"- **{t('half_chain_section').strip('# ').strip()}**: {len(half_chains)}")
         if self._lang.fallback_applied:
             lines.append(self._lang.fallback_note)
         lines.append(t("findings_summary"))
@@ -354,9 +402,28 @@ class ReportGenerator:
         label = self._lang.state(self.run_state)
         return f"{label} (`{self.run_state}`)"
 
-    def _render_needs_validation(self, findings: List[Dict[str, Any]], generation_id: str) -> str:
+    def _render_needs_validation(
+        self,
+        findings: List[Dict[str, Any]],
+        generation_id: str,
+        half_chains: Optional[List[Dict[str, Any]]] = None,
+        unverified_candidates: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
+        """Render the pending-work report (DSR-066 / SR-005 / SR-007).
+
+        - Pending items: verdicts ``needs_validation`` AND ``unverified``
+          (DSR-066: candidates whose verification never completed stay visible).
+        - Unconnected half-chains (frontier / dangling sink) that remained
+          unpaired after run-level aggregation (DSR-058 / SR-005).
+        - Unverified candidates with their reason, at candidate granularity.
+        """
         t = self._lang.t
-        needs_val = [f for f in findings if f.get("verdict") == "needs_validation"]
+        needs_val = [
+            f for f in findings if f.get("verdict") in ("needs_validation", "unverified")
+        ]
+        half_chains = half_chains or []
+        unverified_candidates = unverified_candidates or []
+
         lines = [
             t("needs_val_title"),
             f"{t('run_id')}: `{self.run_id}` | {t('generation')}: `{generation_id}` | {t('total_items')}: {len(needs_val)}",
@@ -365,8 +432,6 @@ class ReportGenerator:
 
         if not needs_val:
             lines.append(t("no_needs_val"))
-            return "\n".join(lines)
-
         for f in needs_val:
             fid = f.get("finding_id")
             prio = f.get("rating", {}).get("validation_priority", "V2")
@@ -375,12 +440,72 @@ class ReportGenerator:
             plan = f.get("validation_plan", "")
 
             lines.append(f"### {fid} [{t('priority')}: {prio}] {title}")
-            lines.append(f"- {t('blockers')}:")
-            for b in blockers:
-                lines.append(f"  - {b}")
-            lines.append(f"- {t('validation_plan')}: {plan}")
+            if f.get("verdict") == "unverified":
+                lines.append(f"- {t('unverified_reason_label')} {f.get('unverified_reason', '')}")
+                if f.get("verify_task_id"):
+                    lines.append(
+                        f"- {t('verify_task_state')}: `{f.get('verify_task_id')}` "
+                        f"({f.get('verify_task_state', 'unknown')})"
+                    )
+                source = f.get("source", {}) or {}
+                sink = f.get("sink", {}) or {}
+                if source.get("path") or sink.get("path"):
+                    lines.append(
+                        f"- Source: `{source.get('path', '?')}:{source.get('line', '?')}` -> "
+                        f"Sink: `{sink.get('path', '?')}:{sink.get('line', '?')}`"
+                    )
+            if blockers:
+                lines.append(f"- {t('blockers')}:")
+                for b in blockers:
+                    lines.append(f"  - {b}")
+            if plan:
+                lines.append(f"- {t('validation_plan')}: {plan}")
             lines.append("")
 
+        # --- Unconnected half-chains (SR-005 / DSR-058) ---------------------
+        lines.append(t("half_chain_section"))
+        lines.append("")
+        lines.append(t("half_chain_note"))
+        lines.append("")
+        if not half_chains:
+            lines.append(t("half_chain_none"))
+        else:
+            lines.append(
+                f"| {t('col_record_kind')} | {t('col_record_id')} | {t('col_boundary')} "
+                f"| {t('col_symbol')} | {t('col_source_task')} |"
+            )
+            lines.append("|---|---|---|---|---|")
+            for hc in half_chains:
+                lines.append(
+                    f"| `{hc.get('record_kind', '')}` | `{hc.get('record_id', '')}` "
+                    f"| {hc.get('boundary', '')} | `{hc.get('symbol', '')}` "
+                    f"| `{hc.get('source_task_id', '')}` |"
+                )
+        lines.append("")
+
+        # --- Unverified candidates (DSR-066) --------------------------------
+        lines.append(t("unverified_section"))
+        lines.append("")
+        if not unverified_candidates:
+            lines.append(t("unverified_none"))
+        else:
+            for cand in unverified_candidates:
+                cand_ids = ", ".join(cand.get("candidate_refs", []) or ["—"])
+                lines.append(
+                    f"### {cand.get('finding_id')} — candidate `{cand_ids}` "
+                    f"[{t('verify_task_state')}: {cand.get('verify_task_state', 'unknown')}]"
+                )
+                lines.append(
+                    f"- {t('unverified_reason_label')} {cand.get('unverified_reason', '')}"
+                )
+                source = cand.get("source", {}) or {}
+                sink = cand.get("sink", {}) or {}
+                if source.get("path") or sink.get("path"):
+                    lines.append(
+                        f"- Source: `{source.get('path', '?')}:{source.get('line', '?')}` -> "
+                        f"Sink: `{sink.get('path', '?')}:{sink.get('line', '?')}`"
+                    )
+                lines.append("")
         return "\n".join(lines)
 
     def _render_coverage_md(self, coverage_summary: Dict[str, Any], generation_id: str) -> str:
