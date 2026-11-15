@@ -89,10 +89,16 @@ class TestHumanFormatBasics(unittest.TestCase):
 
     def test_mcp_rejects_human_but_accepts_json(self):
         # The MCP wire protocol is fixed JSON-RPC 2.0: human is invalid there.
+        # json is accepted on a run directory with a valid dossier ledger (the
+        # server refuses to start without events.db — see
+        # test_missing_run_dir.py), so this format test seeds a real dossier.
         proc = run_cli(["mcp", "--format", "human", "--run-dir", "/tmp/whatever"])
         self.assertNotEqual(proc.returncode, 0)
-        proc = run_cli(["mcp", "--format", "json", "--run-dir", "/tmp/whatever"], stdin_text="")
-        self.assertEqual(proc.returncode, 0, proc.stderr)
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run_fmt"
+            seed_run(run_dir, state="ready")
+            proc = run_cli(["mcp", "--format", "json", "--run-dir", str(run_dir)], stdin_text="")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
 
     def test_json_is_still_the_default_envelope(self):
         proc = run_cli(

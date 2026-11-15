@@ -14,6 +14,12 @@ Implements IFC-04 / IFC-06 / DSR-074:
 - `report` returns {"generation_id", "report_md"}; generation_id comes from the
   artifacts ledger (latest REPORT record) with the REPORT.md header Generation
   line as fallback.
+- Every ledger-bound subcommand (run/next/start/submit/status/pause/resume/
+  finalize/mcp/host-fail) prechecks the run directory for events.db BEFORE any
+  sqlite3.connect call (connect would silently create an empty database file):
+  a run directory without a valid dossier fails with the standard
+  INVALID_INPUT envelope (exit 2) and the run directory is left untouched —
+  never a non-standard INTERNAL_ERROR ("no such table: runs").
 - Dual output format (DSR-074): every subcommand accepts --format {json,human}
   with json as the default, so the frozen JSON envelope contract for automation
   consumers is untouched. --format human renders compact human-readable text:
@@ -388,6 +394,25 @@ def _resolve_host_binary(host: str) -> str:
     return resolved
 
 
+def _require_events_db(run_dir) -> None:
+    """Fail closed when the run directory carries no valid dossier ledger.
+
+    sqlite3.connect silently creates an empty events.db when the file is
+    missing, which both pollutes the filesystem and only surfaces later as a
+    non-standard INTERNAL_ERROR ("no such table: runs"). This precheck must
+    run before ANY connect call so a missing dossier yields the standard
+    INVALID_INPUT envelope (exit 2, ERROR_CODE_TO_EXIT_CODE mapping) and the
+    run directory is left untouched.
+    """
+    db_path = Path(run_dir) / "events.db"
+    if not db_path.exists():
+        raise InvalidInputError(
+            f"Run directory '{run_dir}' does not contain a valid audit dossier "
+            f"(no events.db ledger); run 'audit prepare' first",
+            details={"run_dir": str(run_dir), "events_db": str(db_path)},
+        )
+
+
 def _load_run_row(conn, run_dir: str):
     """Return the single run row of the dossier, or raise InvalidInputError."""
     run_row = conn.execute("SELECT run_id, state FROM runs LIMIT 1").fetchone()
@@ -696,6 +721,7 @@ def main() -> int:
             # drives app.run_dispatch_loop to completion with the matching
             # DriverAdapter and an AIMD ConcurrencyController.
             run_path = Path(args.run_dir)
+            _require_events_db(run_path)
             conn = get_db_connection(run_path / "events.db")
             run_row = _load_run_row(conn, args.run_dir)
             run_id = run_row["run_id"]
@@ -768,6 +794,7 @@ def main() -> int:
             return 0
 
         elif args.subcommand == "next":
+            _require_events_db(args.run_dir)
             conn = get_db_connection(Path(args.run_dir) / "events.db")
             run_row = conn.execute("SELECT run_id FROM runs LIMIT 1").fetchone()
             if not run_row:
@@ -777,6 +804,7 @@ def main() -> int:
             return 0
 
         elif args.subcommand == "start":
+            _require_events_db(args.run_dir)
             # Read claim authentication payload from stdin
             input_text = sys.stdin.read().strip()
             if not input_text:
@@ -787,6 +815,7 @@ def main() -> int:
             return 0
 
         elif args.subcommand == "submit":
+            _require_events_db(args.run_dir)
             # Read submit payload from stdin
             input_text = sys.stdin.read().strip()
             if not input_text:
@@ -802,6 +831,7 @@ def main() -> int:
             return 0
 
         elif args.subcommand == "status":
+            _require_events_db(args.run_dir)
             conn = get_db_connection(Path(args.run_dir) / "events.db")
             run_row = conn.execute("SELECT run_id FROM runs LIMIT 1").fetchone()
             if not run_row:
@@ -821,6 +851,7 @@ def main() -> int:
                     f"(got {len(args.reason)})",
                     details={"limit": PAUSE_REASON_MAX_CHARS, "length": len(args.reason)},
                 )
+            _require_events_db(args.run_dir)
             conn = get_db_connection(Path(args.run_dir) / "events.db")
             run_row = _load_run_row(conn, args.run_dir)
             res = app.pause(run_row["run_id"], args.run_dir, reason=args.reason)
@@ -848,6 +879,7 @@ def main() -> int:
             return 0
 
         elif args.subcommand == "resume":
+            _require_events_db(args.run_dir)
             conn = get_db_connection(Path(args.run_dir) / "events.db")
             run_row = conn.execute("SELECT run_id FROM runs LIMIT 1").fetchone()
             if not run_row:
@@ -857,6 +889,7 @@ def main() -> int:
             return 0
 
         elif args.subcommand == "finalize":
+            _require_events_db(args.run_dir)
             conn = get_db_connection(Path(args.run_dir) / "events.db")
             run_row = conn.execute("SELECT run_id FROM runs LIMIT 1").fetchone()
             if not run_row:
@@ -870,8 +903,7 @@ def main() -> int:
         elif args.subcommand == "host-fail":
             # DSR-065 / SWR-022: consume service.report_host_failure.
             # The claim and failure details come from stdin, never argv (DSR-074).
-            if not (Path(args.run_dir) / "events.db").exists():
-                raise InvalidInputError(f"No events.db found in run directory {args.run_dir}")
+            _require_events_db(args.run_dir)
             input_text = sys.stdin.read().strip()
             if not input_text:
                 raise InvalidInputError("stdin required for host-fail claim and details")
@@ -915,6 +947,10 @@ def main() -> int:
         elif args.subcommand == "mcp":
             # DDS-01: MCP transport must route through AuditAppService (the
             # single state-transition entry point), never a bare TaskQueue.
+            # A run directory without a valid dossier ledger refuses to start
+            # the stdio server (standard INVALID_INPUT envelope, exit 2) rather
+            # than answering every request with a non-standard JSON-RPC error.
+            _require_events_db(args.run_dir)
             app = AuditAppService(SKILL_DIR)
             server = MCPServer(args.run_dir, app)
             # Standard JSON-RPC 2.0 stdio loop (DSR-031 / SR-022 / SR-023):

@@ -201,10 +201,20 @@ class TestContracts(unittest.TestCase):
         self.assertEqual(usage["availability"], "exact")
 
         candidate: Candidate = {"schema_version": "1.0", "candidate_id": "c-1"}
-        task_spec: TaskSpec = {"schema_version": "1.0", "task_id": "t-1", "kind": "hunt"}
+        # TaskSpec is the union of the three task_spec.schema.json branches;
+        # this example uses the hunt branch actually produced by prepare().
+        task_spec: TaskSpec = {
+            "schema_version": "1.0",
+            "task_kind": "hunt",
+            "snapshot_id": "snp-1",
+            "unit": {
+                "unit_id": "unit-1",
+                "ranges": [{"path": "app/handlers/upload.py", "line_start": 1, "line_end": 10}],
+            },
+        }
         gate_data: GateResultData = {"schema_version": "1.0", "gate_id": "G4", "status": "pass"}
         self.assertEqual(
-            (candidate["candidate_id"], task_spec["kind"], gate_data["gate_id"]),
+            (candidate["candidate_id"], task_spec["task_kind"], gate_data["gate_id"]),
             ("c-1", "hunt", "G4"),
         )
 

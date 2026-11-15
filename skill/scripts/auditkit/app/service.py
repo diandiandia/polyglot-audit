@@ -53,11 +53,19 @@ Cross-domain wiring owned here (ANA/LED, SNP/INT, HST/LED):
   catalog call sites (recon enqueue and hunt packet rendering); without
   evidence Kotlin/Scala targets do NOT inherit the Java base index and the
   packet discloses the unknown platform;
-- run_dispatch_loop drives claims with AIMD concurrency, adapter retry/backoff
+- prepare identifies build components from build manifests (DSR-055) right
+  after collection: every file is assigned its nearest enclosing
+  build-manifest root (inventory/components.py, shared manifest discovery
+  with the JVM evidence scan per DA-03); components land in the frozen
+  manifest.json and drive reconciliation by_component and every sliced unit;
+- run_dispatch_loop drives tasks with real parallel dispatch: each task is
+  claimed immediately before its own execution (no batch pre-claiming), the
+  in-flight cap follows the AIMD ConcurrencyController's current value on a
+  thread pool, ledger mutations are lock-serialized, and adapter retry/backoff
   parameters, trusted usage objects, and TerminationUncertainError budget
-  retention; pause returns the in-flight attempt contract and resume verifies
-  version/artifact/snapshot integrity before a paused run may continue
-  (IFC-06).
+  retention are preserved; pause returns the in-flight attempt contract and
+  resume verifies version/artifact/snapshot integrity before a paused run may
+  continue (IFC-06).
 """
 
 # 需求追踪 (Requirement Traceability)
@@ -78,9 +86,11 @@ Cross-domain wiring owned here (ANA/LED, SNP/INT, HST/LED):
 #
 
 from __future__ import annotations
+import concurrent.futures
 import hashlib
 import json
 import os
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -114,6 +124,12 @@ from auditkit.hosts.doctor import Doctor
 from auditkit.hosts.errors import TerminationUncertainError
 from auditkit.hosts.retry import compute_backoff_delay
 from auditkit.inventory.boundaries import BoundaryScanner
+from auditkit.inventory.components import (
+    DEFAULT_COMPONENT,
+    component_roots,
+    detect_components,
+    find_build_manifest_paths,
+)
 from auditkit.inventory.languages import detect_language
 from auditkit.inventory.reconcile import reconcile as reconcile_inventory
 from auditkit.inventory.rules import ExclusionRules
@@ -230,15 +246,22 @@ def detect_jvm_build_evidence_files(paths: List[str]) -> List[str]:
     .mvn/ directory. An empty result means NO JVM build evidence was found —
     the caller must then keep the platform unknown for Kotlin/Scala targets
     instead of assuming JVM.
+
+    The build-manifest scan is shared with component detection (DA-03):
+    ``find_build_manifest_paths`` discovers pom/gradle-family manifests once
+    and this filter keeps only the JVM-relevant subset plus the .sbt/.mvn
+    markers that are not manifest files.
     """
+    build_manifests = set(find_build_manifest_paths(paths))
     evidence: List[str] = []
     for p in sorted(set(paths)):
         normalized = p[2:] if p.startswith("./") else p
         name = normalized.rsplit("/", 1)[-1]
-        if name in JVM_BUILD_FILE_MARKERS or normalized.startswith(JVM_BUILD_PATH_PREFIX_MARKERS):
+        if normalized in build_manifests and name in JVM_BUILD_FILE_MARKERS:
             evidence.append(p)
-            continue
-        if name.endswith(JVM_BUILD_SUFFIX_MARKERS):
+        elif normalized.startswith(JVM_BUILD_PATH_PREFIX_MARKERS):
+            evidence.append(p)
+        elif name.endswith(JVM_BUILD_SUFFIX_MARKERS):
             evidence.append(p)
     return sorted(evidence)
 
@@ -357,6 +380,25 @@ class AuditAppService:
         )
         manifest = collector.collect()
         snapshot_id = manifest.snapshot_id
+
+        # 5b. DSR-055: build-manifest component identification. Components are
+        # injected BEFORE any consumer runs (inventory reconciliation, unit
+        # slicing, plan accounting), so by_component and every unit's
+        # component field reflect real build components. Injection point: the
+        # collector freezes the snapshot inside collect(), so the persisted
+        # manifest.json is rewritten in place with the detected component
+        # fields. Snapshot identity is unaffected — the content-addressed
+        # root_hash/snapshot_id encode only path/file_type/bytes/sha256 and
+        # never the component field, so integrity verification (which
+        # recomputes the root hash from file contents) still matches.
+        component_labels = detect_components(manifest.files, snapshot_dest)
+        for entry in manifest.files:
+            entry["component"] = component_labels.get(entry["path"], DEFAULT_COMPONENT)
+        manifest.save_json(str(snapshot_dest / "manifest.json"))
+        component_root_records = component_roots([f["path"] for f in manifest.files])
+        default_component_files = sum(
+            1 for e in manifest.files if e.get("component") == DEFAULT_COMPONENT
+        )
 
         # 6. Inventory, Signals, Boundaries, Slicing.
         # Signal scanning consumes the knowledge_dir (DSR-057) and the honest
@@ -505,6 +547,12 @@ class AuditAppService:
                     else "no JVM build markers found; platform stays unknown for "
                     "Kotlin/Scala targets (SD-02: state uncertainty when unknown)"
                 ),
+            },
+            # DSR-055: the component roots found by build-manifest detection
+            # and the accounting that falls outside every root (default).
+            "component_detection": {
+                "roots": component_root_records,
+                "default_component_files": default_component_files,
             },
         }
         with open(run_path / "plan.json", "w", encoding="utf-8") as f:
@@ -2036,12 +2084,46 @@ class AuditAppService:
     ) -> Dict[str, Any]:
         """Drive claim -> start -> execute -> submit with AIMD concurrency (DSR-064).
 
-        - ``controller``: ConcurrencyController; batch size follows AIMD
-          (success +1, failure halve). Defaults to a fresh controller.
+        Concurrency model (real parallel dispatch):
+        - Every task has an independent lifecycle: ``next(batch_size=1)`` runs
+          immediately before that task's execution, so no attempt ever holds a
+          lease while queued behind other work (no whole-batch pre-claiming).
+        - The in-flight cap follows the ConcurrencyController's CURRENT value
+          (``controller.current``); tasks run on a
+          ``concurrent.futures.ThreadPoolExecutor`` worker pool. AIMD maps
+          per task: success -> ``on_success()`` (+1), failure -> ``on_failure()``
+          (halve). Retry/backoff semantics are unchanged: TerminationUncertainError
+          retains the attempt budget (no release) and retryable failures requeue
+          within ``adapter.max_retries`` (quarantine + coverage gap beyond it).
+        - Ledger mutations (claim/start/submit/fail) are serialized with an
+          in-process ``threading.Lock``; BEGIN IMMEDIATE already serializes
+          writers at the SQLite layer, the lock only avoids useless busy-timeout
+          contention between this loop's own worker threads. ``execute_fn`` runs
+          OUTSIDE the lock (it is the slow host call).
+
+        Return contract (unchanged for CLI consumers):
+        - ``stop_reason``: ``"queue_drained"`` when the task queue is empty;
+          ``"budget_exhausted"`` when dispatch stopped against remaining queued
+          tasks with a budget_exhausted ledger event; ``"paused_or_blocked"``
+          when the run is not active (stop sequence) or no cause is recorded.
+          ``None`` means the loop stopped on the caller-supplied task cap.
+        - ``max_batches`` now caps TASK DISPATCH ROUNDS (one claimed task per
+          round), not whole-batch claim rounds: once that many tasks have been
+          claimed, no further tasks are claimed, in-flight tasks complete, and
+          ``stop_reason`` is ``None``.
+        - ``batches`` counts dispatched tasks (one claim round per task).
         - ``adapter``: host driver adapter; its ``max_retries`` bounds queue
-          retries and its ``backoff_base``/``backoff_max`` bound the inter-batch
-          backoff sleep after retryable failures. ``last_usage`` feeds the
-          trusted usage object submitted for every attempt.
+          retries and its ``backoff_base``/``backoff_max`` bound the backoff
+          sleep after retryable failures (slept by the failing worker only).
+          ``last_usage`` feeds the trusted usage object submitted for every
+          attempt (built via ``build_usage``). Known limitation (hosts-layer
+          debt, not fixable in the service): adapters that publish usage through
+          a single shared ``adapter.last_usage`` slot can cross-attribute
+          per-attempt usage when two workers finish within each other's
+          execute_fn tail; usage totals and availability accounting stay exact,
+          only the per-attempt binding can swap. A per-task usage channel in
+          the host adapters removes the residual window.
+        - ``sleep_fn`` stays injectable (used for the post-failure backoff).
         - TerminationUncertainError retains the attempt budget (no release) and
           is converted into an incomplete candidate reason at finalize.
         """
@@ -2052,67 +2134,199 @@ class AuditAppService:
         backoff_base = float(getattr(adapter, "backoff_base", 0.5))
         backoff_max = float(getattr(adapter, "backoff_max", 30.0))
 
-        batches = 0
-        submitted = 0
-        failed = 0
-        retained = 0
-        stop_reason = None
+        db_lock = threading.Lock()
+        ctrl_lock = threading.Lock()
+        counters = {
+            "dispatched": 0,
+            "submitted": 0,
+            "failed": 0,
+            "budget_retained": 0,
+        }
+        # Set when the caller-supplied task cap is reached: worker slots then
+        # finish their current task and stop claiming new ones.
+        stop_claiming = threading.Event()
 
-        while max_batches is None or batches < max_batches:
+        def execute_one_task(_slot: int) -> tuple:
+            """Claim ONE task and drive it through the full pipeline.
+
+            Returns an (outcome, task_id) tuple; outcomes:
+            submitted / failed / retained / empty / blocked / stopped.
+            """
+            if stop_claiming.is_set():
+                return ("stopped", None)
             # Claims flow through service.next so every dispatched attempt is
             # served with its published prompt packet (IFC-02); claims whose
             # packet cannot be rendered are released back to the queue inside
-            # next() and never reach execute_fn.
-            claims = self.next(
-                run_id,
-                run_dir,
-                batch_size=ctrl.current,
-                lease_seconds=lease_seconds,
-                worker_id="service_loop",
-            )
-            if not claims:
-                stop_reason = "queue_drained"
-                break
-            batches += 1
-
-            for claim in claims:
-                self.start(run_dir, claim)
+            # next() and never reach execute_fn. batch_size=1 keeps the claim
+            # immediately adjacent to this task's own execution.
+            with db_lock:
+                # The caller cap is enforced inside the claim critical section,
+                # so a task is never claimed past max_batches even when slots
+                # were already queued on the pool.
+                if stop_claiming.is_set() or (
+                    max_batches is not None and counters["dispatched"] >= max_batches
+                ):
+                    return ("stopped", None)
                 try:
-                    result = execute_fn(claim)
-                except TerminationUncertainError as e:
-                    # Budget is retained, never released (DSR-064).
+                    claims = self.next(
+                        run_id,
+                        run_dir,
+                        batch_size=1,
+                        lease_seconds=lease_seconds,
+                        worker_id="service_loop",
+                    )
+                except InvalidStateError:
+                    # Stop sequence (DSR-066): dispatch is only granted to
+                    # active runs; report honestly via the stop reason.
+                    return ("blocked", None)
+                if claims:
+                    # Dispatch accounting stays inside the claim critical
+                    # section so the cap is exact under concurrency.
+                    counters["dispatched"] += 1
+            if not claims:
+                return ("empty", None)
+            claim = claims[0]
+            with db_lock:
+                self.start(run_dir, claim)
+            try:
+                result = execute_fn(claim)
+            except TerminationUncertainError as e:
+                # Budget is retained, never released (DSR-064).
+                with db_lock:
                     self.report_host_failure(run_dir, claim, e, max_retries=max_retries)
+                with ctrl_lock:
                     ctrl.on_failure()
-                    retained += 1
-                    failed += 1
-                    continue
-                except AuditError as e:
+                    counters["budget_retained"] += 1
+                    counters["failed"] += 1
+                return ("retained", claim["task_id"])
+            except AuditError as e:
+                with db_lock:
                     self.report_host_failure(run_dir, claim, e, max_retries=max_retries)
+                with ctrl_lock:
                     ctrl.on_failure()
-                    failed += 1
-                    sleep_fn(compute_backoff_delay(failed, backoff_base, backoff_max))
-                    continue
+                    counters["failed"] += 1
+                    failures = counters["failed"]
+                # The failing worker backs off; other in-flight tasks are not
+                # delayed by this host failure.
+                sleep_fn(compute_backoff_delay(failures, backoff_base, backoff_max))
+                return ("failed", claim["task_id"])
 
-                usage = self.build_usage(
-                    adapter,
-                    claim["attempt_id"],
-                    dimension=usage_dimension,
-                    unit=usage_unit,
-                    source=usage_source,
-                )
-                digest = sha256_text(json.dumps(result, sort_keys=True, ensure_ascii=False))
+            usage = self.build_usage(
+                adapter,
+                claim["attempt_id"],
+                dimension=usage_dimension,
+                unit=usage_unit,
+                source=usage_source,
+            )
+            digest = sha256_text(json.dumps(result, sort_keys=True, ensure_ascii=False))
+            with db_lock:
                 self.submit(run_dir, claim, result, digest, usage=usage)
+            with ctrl_lock:
                 ctrl.on_success()
-                submitted += 1
+                counters["submitted"] += 1
+            return ("submitted", claim["task_id"])
+
+        stop_reason: Optional[str] = None
+        drain_seen = False
+        blocked_seen = False
+        # Pool sizing: the controller's maximum bounds the in-flight cap, so a
+        # pool of that size can always satisfy the current AIMD level.
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=max(1, ctrl.maximum), thread_name_prefix="dispatch"
+        ) as pool:
+            in_flight: set = set()
+            while True:
+                # 1. Reap finished slots (counters/AIMD already updated inside).
+                for fut in [f for f in in_flight if f.done()]:
+                    in_flight.discard(fut)
+                    outcome, _task_id = fut.result()
+                    if outcome in ("empty", "stopped"):
+                        drain_seen = True
+                    elif outcome == "blocked":
+                        blocked_seen = True
+                    else:
+                        # Work completed: its submission may have enqueued
+                        # follow-up tasks, so an earlier empty claim no longer
+                        # proves the queue is drained — re-probe with a fresh
+                        # claim before deciding to stop.
+                        drain_seen = False
+                        blocked_seen = False
+
+                # 2. Caller cap: no further tasks are claimed once the
+                # dispatched count reaches max_batches.
+                if max_batches is not None and counters["dispatched"] >= max_batches:
+                    stop_claiming.set()
+
+                # 3. Stop decisions BEFORE refilling, so fresh probe slots can
+                # never keep the loop alive after the pipeline is empty.
+                if stop_claiming.is_set() and not in_flight:
+                    # Stopped by the caller-supplied task cap: neither the
+                    # queue nor the run state caused the stop.
+                    stop_reason = None
+                    break
+                if (drain_seen or blocked_seen) and not in_flight:
+                    stop_reason = self._dispatch_stop_reason(run_id, run_dir)
+                    break
+
+                # 4. Fill the pipeline up to the CURRENT AIMD in-flight cap.
+                # An observed empty claim suppresses probing while other slots
+                # are still running: they may enqueue follow-up work, and their
+                # completion resets the drain observation, so a fresh claim is
+                # only submitted after real work finished (no probe storm).
+                if not stop_claiming.is_set() and not drain_seen and not blocked_seen:
+                    with ctrl_lock:
+                        target = ctrl.current
+                    while len(in_flight) < target:
+                        in_flight.add(pool.submit(execute_one_task, len(in_flight)))
+
+                # 5. Nothing new to submit: wait for a slot to finish (a hunt
+                # submission may enqueue verify work, so drain is only decided
+                # once the pipeline is empty).
+                if in_flight:
+                    concurrent.futures.wait(
+                        list(in_flight), timeout=0.05,
+                        return_when=concurrent.futures.FIRST_COMPLETED,
+                    )
 
         return {
-            "batches": batches,
-            "submitted": submitted,
-            "failed": failed,
-            "budget_retained": retained,
+            "batches": counters["dispatched"],
+            "submitted": counters["submitted"],
+            "failed": counters["failed"],
+            "budget_retained": counters["budget_retained"],
             "concurrency": ctrl.current,
             "stop_reason": stop_reason,
         }
+
+    def _dispatch_stop_reason(self, run_id: str, run_dir: str | Path) -> str:
+        """Disambiguate an empty-claim stop honestly (three-state contract).
+
+        - ``"paused_or_blocked"``: the run is not active (stop sequence) or no
+          cause event is recorded;
+        - ``"budget_exhausted"``: queued tasks remain and a budget_exhausted
+          event explains why they were not dispatched;
+        - ``"queue_drained"``: the queue is empty.
+        """
+        conn = self._open_run_db(run_dir)
+        try:
+            row = conn.execute(
+                "SELECT state FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            if row is None or row["state"] != "active":
+                return "paused_or_blocked"
+            queued = conn.execute(
+                "SELECT count(*) AS cnt FROM tasks WHERE run_id = ? AND state = 'queued'",
+                (run_id,),
+            ).fetchone()["cnt"]
+            if queued == 0:
+                return "queue_drained"
+            budget_events = conn.execute(
+                "SELECT count(*) AS cnt FROM events "
+                "WHERE run_id = ? AND event_type = 'budget_exhausted'",
+                (run_id,),
+            ).fetchone()["cnt"]
+            return "budget_exhausted" if budget_events else "paused_or_blocked"
+        finally:
+            conn.close()
 
     def status(self, run_id: str, run_dir: str | Path) -> Dict[str, Any]:
         """Retrieve current run status."""

@@ -152,8 +152,17 @@ CREATE INDEX IF NOT EXISTS idx_events_run_rev ON events(run_id, revision);
 
 
 def get_db_connection(db_path: str | Path) -> sqlite3.Connection:
-    """Open SQLite connection configured with WAL and busy timeout."""
-    conn = sqlite3.connect(str(db_path), timeout=5.0, isolation_level=None)
+    """Open SQLite connection configured with WAL and busy timeout.
+
+    ``check_same_thread=False``: the driver loop's worker threads read the
+    ledger through connections opened by the caller's thread (e.g. audit.py's
+    shared run handle used by its execute_fn). SQLite is compiled in serialized
+    mode (sqlite3.threadsafety == 3), so statement-level access to one
+    connection from several threads is serialized by SQLite itself; write
+    transactions stay serialized via BEGIN IMMEDIATE (and the dispatch loop's
+    own in-process lock). Cross-process safety is unchanged.
+    """
+    conn = sqlite3.connect(str(db_path), timeout=5.0, isolation_level=None, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     # Configure WAL mode and busy timeout
     conn.execute("PRAGMA journal_mode = WAL;")
