@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "frontier_id": "fr-0001",
+  "source": {
+    "path": "app/handlers/upload.py",
+    "line": 8,
+    "kind": "http_body"
+  },
+  "boundary": "value reaches the module edge without a type check",
+  "steps": [
+    {
+      "path": "app/handlers/upload.py",
+      "line": 8,
+      "role": "source",
+      "note": "raw body read"
+    },
+    {
+      "path": "app/serial.py",
+      "line": 21,
+      "role": "transform",
+      "note": "wrapper forwards blob",
+      "lang": "python"
+    }
+  ],
+  "open_questions": [
+    "which loader is configured in the deployment"
+  ],
+  "provenance": {
+    "hunt_tasks": [
+      "task-0001"
+    ]
+  }
+}

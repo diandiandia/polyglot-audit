@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "impact": 4,
+  "exploitability": 3,
+  "calculated_severity": "High",
+  "calculated_urgency": "P1",
+  "final_severity": "High",
+  "final_urgency": "P1",
+  "validation_priority": "V1"
+}

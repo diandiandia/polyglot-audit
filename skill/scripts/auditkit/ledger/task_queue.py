@@ -461,6 +461,32 @@ class TaskQueue:
                     "usage_availability": usage_record.availability if usage_record else "unavailable",
                 },
             )
+            # IFC-05 floor requirement: every usage settlement is recorded as an
+            # explicit event (availability + settled value/reason), including
+            # the unknown-settlement paths -- missing usage is never silently
+            # treated as zero (DSR-033 / SR-020).
+            self.event_store.append_event(
+                run_id,
+                "usage_settled",
+                "task_queue",
+                {
+                    "task_id": task_id,
+                    "attempt_id": attempt_id,
+                    "dimension": usage_record.dimension if usage_record else "tasks",
+                    "availability": usage_record.availability if usage_record else "unavailable",
+                    "settled_value": (
+                        usage_record.value
+                        if usage_record is not None and usage_record.availability in ("exact", "estimated")
+                        else None
+                    ),
+                    "reason": (
+                        None
+                        if usage_record is not None and usage_record.availability in ("exact", "estimated")
+                        else (usage_record.reason if usage_record is not None else "no host usage supplied with submission")
+                    ),
+                    "source": usage_record.source if usage_record else "unavailable",
+                },
+            )
         except BaseException:
             self.conn.execute("ROLLBACK")
             raise

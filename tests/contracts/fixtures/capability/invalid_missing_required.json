@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "adapter": "claude",
+  "adapter_version": "cli-1.2.0",
+  "features": {
+    "filesystem_write": {
+      "state": "not_enforced",
+      "evidence": "probe wrote scratch file"
+    },
+    "network": {
+      "state": "unknown",
+      "reason": "not probed in this environment"
+    }
+  }
+}

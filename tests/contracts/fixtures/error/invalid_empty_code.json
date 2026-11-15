@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "code": "",
+  "message": "attempt already terminal",
+  "retryable": false,
+  "details": {
+    "task_id": "task-0001",
+    "attempt_id": "att-0001"
+  }
+}

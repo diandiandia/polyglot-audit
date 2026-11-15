@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "unit_id": "unit-0001",
+  "snapshot_id": "snp-0001",
+  "component": "app",
+  "language": "python",
+  "ranges": [
+    "app/handlers/upload.py:1-40"
+  ],
+  "risk_factors": [
+    "Tier: T1",
+    "deserialization entry"
+  ]
+}

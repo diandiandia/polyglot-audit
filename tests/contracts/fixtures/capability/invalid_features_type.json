@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0",
+  "adapter": "claude",
+  "adapter_version": "cli-1.2.0",
+  "checked_at": "2026-11-15T00:00:00Z",
+  "features": []
+}

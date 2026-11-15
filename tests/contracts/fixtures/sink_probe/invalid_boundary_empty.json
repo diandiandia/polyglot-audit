@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "probe_id": "probe-0001",
+  "sink": {
+    "path": "app/storage/state.py",
+    "line": 10,
+    "symbol": "restore_state",
+    "kind": "deserialization"
+  },
+  "boundary": "",
+  "steps": [
+    {
+      "path": "app/storage/state.py",
+      "line": 10,
+      "role": "sink",
+      "note": "pickle.loads(session_blob)"
+    }
+  ],
+  "guard_analysis": "no guard observed within the unit; cross-unit callers unverified",
+  "open_questions": [
+    "which callers pass attacker-controlled blobs"
+  ],
+  "provenance": {
+    "hunt_tasks": [
+      "task-0002"
+    ]
+  }
+}

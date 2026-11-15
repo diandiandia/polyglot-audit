@@ -34,8 +34,14 @@ Every fix has at least one assertion that crosses layers:
     published artifacts; a failing G4 forces 'incomplete' with g4_failed.
 9.  report_language at finalize (SR-012).
 10. pause/resume contract (IFC-06).
+11. DSR-062 variant search (ANA -> SNP): a verify-submitted confirmed finding
+    runs the bounded variant search against the frozen snapshot before it is
+    persisted; same-sink variants are recorded with
+    requires_independent_verification=True; empty results, unreadable snapshot
+    files and file-cap truncation are recorded honestly in variant_search.
 """
 
+import hashlib
 import json
 import shutil
 import sys
@@ -1127,6 +1133,310 @@ class TestPauseResumeContract(PipelineClosureBase):
         (self.run_dir / "report" / "notes.md").unlink()
         with self.assertRaises(CorruptRunError):
             self.app.resume(self.run_id, self.run_dir)
+
+
+class TestVariantSearchClosure(PipelineClosureBase):
+    """Fix 11: DSR-062 bounded variant search wired into the verify path.
+
+    bounded_variant_search used to have no production consumer: verify
+    submissions were stored straight from worker records, so every finding's
+    variants stayed empty. These tests cross the layers: a hunt candidate for
+    a sink symbol, a verify confirmation, and the persisted finding artifact
+    must carry real same-sink variants plus the honest variant_search record.
+    """
+
+    # os.system sits on line 5 of this exact source (two PEP8 blank lines).
+    VARIANT_SOURCE = "import os\n\n\ndef handler(user_input):\n    os.system(user_input)\n"
+    CLEAN_SOURCE = "import os\n\n\ndef cleanup(path):\n    os.remove(path)\n"
+
+    def _variant_target(self, second_file_text):
+        """Target with a/danger.py hitting os.system; b/other.py optional."""
+        target = self.temp_dir / "target-variant"
+        (target / "a").mkdir(parents=True)
+        (target / "a" / "danger.py").write_text(self.VARIANT_SOURCE, encoding="utf-8")
+        if second_file_text is not None:
+            (target / "b").mkdir(parents=True)
+            (target / "b" / "other.py").write_text(second_file_text, encoding="utf-8")
+        return target
+
+    def variant_candidate(self, claim, candidate_id="cand-var-01"):
+        return {
+            "schema_version": "1.0",
+            "candidate_id": candidate_id,
+            "issue": "py-01",
+            "source": {"path": "a/danger.py", "line": 4, "symbol": "handler",
+                       "kind": "param", "control": "user_input"},
+            "sink": {"path": "a/danger.py", "line": 5, "symbol": "os.system",
+                     "kind": "rce", "effect": "command execution"},
+            "steps": [
+                {"path": "a/danger.py", "line": 4, "role": "source", "note": "n1"},
+                {"path": "a/danger.py", "line": 5, "role": "sink", "note": "n2"},
+            ],
+            "guard_analysis": "none",
+            "impact_claim": "RCE",
+            "open_questions": [],
+            "provenance": {"hunt_tasks": [claim["task_id"]]},
+        }
+
+    def _run_hunt_phase(self, second_file_text, candidate_id="cand-var-01"):
+        """prepare -> recon -> hunt(candidate).
+
+        Returns (hunt_claim, candidate, other_hunt_claims); the other hunt
+        unit's claims stay claimed so a test that finalizes can drain them.
+        """
+        target = self._variant_target(second_file_text)
+        self.app.prepare(target, self.run_dir, self.make_config(target))
+        self.app.activate(self.run_id, self.run_dir)
+        self.drain_recon()
+        hunt_claims = [c for c in self.claim_all() if c["spec"].get("task_kind") != "recon"]
+        candidate = self.variant_candidate(hunt_claims[0], candidate_id)
+        self.app.start(self.run_dir, hunt_claims[0])
+        self.app.submit(
+            self.run_dir, hunt_claims[0], hunt_result(hunt_claims[0], [candidate]),
+            f"digest-{hunt_claims[0]['task_id']}",
+        )
+        return hunt_claims[0], candidate, hunt_claims[1:]
+
+    def _confirm(self, hunt_claim, candidate, impact=3, exploitability=2):
+        """Claim and complete the verify task with a confirmed finding."""
+        verify_claim = self.app.next(self.run_id, self.run_dir, batch_size=5)[0]
+        self.assertEqual(verify_claim["spec"]["role"], "verify")
+        self.app.start(self.run_dir, verify_claim)
+        finding = Verifier(enforce_attempt_gate=True).create_finding_from_candidate(
+            candidate, "confirmed", "vt-var-01",
+            impact=impact, exploitability=exploitability,
+            impact_why="sensitive sink", exploitability_why="unvalidated input",
+            verify_attempt_id=verify_claim["attempt_id"],
+            hunt_attempt_id=hunt_claim["attempt_id"],
+        )
+        self.app.submit(
+            self.run_dir, verify_claim,
+            verify_result(verify_claim, [
+                {"schema_version": "1.0", "verdict": "confirmed", "finding": finding}
+            ]),
+            "digest-verify-variant",
+        )
+        return verify_claim, finding["finding_id"]
+
+    def _run_to_confirmed(self, second_file_text, candidate_id="cand-var-01",
+                          impact=3, exploitability=2):
+        """prepare -> recon -> hunt(candidate) -> verify confirmed; returns
+        (finding_id, hunt_claim, verify_claim)."""
+        hunt_claim, candidate, _ = self._run_hunt_phase(second_file_text, candidate_id)
+        verify_claim, finding_id = self._confirm(
+            hunt_claim, candidate, impact=impact, exploitability=exploitability
+        )
+        return finding_id, hunt_claim, verify_claim
+
+    def _stored_finding(self, verify_claim):
+        artifact = self.run_dir / f"findings/verified-{verify_claim['attempt_id']}.json"
+        stored = json.loads(artifact.read_text(encoding="utf-8"))
+        self.assertEqual(len(stored), 1)
+        return stored[0]
+
+    def test_confirmed_finding_carries_same_sink_variants(self):
+        """DSR-062: the persisted confirmed finding lists the OTHER same-sink
+        location as a variant requiring independent verification."""
+        finding_id, _, verify_claim = self._run_to_confirmed(self.VARIANT_SOURCE)
+        stored = self._stored_finding(verify_claim)
+        self.assertEqual(stored["finding_id"], finding_id)
+        self.assertEqual(stored["verdict"], "confirmed")
+
+        variants = stored["variants"]
+        self.assertTrue(variants, "variant search must find the b/other.py sink")
+        self.assertIn(
+            ("b/other.py", 5),
+            [(v["path"], v["line"]) for v in variants],
+        )
+        # The confirmed location itself is never its own variant.
+        self.assertNotIn(
+            ("a/danger.py", 5),
+            [(v["path"], v["line"]) for v in variants],
+        )
+        for v in variants:
+            self.assertTrue(v["requires_independent_verification"])
+            self.assertEqual(v["source_finding_id"], finding_id)
+            self.assertTrue(v["snippet"])
+
+        search = stored["variant_search"]
+        self.assertEqual(search["total_files"], 2)      # both snapshot files
+        self.assertEqual(search["searched_files"], 2)
+        self.assertFalse(search["truncated"])
+        self.assertEqual(search["unsearched_files"], [])
+
+    def test_without_same_symbol_variants_stay_empty_and_are_recorded(self):
+        """DSR-062: no same-sink match -> variants == [] and variant_search
+        truthfully records what was searched (no fabricated variants)."""
+        _, _, verify_claim = self._run_to_confirmed(self.CLEAN_SOURCE)
+        stored = self._stored_finding(verify_claim)
+        self.assertEqual(stored["variants"], [])
+        search = stored["variant_search"]
+        self.assertEqual(search["total_files"], 2)
+        self.assertEqual(search["searched_files"], 2)
+        self.assertFalse(search["truncated"])
+        self.assertEqual(search["unsearched_files"], [])
+
+    def test_unreadable_snapshot_file_is_skipped_and_recorded(self):
+        """DSR-062: one bad snapshot file must not abort the search; the skip
+        is recorded as truncation with a reason naming the file."""
+        hunt_claim, candidate, _ = self._run_hunt_phase(
+            self.VARIANT_SOURCE, candidate_id="cand-var-skip"
+        )
+        # Break the frozen snapshot BEFORE the verify submission: the search
+        # runs against the snapshot copy at verify-submission time.
+        (self.run_dir / "snapshot" / "b" / "other.py").unlink()
+        verify_claim, finding_id = self._confirm(hunt_claim, candidate)
+        stored = self._stored_finding(verify_claim)
+        self.assertEqual(stored["finding_id"], finding_id)
+        self.assertEqual(stored["variants"], [])
+        search = stored["variant_search"]
+        self.assertTrue(search["truncated"])
+        self.assertIn("b/other.py", search["reason"])
+        self.assertIn("b/other.py", search["unsearched_files"])
+        self.assertEqual(search["searched_files"], 1)
+        self.assertEqual(search["total_files"], 2)
+
+    def test_snapshot_read_cap_is_deterministic_and_recorded(self):
+        """DSR-062: the snapshot read bound caps memory (max_files attempted
+        in manifest order); the overflow is listed as unsearched."""
+        target = self._variant_target(self.VARIANT_SOURCE)
+        self.app.prepare(target, self.run_dir, self.make_config(target))
+        loaded = AuditAppService._load_snapshot_files(self.run_dir, 1)
+        self.assertEqual(loaded["total_files"], 2)
+        self.assertEqual(sorted(loaded["files"]), ["a/danger.py"])  # manifest order
+        self.assertEqual(loaded["unsearched_files"], ["b/other.py"])
+        self.assertEqual(loaded["read_errors"], [])
+
+    def test_variants_survive_finalize_merge_and_reporting(self):
+        """DSR-062: the merged finding keeps its variants at finalize and the
+        published reports render without breaking on the new fields."""
+        hunt_claim, candidate, other_hunts = self._run_hunt_phase(
+            self.VARIANT_SOURCE, candidate_id="cand-var-fin"
+        )
+        verify_claim, finding_id = self._confirm(
+            hunt_claim, candidate, impact=3, exploitability=2,  # Medium: no 2nd opinion
+        )
+        # Drain the second hunt unit so the run reaches the complete state.
+        for claim in other_hunts:
+            self.app.start(self.run_dir, claim)
+            self.app.submit(
+                self.run_dir, claim, hunt_result(claim, []), f"digest-{claim['task_id']}"
+            )
+        fin = self.app.finalize(self.run_id, self.run_dir, findings=[])
+        self.assertEqual(fin["final_state"], "complete")
+
+        export = json.loads(
+            (self.run_dir / "report" / "findings.json").read_text(encoding="utf-8")
+        )
+        merged = next(f for f in export if f.get("finding_id") == finding_id)
+        self.assertIn(("b/other.py", 5), [(v["path"], v["line"]) for v in merged["variants"]])
+        self.assertEqual(merged["variant_search"]["total_files"], 2)
+
+        report = (self.run_dir / "report" / "REPORT.md").read_text(encoding="utf-8")
+        self.assertIn(finding_id, report)
+        needs_val = (self.run_dir / "report" / "NEEDS-VALIDATION.md").read_text(encoding="utf-8")
+        self.assertIsInstance(needs_val, str)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class TestIFC05FloorEvents(unittest.TestCase):
+    """IFC-05 floor requirement (SR-018/DSR-016): snapshot_published,
+    usage_settled and gate_evaluated events exist and carry reconstruction-
+    grade payloads; the gate ledger follows the artifact ledger."""
+
+    def setUp(self):
+        self.temp_dir = Path(tempfile.mkdtemp())
+        self.app = AuditAppService(SKILL_DIR)
+        self.target = FIXTURES_APP
+        self.run_dir = self.temp_dir / "run"
+        cfg = {
+            "schema_version": "1.0",
+            "target": str(self.target),
+            "run_dir": str(self.run_dir),
+            "report_language": "en",
+            "profile": "standard",
+            "scope": {"include": ["*"], "exclude": []},
+            "budgets": [{
+                "schema_version": "1.0", "dimension": "tasks", "mode": "enforced",
+                "limit": 30, "settled": 0, "reserved": 0, "unit": "tasks",
+                "availability": "exact",
+            }],
+            "safety_acceptance": {
+                "allow_unverified_execution": False, "allow_unverified_network": False,
+                "allow_unverified_write": False, "user_approved": True,
+            },
+        }
+        prep = self.app.prepare(str(self.target), str(self.run_dir), cfg)
+        self.run_id = prep["run_id"]
+        self.app.activate(self.run_id, self.run_dir)
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _events(self, event_type):
+        conn = get_db_connection(self.run_dir / "events.db")
+        try:
+            rows = conn.execute(
+                "SELECT payload_json FROM events WHERE event_type = ? ORDER BY revision",
+                (event_type,),
+            ).fetchall()
+            return [json.loads(r["payload_json"]) for r in rows]
+        finally:
+            conn.close()
+
+    def _drain(self):
+        for _ in range(15):
+            claims = self.app.next(self.run_id, self.run_dir, batch_size=5)
+            if not claims:
+                break
+            for c in claims:
+                self.app.start(self.run_dir, c)
+                kind = (c.get("spec") or {}).get("task_kind") or "hunt"
+                self.app.submit(
+                    self.run_dir, c,
+                    {"schema_version": "1.0", "task_id": c["task_id"],
+                     "attempt_id": c["attempt_id"], "kind": kind,
+                     "coverage": [], "records": [], "overflow": []},
+                    hashlib.sha256(c["task_id"].encode()).hexdigest(),
+                )
+
+    def test_prepare_emits_snapshot_published_with_reconstruction_payload(self):
+        events = self._events("snapshot_published")
+        self.assertEqual(len(events), 1)
+        payload = events[0]
+        self.assertTrue(payload["snapshot_id"].startswith("snp-"))
+        self.assertRegex(payload["root_hash"], r"^[0-9a-f]{64}$")
+        self.assertGreater(payload["total_files"], 0)
+        self.assertIn("gap_count", payload)
+        self.assertIn("source_control", payload)
+
+    def test_finalize_emits_gate_evaluated_after_publish_for_g1_to_g4(self):
+        self._drain()
+        result = self.app.finalize(self.run_id, self.run_dir)
+        events = self._events("gate_evaluated")
+        gate_ids = [e["gate_id"] for e in events]
+        self.assertIn("G1", gate_ids)
+        self.assertIn("G2", gate_ids)
+        self.assertIn("G3", gate_ids)
+        self.assertIn("G4", gate_ids)
+        # G4 is evaluated against published artifacts: its event must be the
+        # last gate event and run must reach a terminal state.
+        conn = get_db_connection(self.run_dir / "events.db")
+        try:
+            seen_types = [
+                r["event_type"]
+                for r in conn.execute(
+                    "SELECT event_type FROM events ORDER BY revision"
+                ).fetchall()
+            ]
+        finally:
+            conn.close()
+        self.assertEqual(gate_ids[-1], "G4")
+        self.assertIn("run_finalized", seen_types)
+        self.assertIn(result["final_state"], ("complete", "incomplete"))
 
 
 if __name__ == "__main__":

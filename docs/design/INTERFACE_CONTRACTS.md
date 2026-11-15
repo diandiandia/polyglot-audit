@@ -21,7 +21,7 @@
 | `SnapshotManifest` | snapshot_id、hash_algorithm、root_hash、files、excluded、collection_assumptions | 文件含 path、sha256、bytes、line_count、encoding、component、language；不可读及链接需有原因；规模大时使用可顺序读取的分页工件，根摘要覆盖排序后的全量清单。 |
 | `Anchor` | snapshot_id、path、line_start、line_end、file_sha256、symbol? | 快照与摘要须一致；只能证实位置存在，不能证明语义。 |
 | `Unit` | unit_id、snapshot_id、component、language、ranges、risk_factors | ranges 为 Anchor 的行范围集合；风险分数和规则版本可重算；拆分/重叠不重复覆盖计数。 |
-| `TaskSpec` | task_id、kind、unit_ids、packet_digest、priority、limits | kind 为 recon/hunt/verify；packet 绑定当前快照与契约；verify 必须引用待验证对象。 |
+| `TaskSpec` | schema_version、task_kind；其余字段按 `oneOf` 三分支（hunt/recon/verify，`task_kind` const 判别） | hunt 携带 `snapshot_id` 与 `unit`；recon 另带 `role`、语言索引与 `knowledge_hints`；verify 携带 `verify_task_id`、`candidate_id`、`output_contract`、`requires_new_attempt`，引用待验证对象（`input.candidate`）并受 attempt 闸门字段约束，second-opinion 字段并入 verify 分支；packet 绑定当前快照与契约。**[DA-04]**（旧形状 task_id/kind/unit_ids/packet_digest/priority/limits 为早期草案：实现按任务角色分化，schema 已反写为唯一契约来源并经 DESIGN_ALIGNMENT_NOTES DA-04 对齐，旧形状必须被所有分支拒绝。） |
 | `Claim` | run_id、task_id、attempt_id、generation、claim_token、expires_at、packet_ref | token 仅返回执行者，不进入持久明文日志；worker 不得将 packet_ref 当任意文件写入口。 |
 | `WorkerResult` | task_id、attempt_id、kind、coverage、records、overflow | 与 claim 和任务 kind 对应；records 中允许的类型由 kind 决定；超出时分页或显式 overflow（范围与数量下界）而不是静默裁剪。 |
 | `Guard` | guard_id、status、mechanism、anchors、applicability、exceptions | status 为 observed/not_found/unknown；observed 要有锚点，unknown 要有原因；模型声明不自动构成实际保护。 |
@@ -74,7 +74,10 @@
 | `status` | run_id → 状态、阶段、计数、预算及限制 | 只读；未知字段不可表现为 0。 |
 | `finalize` | run_id、reason? → generation/终态或错误 | 参照 DDS-03，未处理和未知必须进入 incomplete；只在工件及门禁对账后提交终态。 |
 | `resume` | run_id → 状态及恢复结果 | 检查版本、DB 与工件摘要；不覆盖快照、并发拒绝重复恢复。 |
+| `host-fail` | run_dir、claim（run/task/attempt/generation/token）、错误原因与 retryable 分类、max_retries → requeued 或 quarantined 结果 | 可重试失败在限额内回队列：新 attempt generation+1 并重新预留；不可重试或超限转 quarantined 并记 coverage_gap；终止不确定的失败保留预算预留并成为 incomplete 原因；错误结果不得归一为成功（绑定 DSR-065）。 |
 | `read_artifact` | run_id、artifact_id → 内容/引用 | 查询范围受 run 限制；不接受调用者自定义绝对路径，鉴权及传输依赖宿主。 |
+
+`run` 挂载的 driver 循环（`run_dispatch_loop`）为内部操作而非新增契约：消费同一服务的 `next → start → submit` 协议并施加 AIMD 并发控制；其行为由 IFC-06 的 `run` 行约束。
 
 ### 3.1 错误分类
 
@@ -88,16 +91,17 @@ in-session 的逻辑顺序为 `activate → next → start → 执行 → submit
 
 ## 5. IFC-05 生命周期与事件投影
 
-每次事件含 `event_id`, `run_id`, `revision`, `event_type`, `occurred_at`, `actor`, `payload_version`, `payload`；revision 在单 run 内递增，event_id 唯一，读侧根据 revision 重建。事件类型由 CON 与 LED 共同在 schema 冻结，至少覆盖 snapshot_published、task_enqueued、attempt_claimed/started/submitted/expired、usage_settled、run_paused/finalized、gate_evaluated；不能只记录最终投影。每次 reducer 必须满足重放结果相同；重复提交不得再追加相同业务事件。投影与真实事件不一致时中止后报告，而非自动删除原事件。
+每次事件含 `event_id`, `run_id`, `revision`, `event_type`, `occurred_at`, `actor`, `payload_version`, `payload`；revision 在单 run 内递增，event_id 唯一，读侧根据 revision 重建。事件类型由 CON 与 LED 共同在 schema 冻结，至少覆盖 snapshot_published、task_enqueued、attempt_claimed/started/submitted/expired、usage_settled、run_paused/finalized、gate_evaluated（其中 snapshot_published、usage_settled、gate_evaluated 三项代码侧对齐中）[代码对齐中]；不能只记录最终投影。实现当前实际发射的事件类型（按服务与队列发射点核对）：`run_prepared/activated/paused/resumed/finalized/corrupted`；`task_enqueued`、`attempt_claimed/started/submitted/expired/released/failed_retriable/termination_uncertain`、`verify_task_spec_rejected`；`budget_exhausted`；`inventory_reconciled`、`snapshot_gap`、`guard_baseline`、`recon_invalid_record`、`unit_disposition`、`triage_recorded`；`frontier_recorded`、`sink_probe_recorded`、`connector_paired/unresolved/incompatible/evaluated`、`unpaired_half_chain`；`dedup_suggested`、`candidate_deduplicated`、`second_opinion_enqueued/pending/adjudicated/not_applicable/target_missing`、`verified_findings_stored`、`packet_render_failed`；`coverage_gap`、`analysis_gap`、`hunter_overflow`、`signal_overflow`、`packet_overflow`。其中 `boundary_scan`、`signal_scan` 是 `snapshot_gap` payload 的 `source` 标记，不是独立事件类型；终止不确定的预算保留以 `attempt_termination_uncertain` 事件与 `termination_uncertain_budget_retained` 不完整原因表达。每次 reducer 必须满足重放结果相同；重复提交不得再追加相同业务事件。投影与真实事件不一致时中止后报告，而非自动删除原事件。
 
 发布工件时先生成临时文件、计算哈希、必要的 fsync、同目录原子重命名，再提交引用；由于文件系统与 DB 非原子，崩溃测试覆盖重命名前、后及事务提交前、后。恢复只回收无引用临时工件，不删除已引用或用户文件；丢失已引用工件使 run corrupt。并发提交同一结果按 DDS-04 定义去重。
 
 ## 6. IFC-06 首版 CLI 参数与输出
 
-以下为统一开发的基线，P0 的能力实际取证在**全部开发完成后**的统一测试中执行；不存在的宿主参数不能据此假设可用。命令的程序路径由安装适配确定，表中以 `audit` 表示入口；运行不得通过 shell 拼接用户输入。使用 `--json` 时 stdout 只能输出一个 UTF-8 JSON，stderr 放无敏感值的诊断。若会话使用流式模式，须独立定义为另一种格式，不可混用。
+以下为统一开发的基线，P0 的能力实际取证在**全部开发完成后**的统一测试中执行；不存在的宿主参数不能据此假设可用。命令的程序路径由安装适配确定，表中以 `audit` 表示入口；运行不得通过 shell 拼接用户输入。使用 `--json` 时 stdout 只能输出一个 UTF-8 JSON，stderr 放无敏感值的诊断。若会话使用流式模式，须独立定义为另一种格式，不可混用。已实现的输出格式开关（DSR-074）：各子命令接受 `--format {json,human}`，默认 json；json 为面向自动化的冻结信封，human 为面向终端的渲染，退出码与格式无关；旧 `--json` 开关保留为历史默认，显式 `--format` 优先。
 
 | 命令 | 参数／输入 | 操作／输出 |
 |---|---|---|
+| `guide` | `--query TEXT --language LANG --json` | 轻量安全问答：仅按方法知识与目录卡片作答，不创建 run、事件库或审计卷宗；空、过短或无请求动词的模糊请求返回澄清问题，不静默启动完整审计。 |
 | `doctor` | `--host claude|codex|session`，`--json` | 非破坏性能力探测；需要启动真实 CLI 的检查需显式 `--probe` 并提前告知用户；返回 capability 对象数组。 |
 | `prepare` | `--target PATH --run-dir PATH --config PATH --json` | config 是 RunConfig；创建新 run、固定快照和计划，返回 run ID、snapshot ID、范围/预算摘要。已有 run 目录拒绝覆盖。 |
 | `run` | `--run-dir PATH --host claude|codex --concurrency N --json` | 激活或继续 driver；仅对能力允许的参数启动宿主。用户取消后停止派发并处理在途任务，不以取消信号冒充进程已退出。 |
@@ -109,7 +113,8 @@ in-session 的逻辑顺序为 `activate → next → start → 执行 → submit
 | `resume` | `--run-dir PATH --json` | 校验版本、快照和工件；成功恢复到 paused 状态，启动任务仍需 `run` 或 `next`。 |
 | `finalize` | `--run-dir PATH --json` | 收敛、门禁、报告与终态；不能收敛时返回原因，不能混合新旧报告代次。 |
 | `report` | `--run-dir PATH --json` | 只读取最近完整发布代次及其 ID，不自动对旧格式执行升级；失败明确返回。 |
-| `mcp` | `--run-dir PATH` | 基于标准输入输出的候选服务；未完成兼容与安全测试不得标为支持，stdout 不混杂诊断。 |
+| `host-fail` | `--run-dir PATH --task TASK_ID? --retryable --max-retries N --json`，stdin 为 claim 认证对象及失败详情 | 上报宿主/worker 失败：可重试失败在 `--max-retries` 限额内 requeue（新 generation 与新预留）；不可重试或超限转 quarantine 并记录覆盖缺口，不把失败规约成成功结果；终止不确定的失败保留预算预留。凭证不经命令行参数。 |
+| `mcp` | `--run-dir PATH` | 基于标准输入输出的候选服务；未完成兼容与安全测试不得标为支持，stdout 不混杂诊断。线协议为标准 MCP（JSON-RPC 2.0）：`initialize` → `notifications/initialized` → `tools/list` → `tools/call`，通知帧（无 `id`）零回包；旧式直连（方法名即工具名）保留兼容，线协议格式固定，`--format` 仅接受 json。**[DA-02]** |
 
 JSON 输出信封固定为 `{"schema_version":"1.0","ok":true,"value":{...}}` 或 `{"schema_version":"1.0","ok":false,"error":{"code":"...","message":"...","retryable":false,"details":{}}}`。进程退出码：0 成功，2 输入或 schema 错误，3 状态/并发冲突，4 预算或能力不可用，5 宿主失败，6 存储损坏/IO，7 门禁失败；取消使用 130。错误枚举到退出码由 CON 建立唯一映射；`next` 返回零任务且原因是预算不足时不能以普通成功隐瞒终止，须给 `BUDGET_EXHAUSTED` 或在成功值中明示 `dispatch_state=budget_exhausted`，由入口一致处理。
 

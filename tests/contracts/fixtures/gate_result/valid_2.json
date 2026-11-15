@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "gate_id": "G4",
+  "status": "not_applicable",
+  "checks": [
+    {
+      "check_id": "chk-export",
+      "name": "export boundary",
+      "status": "not_applicable",
+      "message": "no export requested in this run",
+      "evidence_ref": "art-0003"
+    }
+  ],
+  "revision": 0,
+  "reason": "portable export disabled for this deployment"
+}

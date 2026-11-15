@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "snapshot_id": "snp-0001",
+  "hash_algorithm": "sha256",
+  "files": [
+    {
+      "path": "app/handlers/upload.py",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "bytes": 512,
+      "line_count": 40,
+      "encoding": "utf-8",
+      "component": "app",
+      "language": "python"
+    }
+  ],
+  "excluded": [
+    {
+      "path": "vendor/lib.bin",
+      "reason": "binary file, not inventoried"
+    }
+  ],
+  "collection_assumptions": [
+    "source tree stable during collection"
+  ]
+}

@@ -5,6 +5,7 @@ retention (DSR-064). All host CLIs are fakes from fake_hosts.py."""
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -91,6 +92,57 @@ class TestExitClassification(unittest.TestCase, RetryTestMixin):
             adapter.execute_worker("prompt", "t1")
         self.assertIn("exited with code 7", str(ctx.exception))
         self.assertFalse(ctx.exception.retryable)
+
+    def test_codex_prompt_is_positional_argument(self):
+        """P0-1: the prompt is passed as a POSITIONAL argument of
+        `codex exec [OPTIONS] [PROMPT]` — never as a `--prompt` flag, which the
+        real CLI rejects with the clap error and exit code 2. The real
+        `--skip-git-repo-check` option is passed so non-Git targets work."""
+        binary = fake_hosts.create_fake_host(
+            self.temp_dir, "codex", headless_stdout='{"ok": true}'
+        )
+        adapter = self.make_codex(binary)
+        result = adapter.execute_worker("reply with OK", "t1")
+        self.assertEqual(result["ok"], True)
+        invoked = fake_hosts.last_invoked_args(self.temp_dir, "codex")
+        self.assertEqual(invoked, ["exec", "--skip-git-repo-check", "reply with OK"])
+
+    def test_codex_non_git_target_is_usable(self):
+        """P0-1 (SR-017): the adapter must not depend on codex's git trust
+        gate — non-Git targets are auditable. The fake reproduces the real
+        gate (refusal without --skip-git-repo-check, success with it), so a
+        dropped option cannot pass silently."""
+        binary = fake_hosts.create_fake_host(
+            self.temp_dir, "codex", headless_stdout='{"ok": true}'
+        )
+        adapter = self.make_codex(binary)
+        result = adapter.execute_worker("reply with OK", "t1")
+        self.assertEqual(result["ok"], True)
+        invoked = fake_hosts.last_invoked_args(self.temp_dir, "codex")
+        self.assertIn("--skip-git-repo-check", invoked)
+        # Without the option the real CLI refuses; the fake must too.
+        proc = subprocess.run(
+            [binary, "exec", "reply with OK"],
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn(
+            "Not inside a trusted directory and --skip-git-repo-check was not specified.",
+            proc.stderr,
+        )
+
+    def test_codex_fake_rejects_prompt_flag_like_real_cli(self):
+        """P0-1 anti-masking: the fake codex reproduces the real clap
+        rejection, so a regression to `--prompt` cannot silently pass."""
+        binary = fake_hosts.create_fake_host(self.temp_dir, "codex", headless_stdout="OK")
+        proc = subprocess.run(
+            [binary, "exec", "--prompt", "reply with OK"],
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("error: unexpected argument '--prompt' found", proc.stderr)
+        self.assertIn("Usage: codex exec [OPTIONS] [PROMPT]", proc.stderr)
+        self.assertEqual(proc.stdout.strip(), "")
 
     def test_timeout_classification(self):
         binary = fake_hosts.create_fake_host(self.temp_dir, "claude", sleep_seconds=30)

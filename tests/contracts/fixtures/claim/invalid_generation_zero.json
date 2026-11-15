@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "run_id": "run-0001",
+  "task_id": "task-0001",
+  "attempt_id": "att-0001",
+  "generation": 0,
+  "claim_token": "tok-0f3a9c2b7d51",
+  "expires_at": "2026-11-15T12:00:00Z",
+  "packet_ref": "art-0001",
+  "spec": {
+    "schema_version": "1.0",
+    "task_kind": "hunt",
+    "snapshot_id": "snp-0001",
+    "unit": {
+      "unit_id": "unit-0001",
+      "ranges": []
+    }
+  }
+}

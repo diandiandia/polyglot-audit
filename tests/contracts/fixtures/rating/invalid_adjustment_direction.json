@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "impact": 4,
+  "exploitability": 3,
+  "factor_reasons": {
+    "impact_why": "attacker-controlled deserialization of session state",
+    "exploitability_why": "reachable from an unauthenticated endpoint"
+  },
+  "calculated_severity": "High",
+  "calculated_urgency": "P1",
+  "final_severity": "High",
+  "final_urgency": "P1",
+  "validation_priority": "V1",
+  "adjustment": {
+    "operator": "reviewer-1",
+    "reason": "single step up",
+    "direction": "sideways"
+  }
+}

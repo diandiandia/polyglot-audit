@@ -5,6 +5,14 @@ with fixed, test-controlled behaviour (version output, exit codes, stderr
 patterns, headless output, delays, attempt counters). Tests inject the
 directory via PATH or pass the script path directly as the adapter binary.
 
+The fake `codex` models the REAL CLI argument grammar: `codex exec` takes the
+prompt as a POSITIONAL argument, any occurrence of `--prompt` in argv is
+rejected with the clap error and exit code 2 (P0-1), and the real
+`--skip-git-repo-check` option is accepted. It also records the last
+invocation's arguments into `<name>.argv.log` so tests can assert exactly how
+the prompt was transmitted. This keeps the fake from masking an adapter that
+passes `--prompt` — the defect class that once hid behind permissive fakes.
+
 Standard library only; no test framework dependency (usable from unittest).
 """
 
@@ -19,6 +27,10 @@ if [ "$1" = "--version" ]; then
   echo '@@VERSION_OUTPUT@@'
   exit @@VERSION_EXIT@@
 fi
+@@CODEX_ARG_GUARD@@
+# Record the arguments of the current (headless) invocation; overwritten each
+# call so readers always observe the LAST invocation only.
+printf '%s\\n' "$@" > '@@ARGV_LOG_PATH@@'
 @@PRE_HEADLESS@@
 if [ "@@SLEEP_SECONDS@@" -gt 0 ] 2>/dev/null; then
   sleep @@SLEEP_SECONDS@@
@@ -32,6 +44,41 @@ if [ -n "@@HEADLESS_STDOUT@@" ]; then
 fi
 exit @@HEADLESS_EXIT@@
 """
+
+# Real clap rejection emitted by codex-cli 0.167.0 for `codex exec --prompt X`
+# (P0-1): the prompt is a positional argument of `codex exec [OPTIONS] [PROMPT]`.
+# `--skip-git-repo-check` is a real option of `codex exec` and is accepted (it
+# disables codex's own git trust gate); the guard below intentionally does NOT
+# reject it, so an adapter/probe that passes it is modelled faithfully.
+_CODEX_ARG_GUARD = """# Real-codex argument grammar (P0-1, verified against codex-cli 0.167.0):
+# 1. `--prompt` is NOT a valid option of `codex exec`; the clap parser rejects
+#    it with exit code 2 before any execution.
+# 2. The git trust gate refuses a headless exec without --skip-git-repo-check
+#    ("Not inside a trusted directory ..."), exit code 1. The fake models the
+#    conservative non-Git cwd, so the option is REQUIRED for the headless path.
+for arg in "$@"; do
+  if [ "$arg" = "--prompt" ]; then
+    echo "error: unexpected argument '--prompt' found" >&2
+    echo "" >&2
+    echo "  tip: to pass '--prompt' as a value, use '-- --prompt'" >&2
+    echo "" >&2
+    echo "Usage: codex exec [OPTIONS] [PROMPT]" >&2
+    echo "       codex exec [OPTIONS] <COMMAND> [ARGS]" >&2
+    echo "" >&2
+    echo "For more information, try '--help'." >&2
+    exit 2
+  fi
+done
+SKIP_GIT_CHECK=false
+for arg in "$@"; do
+  if [ "$arg" = "--skip-git-repo-check" ]; then
+    SKIP_GIT_CHECK=true
+  fi
+done
+if [ "$SKIP_GIT_CHECK" != "true" ]; then
+  echo "Not inside a trusted directory and --skip-git-repo-check was not specified." >&2
+  exit 1
+fi"""
 
 
 def _write_executable(path: str, content: str) -> str:
@@ -51,6 +98,8 @@ def _render(
     headless_exit: int,
     sleep_seconds: int = 0,
     counter_block: str = "",
+    codex_arg_guard: str = "",
+    argv_log_path: str = "/dev/null",
 ) -> str:
     script = _SCRIPT_TEMPLATE
     replacements = {
@@ -62,10 +111,17 @@ def _render(
         "@@SLEEP_SECONDS@@": str(sleep_seconds),
         "@@COUNTER_BLOCK@@": counter_block,
         "@@PRE_HEADLESS@@": "",
+        "@@CODEX_ARG_GUARD@@": codex_arg_guard,
+        "@@ARGV_LOG_PATH@@": argv_log_path,
     }
     for token, value in replacements.items():
         script = script.replace(token, value)
     return script
+
+
+def _models_real_codex(name: str) -> bool:
+    """True when the fake impersonates the real codex CLI argument grammar."""
+    return name == "codex" or name.startswith("codex")
 
 
 def create_fake_host(
@@ -84,11 +140,39 @@ def create_fake_host(
     invocation (headless path) sleeps sleep_seconds, then prints
     headless_stderr to stderr and headless_stdout to stdout before exiting
     headless_exit.
+
+    A fake named `codex` (or `codex*`) additionally models the real CLI's
+    argument grammar: the prompt is accepted only as a positional argument,
+    `--prompt` anywhere in argv is rejected with the clap error and exit 2,
+    and `--skip-git-repo-check` is accepted as the real option is.
+    The last invocation's arguments are recorded in `<name>.argv.log`.
     """
+    codex_guard = _CODEX_ARG_GUARD if _models_real_codex(name) else ""
+    argv_log = os.path.join(directory, f"{name}.argv.log") if codex_guard else "/dev/null"
     script = _render(
-        version_output, version_exit, headless_stdout, headless_stderr, headless_exit, sleep_seconds
+        version_output,
+        version_exit,
+        headless_stdout,
+        headless_stderr,
+        headless_exit,
+        sleep_seconds,
+        codex_arg_guard=codex_guard,
+        argv_log_path=argv_log,
     )
     return _write_executable(os.path.join(directory, name), script)
+
+
+def last_invoked_args(directory: str, name: str) -> list:
+    """Return the arguments of the fake host's last (headless) invocation.
+
+    Only meaningful for fakes built with the real-codex argument grammar
+    (`<name>.argv.log`); other fakes log to /dev/null and return [].
+    """
+    log = os.path.join(directory, f"{name}.argv.log")
+    if not os.path.exists(log):
+        return []
+    with open(log, encoding="utf-8") as f:
+        return [line for line in f.read().split("\n") if line != ""]
 
 
 def create_rate_limited_fake_host(
@@ -110,6 +194,8 @@ def create_rate_limited_fake_host(
         f"  exit 1\n"
         f"fi"
     )
+    codex_guard = _CODEX_ARG_GUARD if _models_real_codex(name) else ""
+    argv_log = os.path.join(directory, f"{name}.argv.log") if codex_guard else "/dev/null"
     script = _render(
         version_output,
         0,
@@ -117,6 +203,8 @@ def create_rate_limited_fake_host(
         "",
         0,
         counter_block=counter_block,
+        codex_arg_guard=codex_guard,
+        argv_log_path=argv_log,
     )
     return _write_executable(os.path.join(directory, name), script)
 

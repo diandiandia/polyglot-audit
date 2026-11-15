@@ -48,11 +48,32 @@ PROBE_LEVEL_AGGRESSIVE = "aggressive"
 
 VALID_PROBE_LEVELS = (PROBE_LEVEL_CONSERVATIVE, PROBE_LEVEL_HEADLESS, PROBE_LEVEL_AGGRESSIVE)
 
-# Headless probe prompt per host binary (DSR-002: one real headless call).
-_HEADLESS_PROMPTS: Dict[str, List[str]] = {
-    "claude": ["--print", "reply with OK"],
-    "codex": ["exec", "--prompt", "reply with OK"],
+# Headless invocation shape per host binary (DSR-002: one real headless call).
+# Each entry is a function of the prompt text producing the full argument
+# list. `claude` takes `--print <prompt>`; `codex exec` takes the prompt as a
+# POSITIONAL argument (`codex exec [OPTIONS] [PROMPT]`) and REJECTS `--prompt`
+# ("error: unexpected argument '--prompt' found"), so the flag form must never
+# be generated (P0-1). `--skip-git-repo-check` keeps non-Git probe workdirs
+# usable (SR-017): the audit's isolation is the frozen snapshot plus user
+# approval, not codex's own git trust gate. The shape matches the
+# CodexDriverAdapter invocation contract exactly.
+_HEADLESS_PROMPTS: Dict[str, Callable[[str], List[str]]] = {
+    "claude": lambda prompt: ["--print", prompt],
+    "codex": lambda prompt: ["exec", "--skip-git-repo-check", prompt],
 }
+
+
+def _headless_args(host: str, prompt: str) -> List[str]:
+    """Resolve the headless argument list for a host (DSR-002/003).
+
+    Unknown hosts fall back to the `--print <prompt>` shape; the prompt is
+    always carried into the command exactly once.
+    """
+    builder = _HEADLESS_PROMPTS.get(host)
+    if builder is None:
+        return ["--print", prompt]
+    return builder(prompt)
+
 
 # Core stdlib modules enumerated by the DSR-001 offline-stdlib probe.
 DEFAULT_STDLIB_PROBE_MODULES = (
@@ -167,13 +188,15 @@ def probe_headless_invocation(
     the probe error as reason — it is never promoted to ENFORCED on a mere
     `--version` success.
     """
-    args = list(_HEADLESS_PROMPTS.get(host, ["--print", prompt]))
-    if host not in _HEADLESS_PROMPTS:
-        args = ["--print", prompt]
+    args = _headless_args(host, prompt)
     cmd = [binary_path] + args
     method = " ".join(cmd)
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        # stdin detached: a headless probe must neither block on nor ingest
+        # the runner's input stream (codex exec reads stdin when not a TTY).
+        res = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL
+        )
     except subprocess.TimeoutExpired:
         return make_feature(
             FeatureState.UNKNOWN,
@@ -229,12 +252,12 @@ def probe_execution_counterexample(
         "Create a file at the exact path " + marker + " containing the text PROBE. "
         "Do not do anything else."
     )
-    args = list(_HEADLESS_PROMPTS.get(host, ["--print", prompt]))
-    if host not in _HEADLESS_PROMPTS:
-        args = ["--print", prompt]
+    args = _headless_args(host, prompt)
     cmd = [binary_path] + args
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        res = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL
+        )
     except (subprocess.TimeoutExpired, OSError) as exc:
         return make_feature(
             FeatureState.UNKNOWN,

@@ -15,6 +15,7 @@
 | 影响 | prepare→finalize 直接得到 complete 终态与完整报告；零派发的 hunt/recon/verify 计划范围被静默掩盖。与 SD-06 §5.1 "complete 只表示计划范围的处理与门禁完整"明文冲突（SR-012/026 验收"不以门禁通过宣称完整性"被架空）。原实现中该路径确实产出 complete（回归测试 `test_prepare_then_finalize_is_incomplete_with_unprocessed_units` 固定了旧行为的对立面）。 |
 | 补救决策 | 代码层补硬规则，不动 GATE 公式本身：① G1 的 DB 侧对账改为仅统计 `state='done'` 的 hunt 任务；② finalize 增加 `unprocessed_units` 硬规则——plan_units>0 且 hunt 从无 attempt 记录（零派发）、或 recon/verify 任务未达 done（verify 亦接受显式 quarantine），一律追加 `unprocessed_units` 不完整原因；③ finalize 开头增加在途硬门禁：有效租约内的 claimed/running attempt 数 >0 时抛 `InvalidStateError`（提示先 pause 或等租约过期后 reclaim），保证"计划范围处理完成"先于终态判定。`run_finalized` 事件携带完整对账明细。 |
 | 代码位置 | `skill/scripts/auditkit/app/service.py`：`finalize()`（在途门禁、G1 done 对账、`UNPROCESSED_UNITS_REASON`、unprocessed_units 记账）；`skill/scripts/auditkit/app/service.py` 常量区（`UNPROCESSED_UNITS_REASON`）。测试：`tests/e2e/test_pipeline_closure.py::TestTerminalStateSemantics`、`tests/ledger/test_service_finalize.py`。 |
+| 回填状态 | 已回填主文档：SD §5.1（终态判定前置计划覆盖不变量与在途租约阻断）、DDS-03 §3.2（finalizing 前在途阻断）、DDS-06（G1/G2 盲区说明与计划覆盖不变量硬规则）。待设计审查确认栏不变。 |
 | 待设计审查确认 | ① 是否把"计划覆盖不变量"正式写入 DDS-06 的 G1 定义（建议：G1 增加"G2-0 同款的 never-dispatched 检查项"，而非依赖 service 层硬规则）；② 在途租约阻断 finalize 应作为 SD-06 §5.1 终态前置条件写明（当前是实现自行推导）；③ `unprocessed_units` 是否需要按 kind 细分为多个 reason code（当前合并为单一原因 + 事件明细）。 |
 
 ### DA-02 DSR-031/SD-09 未定义 MCP 线协议文本，"扁平简单"原则下实现走了自定义 JSON-RPC
@@ -26,6 +27,7 @@
 | 影响 | 任何标准 MCP 客户端无法与 `audit mcp` 建立会话；DSR-031 的验收不可达；四工具能力"声称存在但无法被宿主消费"。 |
 | 补救决策 | 实现标准 `initialize` → `tools/list` → `tools/call` 握手与协议版本协商，同时保留旧直连方法以兼容已发布的会话内路径。该修复由并行工作流（MCP/CLI 工作流）实施于 hosts 层；本工作流在 finalize 语义上的变更（在途租约阻断、终态硬规则）是 MCP 工具调用 finalize 路径的共享前置条件。 |
 | 代码位置 | hosts 层（并行工作流范围：`skill/scripts/hosts/**`、`skill/scripts/audit.py` 的 `mcp` 子命令）；本工作流相关接口：`AuditAppService.finalize`（其 INVALID_STATE 语义会经 MCP finalize 工具透出为错误信封）。 |
+| 回填状态 | 已回填主文档：IFC §6（`mcp` 行标准线协议说明）、SD §7（MCP 段标准线协议句）、DDS-01（MCP 传输标准线协议句）。待设计审查确认栏不变。 |
 | 待设计审查确认 | ① IFC/DSR 契约需补充 MCP 线协议条目（协议版本、握手顺序、四工具的 JSON-RPC 形状、错误信封映射）；② "扁平简单"原则与协议兼容性的优先级需要在设计文中显式排序；③ 旧直连方法的废弃窗口与版本演进策略（DSR-073 的版本演进条款是否覆盖传输层）。 |
 
 ### DA-03 SR-003/SD-02 要求平台条件化，但未规定平台检测机制
@@ -37,6 +39,7 @@
 | 影响 | 非 JVM 的 Kotlin/Scala 目标（如 Kotlin/Native、Scala.js、Android 部分场景）被注入不适用的 Java 基座行；未知平台被静默当作 JVM，违反设计原则 8（能观测的不靠声明）与 SD-02"平台未知则说明不确定"。 |
 | 补救决策 | 构建标识启发式 + honest unknown：① `get_applicable_indices(lang, is_jvm)` 升级为三态（True/False/None=未知）；None 时不展开 Java 基座索引，并在返回的 packet 行中附"platform unknown"说明（披露而非假设），默认值即 None；② prepare 时从冻结快照 manifest 扫描 JVM 构建标识（pom.xml、build.gradle、build.gradle.kts、settings.gradle、settings.gradle.kts、*.sbt、.mvn/），有标识→True，无标识→None（未知）；证据与依据写入 plan.json 的 `platform_evidence`；③ 两个调用点（recon 入队、hunt 包渲染）都传入检测结果。设计审查可改用更强的检测（如解析构建脚本内容、检测 Kotlin/Native 目标声明），本实现只主张"无证据时不得假设 JVM"。 |
 | 代码位置 | `skill/scripts/auditkit/knowledge/catalog.py`：`get_applicable_indices`（三态 + unknown 说明行）；`skill/scripts/auditkit/app/service.py`：`detect_jvm_build_evidence_files`、`prepare`（`platform_evidence` 入 plan）、`_snapshot_platform_is_jvm`（claim 包渲染侧）。测试：`tests/e2e/test_platform_conditioning.py`。 |
+| 回填状态 | 已回填主文档：SD §2（平台判定机制：构建标识证据清单 + honest unknown 披露）、DDS-05（packet 侧三态展开与 unknown 披露）。待设计审查确认栏不变。 |
 | 待设计审查确认 | ① SD-02 需补充平台判定机制条目（证据清单、时点、三态语义、未知呈现）；② Android 目标（Kotlin + Android SDK、无 JVM 构建脚本但 ART 运行时）按本启发式会落入"未知"——是否需要 Android 专属判定（gradle 文件存在即 True 已覆盖多数场景）；③ `platform_evidence` 是否升格为 snapshot manifest / 计划契约的正式字段（当前为 plan.json 内的披露字段）。 |
 
 ### DA-04 IFC-02 的 task_spec 形状与实现演化脱节（schema 从未被验证）
@@ -48,6 +51,7 @@
 | 影响 | DSR-073 "同一来源"不成立：宿主 CLI 若按 schema 生成结构化输出会被服务拒绝；契约测试给出虚假信心（假形状通过校验、真形状反而失败）；版本演进无从谈起（演进的不是真实契约）。 |
 | 补救决策 | schema 反向对齐真实契约为唯一来源：① 重写 task_spec.schema.json 为 `oneOf` 三分支（hunt/recon/verify，`task_kind` const 判别；second-opinion 字段并入 verify 分支），公共 required 收敛为所有入队点实际保证的字段（`schema_version` + `task_kind`）；② hunt 入队 spec 补齐 `schema_version`+`task_kind`（使其与 recon/verify 同构，可被统一判别）；③ service 三个入队点（hunt/recon/verify fan-out/second-opinion）以 SchemaValidator 校验 spec，无效 spec 拒绝入队（InvalidInputError；verify fan-out 路径记 `verify_task_spec_rejected` 事件后跳过，避免提交中途崩溃）；④ tests/contracts fixtures 全部替换为真实形状的正反例，并新增"已废弃假形状必须被拒绝"的回归断言。 |
 | 代码位置 | `skill/schemas/task_spec.schema.json`（重写）；`skill/scripts/auditkit/app/service.py`：`_validated_task_spec`、三个入队点；`tests/contracts/fixtures/task_spec/*`、`tests/contracts/test_schema_fixtures.py`、`tests/e2e/test_integration_wiring.py::TestTaskSpecEnqueueGate`。 |
+| 回填状态 | 已回填主文档：IFC §2（TaskSpec 行改为 oneOf 三分支真实契约并注明演进出处）、DDS-04（入队 spec schema 校验句）。待设计审查确认栏不变。 |
 | 待设计审查确认 | ① IFC-02 文档需按新 schema 改写 task_spec 条目（字段表、三分支形状、判别字段）；② hunt spec 补齐 `schema_version`/`task_kind` 是对既有 run 目录内旧 spec 的不兼容变更——旧 run 只读重渲染是否需要兼容读取路径（DSR-072 版本检查目前只覆盖 DB 格式，不覆盖 spec_json 形状）；③ `unit`/`input` 子对象的上限与条件约束（DSR-073 要求"嵌套字段、上限、条件约束"）当前只约束实际保证的标识字段，完整收紧需在下一轮契约冻结时统一处理。 |
 
 ## 与并行工作流的接口确认（本文件随实现更新）

@@ -33,7 +33,10 @@ Cross-domain wiring owned here (ANA/LED, SNP/INT, HST/LED):
   unpaired_half_chain and rendered into NEEDS-VALIDATION;
 - verify submissions are stamped with the current run_id and merged at
   finalize (adjudicated findings override verified ones), making the semantic
-  validator's cross-run check real;
+  validator's cross-run check real; every confirmed finding additionally runs
+  the DSR-062 bounded variant search against the frozen snapshot before it is
+  persisted (bounded read, bounded result list, honest truncation accounting,
+  variants marked requires_independent_verification);
 - every task spec is validated against the task_spec contract at its enqueue
   point (DSR-073); invalid specs are rejected with InvalidInputError and never
   enqueued;
@@ -89,7 +92,11 @@ from auditkit.analysis.guards import VALID_GUARD_STATUSES, GuardManager, GuardRe
 from auditkit.analysis.hunter import HuntResultParser
 from auditkit.analysis.packets import PacketBuilder
 from auditkit.analysis.triage import StrongSignalTriage
-from auditkit.analysis.verifier import SECOND_OPINION_SEVERITIES, Verifier
+from auditkit.analysis.verifier import (
+    SECOND_OPINION_SEVERITIES,
+    Verifier,
+    bounded_variant_search,
+)
 from auditkit.contracts.errors import (
     AuditError,
     CorruptRunError,
@@ -161,6 +168,12 @@ TERMINATION_UNCERTAIN_EVENT_TYPE = "attempt_termination_uncertain"
 # Verified findings produced by verify-task submissions are persisted here.
 FINDINGS_ARTIFACT_KIND = "verified_findings"
 VERIFIED_FINDING_VERDICTS = ("confirmed", "needs_validation", "rejected", "unverified")
+# DSR-062 wiring (ANA -> SNP/ANA): every confirmed finding runs the bounded
+# variant search against the FROZEN snapshot before it is persisted. The read
+# cap mirrors bounded_variant_search's own max_files bound so a large snapshot
+# never enters memory whole and the variant list stays reviewable.
+VARIANT_SEARCH_MAX_VARIANTS = 5
+VARIANT_SEARCH_MAX_FILES = 20
 # IFC-06: pause reasons are bounded so the ledger stays a ledger, not a log.
 PAUSE_REASON_MAX_LENGTH = 256
 # Error-family events counted by finalize's self-review input (DSR-070).
@@ -579,6 +592,22 @@ class AuditAppService:
         conn.execute(
             "UPDATE runs SET snapshot_id = ?, state = 'ready' WHERE run_id = ?",
             (snapshot_id, run_id),
+        )
+        # IFC-05 floor requirement: the frozen snapshot view is announced as an
+        # explicit event so replay/reconstruction can key evidence to it.
+        event_store.append_event(
+            run_id,
+            "snapshot_published",
+            "service",
+            {
+                "snapshot_id": manifest.snapshot_id,
+                "root_hash": manifest.root_hash,
+                "total_files": len(manifest.files),
+                "excluded_files": len(manifest.excluded),
+                "gap_count": len(getattr(manifest, "gaps", []) or []),
+                "source_control": getattr(manifest, "source_control", None),
+                "drift_detected": bool(getattr(manifest, "drift_detected", False)),
+            },
         )
         event_store.append_event(
             run_id,
@@ -1624,13 +1653,26 @@ class AuditAppService:
         run_id before storage, so the semantic validator's cross-run reference
         check is real at finalize time. Each attempt publishes its own artifact
         file (no in-place rewrite), keeping artifact integrity verification sound.
+
+        DSR-062: every confirmed finding additionally runs the bounded variant
+        search against the frozen snapshot (bounded read, bounded result list)
+        before it is persisted, so same-sink variants are surfaced as explicit
+        requires_independent_verification entries instead of staying empty.
         """
         findings = self._extract_findings(worker_result.get("records", []))
         if not findings:
             return []
         stamped: List[Dict[str, Any]] = []
+        snapshot_data: Optional[Dict[str, Any]] = None
         for f in findings:
             f["run_id"] = run_id
+            if f.get("verdict") == "confirmed":
+                # DSR-062 is a fixed action for confirmed findings: no config
+                # switch. The snapshot is read lazily and at most once per
+                # submission, capped at VARIANT_SEARCH_MAX_FILES files.
+                if snapshot_data is None:
+                    snapshot_data = self._load_snapshot_files(run_path, VARIANT_SEARCH_MAX_FILES)
+                self._attach_variant_search(f, snapshot_data)
             stamped.append(f)
         payload = json.dumps(stamped, sort_keys=True, ensure_ascii=False).encode("utf-8")
         rel_path = f"findings/verified-{claim['attempt_id']}.json"
@@ -1649,6 +1691,112 @@ class AuditAppService:
         )
         self._enqueue_second_opinion_tasks(conn, run_id, stamped, store)
         return stamped
+
+    # ------------------------------------------------------------------
+    # DSR-062 wiring: bounded variant search against the frozen snapshot.
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _load_snapshot_files(run_path: Path, max_files: int) -> Dict[str, Any]:
+        """Read the frozen snapshot for the variant search (DSR-062).
+
+        Files are attempted in manifest-path order (UTF-8 bytes, the same
+        deterministic order as the root hash) and the number of attempted
+        files is capped at ``max_files`` — the bounded_variant_search read
+        bound, so a large snapshot never enters memory whole. A single
+        unreadable file is skipped and recorded, never allowed to abort the
+        search. An unreadable manifest is recorded the same way.
+
+        Returns:
+        {
+            "files": {relative path -> content} (successfully read only),
+            "total_files": manifest file count,
+            "unsearched_files": paths not searched (cap overflow + skips),
+            "read_errors": ["path: error" or manifest failure strings],
+        }
+        """
+        snapshot_dest = run_path / "snapshot"
+        manifest_path = snapshot_dest / "manifest.json"
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                paths = [
+                    entry.get("path", "")
+                    for entry in json.load(f).get("files", [])
+                    if isinstance(entry, dict) and entry.get("path")
+                ]
+        except (OSError, ValueError) as exc:
+            return {
+                "files": {},
+                "total_files": 0,
+                "unsearched_files": [],
+                "read_errors": [
+                    f"snapshot manifest unreadable ({exc.__class__.__name__}); "
+                    "no snapshot file was searched"
+                ],
+            }
+        paths = sorted(paths, key=lambda p: p.encode("utf-8"))
+        files: Dict[str, str] = {}
+        read_errors: List[str] = []
+        unsearched: List[str] = list(paths[max_files:])
+        for rel_path in paths[:max_files]:
+            try:
+                with open(snapshot_dest / rel_path, "r", encoding="utf-8", errors="replace") as sf:
+                    files[rel_path] = sf.read()
+            except OSError as exc:
+                read_errors.append(f"{rel_path}: {exc.__class__.__name__}")
+                unsearched.append(rel_path)
+        return {
+            "files": files,
+            "total_files": len(paths),
+            "unsearched_files": sorted(unsearched),
+            "read_errors": read_errors,
+        }
+
+    @staticmethod
+    def _attach_variant_search(
+        finding: Dict[str, Any],
+        snapshot_data: Dict[str, Any],
+    ) -> None:
+        """Run the bounded variant search and record it on the finding (DSR-062).
+
+        Writes ``variants`` plus the honest ``variant_search`` coverage record:
+        snapshot paths beyond the read cap and unreadable files are recorded
+        as truncation with reasons instead of being silently dropped, and every
+        variant carries requires_independent_verification=True (sharing the
+        same sink never counts as independent confirmation).
+        """
+        search = bounded_variant_search(
+            snapshot_data["files"],
+            finding,
+            max_variants=VARIANT_SEARCH_MAX_VARIANTS,
+            max_files=VARIANT_SEARCH_MAX_FILES,
+        )
+        reasons = [search["reason"]] if search["reason"] else []
+        unsearched = list(search["unsearched_files"])
+        if snapshot_data["unsearched_files"]:
+            unsearched.extend(snapshot_data["unsearched_files"])
+            reasons.append(
+                f"Snapshot read cap {VARIANT_SEARCH_MAX_FILES}: read "
+                f"{len(snapshot_data['files'])} of {snapshot_data['total_files']} "
+                "manifest files; the remaining paths were not searched."
+            )
+        if snapshot_data["read_errors"]:
+            reasons.append(
+                f"{len(snapshot_data['read_errors'])} snapshot file(s) skipped "
+                "because they could not be read: "
+                + "; ".join(snapshot_data["read_errors"])
+            )
+        truncated = bool(
+            search["truncated"] or snapshot_data["unsearched_files"] or snapshot_data["read_errors"]
+        )
+        finding["variants"] = search["variants"]
+        finding["variant_search"] = {
+            "schema_version": "1.0",
+            "searched_files": search["searched_files"],
+            "total_files": snapshot_data["total_files"],
+            "truncated": truncated,
+            "reason": "; ".join(reasons),
+            "unsearched_files": unsearched,
+        }
 
     # ------------------------------------------------------------------
     # DSR-061 wiring: independent second opinion for High/Critical findings.
@@ -2477,6 +2625,25 @@ class AuditAppService:
             )
         # ---------------------------------------------------------------------
 
+        # IFC-05 floor requirement: every gate evaluation is recorded as an
+        # explicit event (gate_id/status/failed checks) so replay can rebuild
+        # the gate ledger without trusting the final projection alone.
+        for _gate in (g1_res, g2_res, g3_res):
+            store.append_event(
+                run_id,
+                "gate_evaluated",
+                "service",
+                {
+                    "gate_id": _gate.gate_id,
+                    "status": _gate.status,
+                    "failed_checks": [
+                        {"check_id": c.check_id, "message": c.message}
+                        for c in getattr(_gate, "checks", [])
+                        if getattr(c, "status", "") != "pass"
+                    ],
+                },
+            )
+
         # Provisional terminal state from G1..G3 and the stop sequence; G4 is
         # evaluated below against the artifacts this call is about to publish.
         pre_gates_passed = (
@@ -2624,6 +2791,24 @@ class AuditAppService:
         if g4_res.status != "pass":
             g4_res.reason = g4_detail
             incomplete_reasons.append("g4_failed")
+        # IFC-05 floor requirement: G4 is evaluated against the published
+        # artifacts, so its event lands after the reports exist (ordering
+        # matters for replay: gate ledger follows the artifact ledger).
+        store.append_event(
+            run_id,
+            "gate_evaluated",
+            "service",
+            {
+                "gate_id": g4_res.gate_id,
+                "status": g4_res.status,
+                "reason": g4_res.reason,
+                "failed_checks": [
+                    {"check_id": c.check_id, "message": c.message}
+                    for c in getattr(g4_res, "checks", [])
+                    if getattr(c, "status", "") != "pass"
+                ],
+            },
+        )
         final_state = (
             "complete"
             if pre_gates_passed and not incomplete_reasons

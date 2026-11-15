@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0",
+  "code": "INVALID_STATE",
+  "message": "attempt already terminal",
+  "retryable": false,
+  "details": []
+}

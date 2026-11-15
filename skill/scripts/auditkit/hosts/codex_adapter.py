@@ -99,12 +99,33 @@ class CodexDriverAdapter:
         effective_timeout: int,
     ) -> Dict[str, Any]:
         """Run one Codex headless invocation and classify its outcome."""
-        cmd = [self.codex_binary, "exec", "--prompt", prompt]
+        # Invocation contract (P0-1, verified against codex-cli 0.167.0):
+        # - the prompt is a POSITIONAL argument of `codex exec [OPTIONS] [PROMPT]`;
+        #   the real CLI rejects `--prompt` with "error: unexpected argument
+        #   '--prompt' found" (the fake host in tests/hosts/fake_hosts.py
+        #   enforces this so the defect class cannot hide behind a permissive fake);
+        # - `--skip-git-repo-check` deterministically disables codex's own git
+        #   trust gate ("Not inside a trusted directory and --skip-git-repo-check
+        #   was not specified."). SR-017 explicitly supports non-Git targets:
+        #   this audit's isolation comes from the frozen snapshot plus the
+        #   user's safety acceptance (SR-015), not from codex's interactive
+        #   trust convenience, so the gate is disabled to keep non-Git targets
+        #   equally auditable.
+        # stdin is detached: codex exec additionally reads stdin when it is not
+        # a TTY, and a headless worker must neither block on nor ingest the
+        # runner's input stream.
+        cmd = [
+            self.codex_binary,
+            "exec",
+            "--skip-git-repo-check",
+            prompt,
+        ]
 
         proc = None
         try:
             proc = subprocess.Popen(
                 cmd,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,

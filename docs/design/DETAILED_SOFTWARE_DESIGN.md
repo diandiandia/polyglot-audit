@@ -23,7 +23,7 @@
     只读冻结快照 <--- worker 读取；目标内容不可信
 ```
 
-应用层是状态转换的唯一入口；CLI/MCP 不直接修改 SQLite，不从外部接受任意文件写入目的地。报告、门禁、预算、两个引擎共用同一应用服务。Python 核心仅标准库；具体最小版本由 P0 确认，未确认时不将语法或 SQLite 行为假定为某最低版本。网络、文件写和执行隔离不由 prompt 或 MCP 自身保证。
+应用层是状态转换的唯一入口；CLI/MCP 不直接修改 SQLite，不从外部接受任意文件写入目的地。报告、门禁、预算、两个引擎共用同一应用服务。MCP 传输使用标准线协议（JSON-RPC 2.0：`initialize` → `notifications/initialized` → `tools/list` → `tools/call`，通知帧零回包；旧式直连保留兼容），仍只经应用服务访问状态 **[DA-02]**。Python 核心仅标准库；具体最小版本由 P0 确认，未确认时不将语法或 SQLite 行为假定为某最低版本。网络、文件写和执行隔离不由 prompt 或 MCP 自身保证。
 
 ## 2. DDS-02 模块边界与文件所有权
 
@@ -57,7 +57,7 @@
 
 运行状态：`preparing → ready → active → paused → active`，可从 ready/active/paused 进入 `finalizing → complete | incomplete`；准备失败为 `prepare_failed`，不可恢复的损坏为 `corrupt`。`complete` 仅代表声明范围与必要门禁完成；预算停止、未处理任务、未知保护或未验证候选产生可枚举 incomplete 原因。持久状态和门禁状态不可用时返回错误而非构造终态。
 
-`finalizing` 首先禁止新 claim，收敛/取消在途任务，记下未完成与未知用量，按一致数据库读快照生成报告；G3/G4 通过并原子发布所有报告后记录终态。若无法发布完整报告保留 finalizing 与错误，允许恢复重新生成；禁止出现报告显示 complete 但 DB 是 incomplete。冻结快照被修改或卷宗关键文件缺失时进入 corrupt，保留诊断，不能在同一 run 重新采集。切换引擎前必须暂停，等待已运行任务提交或过期且停止确认，保留预算预留；禁止将活跃任务当作已释放。
+`finalizing` 首先禁止新 claim，收敛/取消在途任务，记下未完成与未知用量，按一致数据库读快照生成报告；G3/G4 通过并原子发布所有报告后记录终态。进入收敛前有效租约内的 claimed/running 在途 attempt 先行阻断（`INVALID_STATE`，先 pause 或等租约过期）**[DA-01]**。若无法发布完整报告保留 finalizing 与错误，允许恢复重新生成；禁止出现报告显示 complete 但 DB 是 incomplete。冻结快照被修改或卷宗关键文件缺失时进入 corrupt，保留诊断，不能在同一 run 重新采集。切换引擎前必须暂停，等待已运行任务提交或过期且停止确认，保留预算预留；禁止将活跃任务当作已释放。
 
 ## 4. DDS-04 调度、数据一致性与预算
 
@@ -74,7 +74,7 @@
 | retry/expire | 当前 attempt 失败或已过期；旧 worker 能否停止另行确认 | 终结 attempt、记录原因；若可安全重试则新 generation 重新排队 | 成本未知或可能仍在运行时冻结预留，不宣称已停止 |
 | cancel | 用户或预算要求停止 | 禁止新领取，记录取消请求及确认状态 | 未确认退出时列为未收敛；不得释放硬预算 |
 
-claim token 用安全随机数生成，仅存摘要；不进日志或报告；凭证不是审计系统对任意本机用户的认证机制。提交采用 `(run_id, task_id, attempt_id, generation, token)` 和结果 SHA-256：同 attempt 在**有效期内已提交**的相同内容重放返回原回执（不再创建事件）；不同内容报 conflict。已完成后的网络重传可返回原回执，即便时间已过期，但必须 token、generation 和内容均匹配且该 attempt 确已提交；从未提交的过期 attempt 一律拒绝。
+入队 spec 按 IFC-02 `TaskSpec` 的 `oneOf` 三分支（hunt/recon/verify，`task_kind` const 判别）做 schema 校验，无效 spec 拒绝入队并记录，不落库不可执行形状 **[DA-04]**。claim token 用安全随机数生成，仅存摘要；不进日志或报告；凭证不是审计系统对任意本机用户的认证机制。提交采用 `(run_id, task_id, attempt_id, generation, token)` 和结果 SHA-256：同 attempt 在**有效期内已提交**的相同内容重放返回原回执（不再创建事件）；不同内容报 conflict。已完成后的网络重传可返回原回执，即便时间已过期，但必须 token、generation 和内容均匹配且该 attempt 确已提交；从未提交的过期 attempt 一律拒绝。
 
 SQLite `BEGIN IMMEDIATE` 保护读取/更新和额度预留；事务中含约束和受影响行数检查。driver 可以单写队列，但仍须应对多进程。**lease 到期只允许拒绝旧结果，不证明旧进程停止**：若强预算无法可靠取消与结算，则保留旧预留，同时有足够额度时才能再 claim；否则暂停。默认有效期和续期策略需能力验证，不凭猜测选为通用常数。时钟回拨/未知使用暂停并人工处理，不能降低防护。
 
@@ -84,7 +84,7 @@ SQLite `BEGIN IMMEDIATE` 保护读取/更新和额度预留；事务中含约束
 
 S0 snapshot/inventory/plan → S1 recon → S2 hunt → S3 verify → S5 report → S6 retro；S4 不在首版。每阶段产出由契约校验并落库，可在预算不足时提前进入 finalizing。无法启动 Recon 时不伪造空的安全基线；提示包须携带 `unknown`。
 
-规划不以信号为全覆盖依据。一个分析任务的 packet 绑定快照 ID、单元、规则和显式预算；提示包仅包含目标范围及相关上下文，遇到必要信息溢出则拆分或记录缺口。worker 输出 Candidate/Frontier/SinkProbe，任何上限造成的未输出区域通过溢出记录入账；禁止靠更改字段限制掩盖溢出。连接只产出 `hypothesized` 边：符号匹配、参数位置和跨语言转换须 verifier 分别核验；未连接条目保留到报告。
+规划不以信号为全覆盖依据。一个分析任务的 packet 绑定快照 ID、单元、规则和显式预算；提示包仅包含目标范围及相关上下文，遇到必要信息溢出则拆分或记录缺口。Kotlin/Scala 的 Java 基座索引按平台三态展开：prepare 时从冻结快照 manifest 扫描 JVM 构建标识（pom.xml、Gradle 构建/设置脚本、`*.sbt`、`.mvn/`），有标识判 JVM，无证据判未知——不展开基座索引并在 packet 行披露 platform unknown，不默认按 JVM 处理 **[DA-03]**。worker 输出 Candidate/Frontier/SinkProbe，任何上限造成的未输出区域通过溢出记录入账；禁止靠更改字段限制掩盖溢出。连接只产出 `hypothesized` 边：符号匹配、参数位置和跨语言转换须 verifier 分别核验；未连接条目保留到报告。
 
 每个验证必须创建与 hunter 不同的 attempt 和新上下文；输入含原候选及独立读取快照权限，不把候选内容当成证据。所有结果需记录锚点、边及其判定。需要外部事实时给 `needs_validation`，仅实际找到证伪证据才 `rejected`。审计来源依赖图保存候选合并关系和验证 attempt；拒绝环状 provenance。定级矩阵和人工调整按 SD-05；调整为新事件，保留旧值与原因，不重写既往事件。
 
@@ -92,7 +92,7 @@ S0 snapshot/inventory/plan → S1 recon → S2 hunt → S3 verify → S5 report 
 
 每个输出在同一 `report_generation_id`、同一 ledger revision 上派生；先完整写入暂存目录，校验计数与引用后发布 generation，再写入终态。崩溃重启后按 revision 检测未完成的生成，不把不同 generation 混合。主报告含完整/不完整、范围、快照、覆盖、发现、待验证、局限及成本未知；结构化结果包括全部四种验证处置。覆盖以纳入文件/行区间并集统计，各深度彼此独立，不强制存在可观测读取；每条数据包括来源及可信度。
 
-G0 快照、清点、计划；G1 单元、溢出及未完成；G2 候选/裁决/锚点/定级；G3 报表和事件对账；G4 自审生成与导出条件。每道门禁应返回 `pass|fail|not_applicable`、检查项及证据引用；fail 会禁止 complete，但不妨碍有诊断的不完整报告。`not_applicable` 不等于 pass，理由必须存在。
+G0 快照、清点、计划；G1 单元、溢出及未完成；G2 候选/裁决/锚点/定级；G3 报表和事件对账；G4 自审生成与导出条件。每道门禁应返回 `pass|fail|not_applicable`、检查项及证据引用；fail 会禁止 complete，但不妨碍有诊断的不完整报告。`not_applicable` 不等于 pass，理由必须存在。G1/G2 公式只对已派发任务对账，存在“计划了但从未派发”的结构性盲区；终态判定另按计划覆盖不变量硬规则执行 **[DA-01]**——plan_units 与 done 任务对账，零派发或未达 done（verify 亦接受显式 quarantine）的单元强制 `incomplete(unprocessed_units)`，不因 lost=0 或任务数对账相等判 complete；该不变量当前为 finalize 硬规则，是否并入 G1 公式定义由设计审查确认。
 
 本地自审包括流程、成本、知识质量与能力缺口；不可用数据用 null 和原因，不将未知赋值为零。对外导出默认关闭；只允许经过审查的枚举/约束聚合值，不导出自由文本，审核失败不导出。产物包含敏感信息，日志也不得输出 claim token、认证材料和已知凭据值。通用检测不能证明完全识别所有秘密；测试已知样本，人工审核由维护者负责。
 

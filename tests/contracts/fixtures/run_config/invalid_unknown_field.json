@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "target": "targets/sample-repo",
+  "run_dir": "runs/run-0001",
+  "report_language": "zh-CN",
+  "profile": "standard",
+  "scope": {
+    "include": [
+      "app/**"
+    ],
+    "exclude": [
+      "vendor/**"
+    ],
+    "languages": [
+      "python"
+    ]
+  },
+  "budgets": [
+    {
+      "dimension": "tasks",
+      "mode": "enforced",
+      "limit": 40,
+      "settled": 0,
+      "reserved": 0,
+      "unit": "tasks",
+      "availability": "exact"
+    }
+  ],
+  "safety_acceptance": {
+    "allow_unverified_execution": false,
+    "allow_unverified_network": false,
+    "allow_unverified_write": false,
+    "user_approved": true
+  },
+  "revision": 1
+}

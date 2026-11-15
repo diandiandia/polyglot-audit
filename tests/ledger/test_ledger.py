@@ -508,3 +508,64 @@ class TestLedger(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_submit_emits_usage_settled_event_ifc05(self):
+        """IFC-05 floor requirement: every settlement emits a usage_settled event
+        with availability and settled value/reason -- including unknown paths."""
+        budget = BudgetLedger(self.conn)
+        budget.set_budget(self.run_id, "tasks", limit_val=5, unit="tasks", mode="enforced")
+        queue = TaskQueue(self.conn)
+        queue.enqueue(self.run_id, "hunt:u1", "hunt", {"unit": "u1"})
+        claim = queue.claim(self.run_id, batch_size=1)[0]
+        queue.submit(
+            run_id=self.run_id,
+            task_id=claim["task_id"],
+            attempt_id=claim["attempt_id"],
+            generation=claim["generation"],
+            claim_token=claim["claim_token"],
+            worker_result={"records": []},
+            result_digest="digest-ifc05-exact",
+            usage={
+                "schema_version": "1.0",
+                "attempt_id": claim["attempt_id"],
+                "dimension": "tasks",
+                "availability": "exact",
+                "value": 2,
+                "unit": "tasks",
+                "source": "host_cli_report",
+            },
+        )
+
+        events = self.conn.execute(
+            "SELECT payload_json FROM events WHERE event_type = 'usage_settled' ORDER BY revision"
+        ).fetchall()
+        self.assertEqual(len(events), 1)
+        payload = json.loads(events[0]["payload_json"])
+        self.assertEqual(payload["attempt_id"], claim["attempt_id"])
+        self.assertEqual(payload["dimension"], "tasks")
+        self.assertEqual(payload["availability"], "exact")
+        self.assertEqual(payload["settled_value"], 2)
+        self.assertIsNone(payload["reason"])
+        self.assertEqual(payload["source"], "host_cli_report")
+
+        # Unknown-settlement path (no usage supplied) also emits the event
+        # with availability=unavailable and an explicit reason -- never zero.
+        queue.enqueue(self.run_id, "hunt:u2", "hunt", {"unit": "u2"})
+        claim2 = queue.claim(self.run_id, batch_size=1)[0]
+        queue.submit(
+            run_id=self.run_id,
+            task_id=claim2["task_id"],
+            attempt_id=claim2["attempt_id"],
+            generation=claim2["generation"],
+            claim_token=claim2["claim_token"],
+            worker_result={"records": []},
+            result_digest="digest-ifc05-unknown",
+        )
+        events = self.conn.execute(
+            "SELECT payload_json FROM events WHERE event_type = 'usage_settled' ORDER BY revision"
+        ).fetchall()
+        self.assertEqual(len(events), 2)
+        payload2 = json.loads(events[1]["payload_json"])
+        self.assertEqual(payload2["availability"], "unavailable")
+        self.assertIsNone(payload2["settled_value"])
+        self.assertTrue(payload2["reason"])

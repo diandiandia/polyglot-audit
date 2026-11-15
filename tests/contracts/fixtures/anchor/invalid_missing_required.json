@@ -1,0 +1,8 @@
+{
+  "schema_version": "1.0",
+  "snapshot_id": "snp-0001",
+  "path": "app/handlers/upload.py",
+  "line_start": 8,
+  "line_end": 12,
+  "symbol": "handle_upload"
+}

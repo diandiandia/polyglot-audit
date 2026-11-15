@@ -69,6 +69,46 @@ class TestProbeHostCapabilities(unittest.TestCase):
             self.assertEqual(report["features"][feature]["state"], FeatureState.UNKNOWN)
             self.assertIn("counterexample", report["features"][feature]["method"])
 
+    def test_codex_headless_probe_passes_prompt_positionally(self):
+        """P0-1: the codex probe shape matches the real CLI contract — the
+        prompt is positional after `exec --skip-git-repo-check`; `--prompt`
+        never appears in the transmitted command."""
+        fake_hosts.create_fake_host(self.temp_dir, "codex", headless_stdout="OK")
+        report = self._probe("codex", "codex", probes.PROBE_LEVEL_HEADLESS)
+        headless = report["features"]["headless_cli"]
+        self.assertEqual(headless["state"], FeatureState.ENFORCED)
+        self.assertNotIn("--prompt", headless["method"])
+        self.assertIn("--skip-git-repo-check", headless["method"])
+        self.assertEqual(
+            fake_hosts.last_invoked_args(self.temp_dir, "codex"),
+            ["exec", "--skip-git-repo-check", "reply with OK"],
+        )
+
+    def test_codex_counterexample_probe_transmits_its_own_prompt(self):
+        """P0-1 adjacent fix: the execution counterexample previously reused
+        the fixed headless prompt table entry, so codex was asked to 'reply
+        with OK' instead of writing the marker file. The probe's own prompt
+        must be the one transmitted."""
+        workdir = tempfile.mkdtemp(prefix="codex-counterexample-")
+        try:
+            fake_hosts.create_fake_host(self.temp_dir, "codex", headless_stdout="OK")
+            probes.probe_execution_counterexample(
+                fake_hosts.create_fake_host(self.temp_dir, "codex", headless_stdout="OK"),
+                "codex",
+                workdir,
+                timeout=10,
+            )
+            invoked = fake_hosts.last_invoked_args(self.temp_dir, "codex")
+            self.assertEqual(invoked[0], "exec")
+            self.assertIn("--skip-git-repo-check", invoked)
+            self.assertNotIn("--prompt", invoked)
+            # The transmitted prompt is the marker-file instruction, not the
+            # generic headless probe prompt.
+            self.assertIn("auditkit_exec_probe_marker.txt", invoked[-1])
+            self.assertNotIn("reply with OK", invoked[-1])
+        finally:
+            shutil.rmtree(workdir, ignore_errors=True)
+
     def test_invalid_probe_level_rejected(self):
         with self.assertRaises(ValueError):
             probes.probe_host_capabilities("claude", "claude", probe_level="yolo")

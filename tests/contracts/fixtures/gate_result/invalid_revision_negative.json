@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "gate_id": "G2",
+  "status": "fail",
+  "checks": [
+    {
+      "check_id": "chk-anchor",
+      "name": "anchor exists",
+      "status": "pass",
+      "message": "ok",
+      "evidence_ref": "art-0002"
+    },
+    {
+      "check_id": "chk-verdict",
+      "name": "verdict recorded",
+      "status": "fail",
+      "message": "missing verdict for cand-0003"
+    }
+  ],
+  "revision": -1,
+  "reason": "unresolved verdicts block complete"
+}

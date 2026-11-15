@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "guard_id": "guard-py-001",
+  "status": "observed",
+  "mechanism": "allowlist validation before deserialization",
+  "anchors": [
+    "app/serial.py:30"
+  ],
+  "applicability": "applies to app.serial.restore_state callers only",
+  "exceptions": [
+    "internal admin endpoint bypasses the allowlist"
+  ]
+}

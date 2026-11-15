@@ -1,8 +1,12 @@
 """Tests for schema positive/negative fixtures and the meta schema (DSR-006 / DSR-007).
 
-- Every core production schema is loaded from skill/schemas/ and validated
-  against valid and invalid sample fixtures (invalid samples cover missing
-  required fields, unknown fields, and enum/bounds violations).
+- Every production schema is loaded from skill/schemas/ and validated against
+  valid and invalid sample fixtures (invalid samples cover missing required
+  fields, unknown fields, and enum/bounds/pattern/type violations).
+- Fixture coverage is discovered from the filesystem (TestFixtureDiscovery):
+  every IFC-02 exchange object must carry a fixture directory with at least
+  one valid sample plus missing-required and unknown-field negatives, and
+  every sample must be genuinely distinguished by SchemaValidator.
 - The meta schema describing the supported keyword subset is used to validate
   all 20 production schemas; schemas using unsupported keywords are rejected.
 """
@@ -19,10 +23,23 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SCHEMAS_DIR = REPO_ROOT / "skill" / "schemas"
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
+# Schemas that describe schemas (no IFC-02 exchange object samples required).
+META_SCHEMAS = {"meta"}
+
+# (schema, fixture stem) pairs that are schema-valid but semantically invalid:
+# rejected by the runtime semantic validator (parse_usage) instead of the
+# declarative schema.
+SEMANTIC_ONLY_INVALID_SAMPLES = {("usage", "invalid_unavailable_with_value")}
+
 
 def load_schema(name: str) -> dict:
     with open(SCHEMAS_DIR / f"{name}.schema.json", "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def discover_fixture_dirs() -> list:
+    """Enumerate fixture directories; the filesystem is the only source of truth."""
+    return sorted(p for p in FIXTURES_DIR.iterdir() if p.is_dir())
 
 
 class TestSchemaFixtures(unittest.TestCase):
@@ -153,6 +170,85 @@ class TestSchemaFixtures(unittest.TestCase):
         # A hunt spec cannot masquerade as recon/verify: exactly one branch.
         cross = dict(recon_spec, task_kind="hunt")
         self.assertTrue(validator.validate(cross))
+
+
+class TestFixtureDiscovery(unittest.TestCase):
+    """Auto-discovered fixture coverage for all exchange objects (DSR-006).
+
+    Fixture directories are enumerated from the filesystem, never listed by
+    hand: each directory maps to a production schema, every ``valid_*.json``
+    sample must pass SchemaValidator, and every other sample must be rejected.
+    """
+
+    def test_every_production_schema_has_fixture_dir(self):
+        """IFC-02 exchange objects all carry positive/negative samples."""
+        production = {
+            p.name[: -len(".schema.json")] for p in SCHEMAS_DIR.glob("*.schema.json")
+        } - META_SCHEMAS
+        covered = {d.name for d in discover_fixture_dirs()}
+        self.assertEqual(
+            sorted(production - covered), [], "schemas without fixtures",
+        )
+        self.assertEqual(
+            sorted(covered - production), [], "fixture dirs without a schema",
+        )
+
+    def test_every_fixture_dir_has_required_sample_shapes(self):
+        """Each object: >= 1 valid sample plus mandatory missing/unknown negatives."""
+        dirs = discover_fixture_dirs()
+        self.assertGreaterEqual(len(dirs), 20, "expected fixture dirs for all exchange objects")
+        for fixture_dir in dirs:
+            samples = sorted(fixture_dir.glob("*.json"))
+            stems = {s.stem for s in samples}
+            self.assertGreaterEqual(len(samples), 3, f"{fixture_dir.name}: expected >= 3 fixtures")
+            self.assertTrue(
+                any(stem.startswith("valid") for stem in stems),
+                f"{fixture_dir.name}: no valid sample",
+            )
+            self.assertTrue(
+                any(stem.startswith("invalid_missing") for stem in stems),
+                f"{fixture_dir.name}: no missing-required sample",
+            )
+            self.assertIn("invalid_unknown_field", stems, f"{fixture_dir.name}: no unknown-field sample")
+
+    def test_discovered_samples_are_distinguished_by_validator(self):
+        """Every valid sample passes and every other sample is rejected."""
+        total = 0
+        for fixture_dir in discover_fixture_dirs():
+            validator = SchemaValidator(load_schema(fixture_dir.name))
+            for sample in sorted(fixture_dir.glob("*.json")):
+                with open(sample, "r", encoding="utf-8") as f:
+                    instance = json.load(f)
+                with self.subTest(schema=fixture_dir.name, sample=sample.name):
+                    total += 1
+                    errors = validator.validate(instance)
+                    if sample.stem.startswith("valid"):
+                        self.assertEqual(
+                            errors, [],
+                            f"{fixture_dir.name}/{sample.name} should be valid: "
+                            f"{[str(e) for e in errors]}",
+                        )
+                    elif (fixture_dir.name, sample.stem) in SEMANTIC_ONLY_INVALID_SAMPLES:
+                        # Schema-valid but rejected by the runtime semantic rules.
+                        self.assertEqual(errors, [], f"{sample.name} should be schema-valid")
+                        if fixture_dir.name == "usage":
+                            with self.assertRaises(Exception):
+                                parse_usage(instance)
+                    else:
+                        self.assertTrue(
+                            errors,
+                            f"{fixture_dir.name}/{sample.name} should be invalid but passed",
+                        )
+                        # The two mandatory negatives must fail for their declared
+                        # reason; oneOf schemas report branch mismatches at the root.
+                        keywords = {e.keyword for e in errors}
+                        if "oneOf" in keywords:
+                            continue
+                        if sample.stem.startswith("invalid_missing"):
+                            self.assertIn("required", keywords)
+                        elif sample.stem == "invalid_unknown_field":
+                            self.assertIn("additionalProperties", keywords)
+        self.assertGreaterEqual(total, 100, "expected full fixture corpus to be exercised")
 
 
 class TestMetaSchema(unittest.TestCase):

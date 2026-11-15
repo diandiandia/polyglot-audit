@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "connection_id": "conn-0001",
+  "frontier_id": "fr-0001",
+  "probe_id": "probe-0001",
+  "matching_factors": [
+    "symbol: load_blob",
+    "arg_pos: 1"
+  ],
+  "status": "confirmed"
+}

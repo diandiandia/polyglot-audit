@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "guard_id": "guard-py-001",
+  "status": "observed",
+  "mechanism": "allowlist validation before deserialization",
+  "anchors": [
+    {
+      "path": "app/serial.py",
+      "line_start": 30,
+      "line_end": 34,
+      "file_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    }
+  ],
+  "exceptions": [
+    "internal admin endpoint bypasses the allowlist"
+  ]
+}

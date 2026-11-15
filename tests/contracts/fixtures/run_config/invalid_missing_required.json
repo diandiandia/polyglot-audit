@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "target": "targets/sample-repo",
+  "run_dir": "runs/run-0001",
+  "report_language": "zh-CN",
+  "profile": "standard",
+  "scope": {
+    "include": [
+      "app/**"
+    ],
+    "exclude": [
+      "vendor/**"
+    ],
+    "languages": [
+      "python"
+    ]
+  },
+  "budgets": [
+    {
+      "dimension": "tasks",
+      "mode": "enforced",
+      "limit": 40,
+      "settled": 0,
+      "reserved": 0,
+      "unit": "tasks",
+      "availability": "exact"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "dimension": "tasks",
+  "mode": "enforced",
+  "limit": 40,
+  "settled": 12,
+  "reserved": 2,
+  "unit": "tasks",
+  "availability": "exact"
+}

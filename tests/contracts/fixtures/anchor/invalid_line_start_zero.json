@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0",
+  "snapshot_id": "snp-0001",
+  "path": "app/handlers/upload.py",
+  "line_start": 0,
+  "line_end": 12,
+  "file_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "symbol": "handle_upload"
+}

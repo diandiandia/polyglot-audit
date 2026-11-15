@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "snapshot_id": "snp-0001",
+  "unit_id": "unit-0001",
+  "dimension": "observed_read",
+  "source": "host_read_log",
+  "ranges": [
+    {
+      "path": "app/handlers/upload.py",
+      "line_start": 1,
+      "line_end": 0
+    }
+  ],
+  "confidence": "exact"
+}
