@@ -110,3 +110,137 @@ class CardAdmissionChecker:
             return True, f"Admitted via {len(set(independent_run_ids))} independent run corroborations"
 
         return False, f"Admission requires at least 2 independent runs; found {len(set(independent_run_ids))}"
+
+    # ------------------------------------------------------------------
+    # DSR-071 / SR-016: 受控导入 (controlled import of portable review data)
+    # ------------------------------------------------------------------
+    # 与 reporting.generator 的导出白名单保持同步（同 artifacts.py 与 ledger/db.py
+    # 列结构的同步约定）；本类是导入侧的准入权威，不允许自由文本进入。
+    PORTABLE_REVIEW_ALLOWED_ROOT_KEYS = frozenset(
+        {"schema_version", "generation_id", "run_id", "run_summary", "anomaly_categories"}
+    )
+    PORTABLE_REVIEW_ALLOWED_RUN_SUMMARY_KEYS = frozenset(
+        {
+            "run_state",
+            "total_files_audited",
+            "total_lines_audited",
+            "total_confirmed_findings",
+            "total_needs_validation",
+            "total_tasks_executed",
+            "retries",
+            "language",
+        }
+    )
+    PORTABLE_REVIEW_SCALAR_TYPES = (str, int, float, bool)
+    PORTABLE_REVIEW_MAX_STRING_LENGTH = 64
+    SELF_REVIEW_ANOMALY_CATEGORIES = frozenset(
+        {"flow", "coverage", "cost", "verification", "knowledge", "adaptation", "error", "usage_missing"}
+    )
+
+    def admit_portable_review(
+        self,
+        payload: Dict[str, Any],
+        independent_run_ids: List[str],
+        is_blocking_exception: bool = False,
+        blocking_rationale: str = "",
+    ) -> Dict[str, Any]:
+        """Controlled import of a portable skill-review payload (DSR-071 / SR-016).
+
+        Default-deny gate: a payload is importable only when it
+          1. matches the export whitelist exactly (root keys, run_summary keys,
+             scalar values — the mirror of reporting.generator's export),
+          2. contains no free text, paths, or target identifiers (string values
+             are capped and anomaly categories must come from the fixed enum),
+          3. carries upgrade evidence: two independent runs, or a recorded
+             blocking exception with explicit rationale (SWR-028 semantics).
+
+        Returns an admission record dict; it never raises on policy rejection
+        (rejections carry machine-readable reasons). Structural violations of
+        the whitelist raise InvalidInputError, mirroring the export side.
+        """
+        import hashlib
+        from datetime import datetime, timezone
+
+        from auditkit.contracts.errors import InvalidInputError
+
+        reasons: List[str] = []
+
+        # 1) whitelist mirror (export-side parity)
+        if not isinstance(payload, dict):
+            raise InvalidInputError("controlled import rejected: payload must be an object")
+        for key, value in payload.items():
+            if key not in self.PORTABLE_REVIEW_ALLOWED_ROOT_KEYS:
+                raise InvalidInputError(
+                    f"controlled import rejected: non-whitelisted root key '{key}'",
+                    details={"key": key},
+                )
+            if key == "run_summary":
+                if not isinstance(value, dict):
+                    raise InvalidInputError("controlled import rejected: run_summary must be an object")
+                for sub_key, sub_value in value.items():
+                    if sub_key not in self.PORTABLE_REVIEW_ALLOWED_RUN_SUMMARY_KEYS:
+                        raise InvalidInputError(
+                            f"controlled import rejected: non-whitelisted run_summary key '{sub_key}'",
+                            details={"key": sub_key},
+                        )
+                    if sub_value is not None and not isinstance(sub_value, self.PORTABLE_REVIEW_SCALAR_TYPES):
+                        raise InvalidInputError(
+                            f"controlled import rejected: run_summary '{sub_key}' is not scalar",
+                            details={"key": sub_key},
+                        )
+            elif key == "anomaly_categories":
+                if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+                    raise InvalidInputError(
+                        "controlled import rejected: anomaly_categories must be a list of strings"
+                    )
+                unknown = [v for v in value if v not in self.SELF_REVIEW_ANOMALY_CATEGORIES]
+                if unknown:
+                    raise InvalidInputError(
+                        "controlled import rejected: anomaly_categories outside fixed enum",
+                        details={"unknown": unknown},
+                    )
+
+        # 2) free-text / path / identifier guard over every string value
+        def _scan_strings(node: Any) -> None:
+            if isinstance(node, str):
+                if len(node) > self.PORTABLE_REVIEW_MAX_STRING_LENGTH:
+                    reasons.append(f"string value exceeds {self.PORTABLE_REVIEW_MAX_STRING_LENGTH} chars (free text)")
+                if any(marker in node for marker in ("/", "\\", "..", "\x00")):
+                    reasons.append("string value contains path-like characters")
+            elif isinstance(node, dict):
+                for k, v in node.items():
+                    _scan_strings(k)
+                    _scan_strings(v)
+            elif isinstance(node, list):
+                for v in node:
+                    _scan_strings(v)
+
+        _scan_strings(payload)
+
+        # 3) upgrade evidence (SWR-028 semantics, same as check_upgrade_admission)
+        evidence_ok, evidence_reason = self.check_upgrade_admission(
+            item_id="portable_skill_review",
+            independent_run_ids=independent_run_ids,
+            is_blocking_exception=is_blocking_exception,
+            blocking_rationale=blocking_rationale,
+        )
+        if not evidence_ok:
+            reasons.append(evidence_reason)
+
+        admitted = not reasons
+        payload_digest = hashlib.sha256(
+            repr(sorted(payload.items(), key=lambda kv: kv[0])).encode("utf-8")
+        ).hexdigest()
+        return {
+            "admitted": admitted,
+            "reasons": reasons,
+            "evidence": evidence_reason,
+            "payload_digest": payload_digest,
+            "admission_record": {
+                "decided_at": datetime.now(timezone.utc).isoformat(),
+                "decision": "admitted" if admitted else "rejected",
+                "is_blocking_exception": bool(is_blocking_exception),
+                "payload_digest": payload_digest,
+                "independent_run_ids": sorted(set(independent_run_ids)),
+            },
+        }
