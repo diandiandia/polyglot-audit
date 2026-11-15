@@ -170,7 +170,7 @@ class TestRealCodexHost(unittest.TestCase):
             if "OPENAI" in key.upper() or "CODEX" in key.upper():
                 env.pop(key, None)
         proc = subprocess.run(
-            [CODEX_BIN, "exec", "reply with OK"],
+            [CODEX_BIN, "exec", "--skip-git-repo-check", "reply with OK"],
             capture_output=True,
             text=True,
             timeout=120,

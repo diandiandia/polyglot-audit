@@ -28,11 +28,24 @@ FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"
 MIXED_LANG_DIR = FIXTURES_DIR / "mixed_lang"
 
 
+
+def _purge_fixture_pycache():
+    """Remove bytecode caches under the fixture source before scanning.
+
+    Test collectors (pytest / IDEs) may compile ``tests/fixtures/**`` in
+    place; the resulting ``__pycache__`` files would otherwise shift the
+    inventory denominators (DSR-014/054) depending on collection order.
+    """
+    for cache_dir in MIXED_LANG_DIR.rglob("__pycache__"):
+        shutil.rmtree(cache_dir, ignore_errors=True)
+
+
 class TestInventoryReconcile(unittest.TestCase):
     """DSR-014: mixed included/excluded/unknown-language reconciliation."""
 
     @classmethod
     def setUpClass(cls):
+        _purge_fixture_pycache()
         cls.temp_dir = Path(tempfile.mkdtemp())
         cls.dest = cls.temp_dir / "snapshot"
         rules = ExclusionRules()
@@ -103,6 +116,7 @@ class TestInclusionSummary(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        _purge_fixture_pycache()
         cls.temp_dir = Path(tempfile.mkdtemp())
         cls.dest = cls.temp_dir / "snapshot"
         rules = ExclusionRules()

@@ -148,9 +148,8 @@ class Verifier:
         ``enforce_attempt_gate`` enables the DSR-027 E2 gate that requires a
         fresh ``verify_attempt_id`` distinct from the hunt attempt on every
         ``confirmed`` finding. It defaults to False only so legacy in-process
-        callers keep working; the task-queue wiring (app/service.py) must
-        construct the Verifier with the gate enabled once verify tasks are
-        actually enqueued (documented TODO).
+        callers keep working; the production pipeline constructs the Verifier
+        with the gate enabled (``AuditAppService._enqueue_verify_tasks``).
         """
         self.validator = semantic_validator or SemanticValidator()
         self.enforce_attempt_gate = enforce_attempt_gate
@@ -158,9 +157,10 @@ class Verifier:
     def build_verify_task(self, candidate: Dict[str, Any]) -> Dict[str, Any]:
         """Build a verify-kind task specification for a candidate (DSR-027).
 
-        ANA-side construction only: the returned spec still needs to be
-        enqueued through the LED task queue (wiring TODO in app/service.py).
-        The spec declares role ``verify``, its output contract, and requires a
+        The returned spec is enqueued through the LED task queue by
+        ``AuditAppService._enqueue_verify_tasks`` (validated against the
+        task_spec contract before enqueue). The spec declares role ``verify``,
+        its output contract, and requires a
         fresh ``verify_attempt_id`` distinct from the hunt attempt for an E2
         verdict.
         """

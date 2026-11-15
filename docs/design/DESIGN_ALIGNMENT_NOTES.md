@@ -54,6 +54,18 @@
 | 回填状态 | 已回填主文档：IFC §2（TaskSpec 行改为 oneOf 三分支真实契约并注明演进出处）、DDS-04（入队 spec schema 校验句）。待设计审查确认栏不变。 |
 | 待设计审查确认 | ① IFC-02 文档需按新 schema 改写 task_spec 条目（字段表、三分支形状、判别字段）；② hunt spec 补齐 `schema_version`/`task_kind` 是对既有 run 目录内旧 spec 的不兼容变更——旧 run 只读重渲染是否需要兼容读取路径（DSR-072 版本检查目前只覆盖 DB 格式，不覆盖 spec_json 形状）；③ `unit`/`input` 子对象的上限与条件约束（DSR-073 要求"嵌套字段、上限、条件约束"）当前只约束实际保证的标识字段，完整收紧需在下一轮契约冻结时统一处理。 |
 
+### DA-05 IFC-04 未规定无头 worker 进程的流契约（stdin/stdout/stderr 与 runner 的关系）
+
+| 项 | 内容 |
+|---|---|
+| 设计出处 | IFC-04（INTERFACE_CONTRACTS.md）"CLI 与会话内传输"与"driver 走相同服务接口并管理本地进程"；SD-07（SOFTWARE_DESIGN.md §5）；DSR-002（"实现 Claude 无头、结构化输出……探测"）。 |
+| 缺口描述 | 设计从未明文规定 driver 拉起的无头 worker 进程与 runner 之间的流关系。实测发现两个宿主 CLI 都会读 stdin（codex：`Reading additional input from stdin...`；在管道驱动下可能阻塞或吞入 runner 输入流），而同一修复模式（`stdin=DEVNULL`）最初只落在 Codex 适配器、未同步到 Claude 适配器——契约缺失导致该不对称无人拦截，且宿主 mock 测试与统一套件全绿无法发现。 |
+| 影响 | `audit run --host claude` 在脚本重定向/非交互管道驱动下可能挂起或污染 runner 的 stdin；两宿主实现违反 SR-022 的引擎等价语义（同一 claim 协议下行为应一致）。 |
+| 补救决策 | ① 两宿主适配器统一 `stdin=subprocess.DEVNULL` 并加同源注释；② IFC-04 回填明文一句（worker 进程不得继承 runner 的标准输入流）；③ real_cli 探测测试增加"调用形态错误≠合法 unknown"的区分断言（与 DA-02 的探针修正配套）。 |
+| 代码位置 | `skill/scripts/auditkit/hosts/claude_adapter.py`（Popen stdin=DEVNULL）、`hosts/codex_adapter.py`（既有，同步注释）、`hosts/probes.py`、`tests/hosts/fake_hosts.py`、`tests/hosts/test_real_hosts.py`。 |
+| 回填状态 | 已回填主文档：IFC-04（无头 worker 流契约句，[DA-05] 标注）。 |
+| 待设计审查确认 | ① stdout/stderr 是否也需要明文契约（当前实现两侧均为 PIPE 捕获，未见分歧，暂不入条款）；② 超时取消时的流关闭顺序（killpg 与管道 EOF 的竞态）是否需要 DDS-06 增补。 |
+
 ## 与并行工作流的接口确认（本文件随实现更新）
 
 | 接口 | 变更 | 消费方 |

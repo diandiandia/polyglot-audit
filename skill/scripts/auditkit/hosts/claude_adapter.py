@@ -106,9 +106,13 @@ class ClaudeDriverAdapter:
 
         proc = None
         try:
-            # Start process in new process group to allow reliable cancellation
+            # Start process in new process group to allow reliable cancellation.
+            # stdin is bound to DEVNULL: a headless worker must neither block
+            # on nor ingest the runner's input stream (same contract as the
+            # Codex adapter; IFC-04 / DA-05).
             proc = subprocess.Popen(
                 cmd,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
