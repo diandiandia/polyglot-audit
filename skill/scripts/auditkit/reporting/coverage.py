@@ -9,6 +9,9 @@ Implements DSR-034 / SD-08 / SR-021:
   5. review_claimed: lines explicitly evaluated in candidate/verdict trace
 - Interval union algorithm prevents double-counting of overlapping chunks.
 - Partial reads never erroneously inflate to full-file coverage.
+- A dimension with no recorded intervals (e.g. missing worker logs for
+  ``observed_read``) is disclosed as ``dimension_unknown`` — missing data is
+  never reported as measured zero coverage (DSR-034 / SWR-021).
 """
 
 # 需求追踪 (Requirement Traceability)
@@ -142,5 +145,31 @@ class CoverageCalculator:
                 summary["unknown_reason"] = "manifest present but all inventoried line counts are zero; no intervals exist"
         else:
             summary["unknown"] = False
+
+        # DSR-034 / SWR-021 (per-dimension honesty): a dimension with no
+        # recorded interval anywhere (e.g. worker logs missing for
+        # ``observed_read``) is missing data, NOT measured zero coverage.
+        # Disclose it as unknown per dimension; the numeric zero rows above
+        # stay for aggregation compatibility but must be read through this
+        # flag, never as evidence of "nothing covered".
+        dimensions_with_data = {
+            dim
+            for path_intervals in self._intervals.values()
+            for dim in dimensions
+            if path_intervals.get(dim)
+        }
+        dimension_unknown: Dict[str, bool] = {}
+        dimension_unknown_reason: Dict[str, str] = {}
+        for dim in dimensions:
+            has_data = dim in dimensions_with_data
+            dimension_unknown[dim] = not has_data
+            if not has_data:
+                dimension_unknown_reason[dim] = (
+                    f"no interval records exist for dimension '{dim}'; "
+                    "missing data is reported as unknown, not as measured zero coverage"
+                )
+        summary["dimension_unknown"] = dimension_unknown
+        if dimension_unknown_reason:
+            summary["dimension_unknown_reason"] = dimension_unknown_reason
 
         return summary

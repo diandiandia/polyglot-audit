@@ -45,14 +45,24 @@ class HuntResultParser:
         for rec in records:
             kind = rec.get("record_type") or rec.get("kind")
             if not kind:
-                # Infer from keys
-                if "sink" in rec and "source" in rec:
+                # Infer from keys. A record carrying only one endpoint of the
+                # chain is a half-chain: sink-without-source is a dangling
+                # sink (sink_probe), source-without-sink is a frontier. Only a
+                # record with both endpoints parses as a candidate — inferring
+                # "candidate" for a one-sided record would fabricate a
+                # complete source->sink finding from a half-chain (SR-007).
+                has_source = "source" in rec
+                has_sink = "sink" in rec
+                if has_source and has_sink:
                     kind = "candidate"
-                elif "source" in rec and "boundary" in rec:
-                    kind = "frontier"
-                elif "sink" in rec and "boundary" in rec:
+                elif has_sink:
                     kind = "sink_probe"
+                elif has_source:
+                    kind = "frontier"
                 else:
+                    # Shapeless record: keep it visible as a candidate so the
+                    # candidate contract validation rejects it with an
+                    # explicit error instead of dropping it silently.
                     kind = "candidate"
 
             if kind == "candidate":

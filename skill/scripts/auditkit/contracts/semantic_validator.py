@@ -171,15 +171,25 @@ class SemanticValidator:
             )
 
         expected_urg = calculate_urgency(expected_sev, exploitability)
-        calc_urg = rating.get("calculated_urgency")
-        if calc_urg != expected_urg:
-            raise InvalidInputError(
-                f"rating.calculated_urgency mismatch: expected '{expected_urg}', got '{calc_urg}'"
-            )
-
         final_sev = rating.get("final_severity")
         final_urg = rating.get("final_urgency")
         adjustment = rating.get("adjustment")
+
+        if not is_confirmed:
+            # SR-011 / DSR-028: pending findings carry a validation priority,
+            # never a repair urgency — the two must not be conflated.
+            if "calculated_urgency" in rating or "final_urgency" in rating:
+                raise InvalidInputError(
+                    "needs_validation rating must not carry a remediation urgency "
+                    "('calculated_urgency'/'final_urgency'); pending findings are "
+                    "restricted to the validation priority (SR-011)"
+                )
+        else:
+            calc_urg = rating.get("calculated_urgency")
+            if calc_urg != expected_urg:
+                raise InvalidInputError(
+                    f"rating.calculated_urgency mismatch: expected '{expected_urg}', got '{calc_urg}'"
+                )
 
         if adjustment:
             if not isinstance(adjustment, dict):
@@ -205,17 +215,18 @@ class SemanticValidator:
                 raise InvalidInputError(f"Invalid adjustment direction '{direction}'")
 
             # Final urgency must be recomputed from final_severity and exploitability
-            expected_final_urg = calculate_urgency(final_sev, exploitability)
-            if final_urg != expected_final_urg:
-                raise InvalidInputError(
-                    f"rating.final_urgency must be recalculated from final_severity: expected '{expected_final_urg}', got '{final_urg}'"
-                )
+            if is_confirmed:
+                expected_final_urg = calculate_urgency(final_sev, exploitability)
+                if final_urg != expected_final_urg:
+                    raise InvalidInputError(
+                        f"rating.final_urgency must be recalculated from final_severity: expected '{expected_final_urg}', got '{final_urg}'"
+                    )
         else:
             if final_sev != expected_sev:
                 raise InvalidInputError(
                     f"Without adjustment, final_severity '{final_sev}' must match calculated_severity '{expected_sev}'"
                 )
-            if final_urg != expected_urg:
+            if is_confirmed and final_urg != expected_urg:
                 raise InvalidInputError(
                     f"Without adjustment, final_urgency '{final_urg}' must match calculated_urgency '{expected_urg}'"
                 )

@@ -370,6 +370,7 @@ def evaluate(
 
     llm = probe_llm_worker() if llm_dry_run else {
         "status": "not_run",
+        "llm_results": "unknown",
         "host_clis": {},
         "note": "LLM worker dry run disabled by flag; LLM-side results are unknown",
     }

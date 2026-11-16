@@ -26,10 +26,14 @@ from typing import Any
 SECRET_PATTERNS = [
     # API keys / Bearer tokens / claim tokens
     (re.compile(r"(?i)(bearer\s+[a-zA-Z0-9_\-\.]{16,})"), "[REDACTED_BEARER_TOKEN]"),
-    (re.compile(r"(?i)(api[_-]?key\s*[:=]\s*['\"])[a-zA-Z0-9_\-\.]{12,}(['\"])"), r"\1[REDACTED_API_KEY]\2"),
-    (re.compile(r"(?i)(secret[_-]?key\s*[:=]\s*['\"])[a-zA-Z0-9_\-\.]{12,}(['\"])"), r"\1[REDACTED_SECRET]\2"),
-    (re.compile(r"(?i)(password\s*[:=]\s*['\"])[^'\"]{4,}(['\"])"), r"\1[REDACTED_PASSWORD]\2"),
-    (re.compile(r"(?i)(claim_token\s*[:=]\s*['\"])[a-zA-Z0-9]{16,}(['\"])"), r"\1[REDACTED_TOKEN]\2"),
+    # DSR-069 / SWR-010: quoted AND unquoted (env/header style) key=value
+    # forms of the declared credential families are both masked — a value
+    # inside a declared pattern family must not survive because it happened
+    # to be unquoted.
+    (re.compile(r"(?i)(api[_-]?key\s*[:=]\s*['\"]?)[a-zA-Z0-9_\-\.]{12,}(['\"]?)"), r"\1[REDACTED_API_KEY]\2"),
+    (re.compile(r"(?i)(secret[_-]?key\s*[:=]\s*['\"]?)[a-zA-Z0-9_\-\.]{12,}(['\"]?)"), r"\1[REDACTED_SECRET]\2"),
+    (re.compile(r"(?i)(password\s*[:=]\s*['\"]?)[^'\"]{4,}(['\"]?)"), r"\1[REDACTED_PASSWORD]\2"),
+    (re.compile(r"(?i)(claim_token\s*[:=]\s*['\"]?)[a-zA-Z0-9]{16,}(['\"]?)"), r"\1[REDACTED_TOKEN]\2"),
     (re.compile(r"-----BEGIN [A-Z ]+ PRIVATE KEY-----[\s\S]+?-----END [A-Z ]+ PRIVATE KEY-----"), "[REDACTED_PRIVATE_KEY]"),
 ]
 

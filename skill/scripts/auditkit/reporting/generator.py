@@ -119,6 +119,11 @@ class ReportGenerator:
 
         if anomalies is None and self_review_inputs is not None:
             anomalies = SelfReviewCollector(self_review_inputs).collect()
+        elif anomalies is None and self_review_inputs is None:
+            # DSR-070 / SWR-014: no statistics and no explicit anomaly list —
+            # the honest self-review states per-category unknown anomalies; it
+            # must never render an empty list that reads as "nothing wrong".
+            anomalies = SelfReviewCollector(None).collect()
 
         payloads = self._build_payloads(
             findings, coverage_summary, cost_metrics, events,
@@ -234,7 +239,9 @@ class ReportGenerator:
         except OSError as e:
             # Also remove the tmp file whose write itself failed.
             self._cleanup_staged(list(tmp for tmp, _, _, _, _, _ in staged) + ([current_tmp] if current_tmp else []))
-            raise StorageError(f"Failed to stage report artifact: {e}")
+            # SWR-012/SWR-014: the fault path is part of the failure report —
+            # name the artifact that could not be staged.
+            raise StorageError(f"Failed to stage report artifact {rel_path}: {e}")
 
         # ---- Phase B: verify staged generation markers.
         try:
@@ -383,6 +390,40 @@ class ReportGenerator:
             lines.append(t("taint_path"))
             for idx, s in enumerate(steps, start=1):
                 lines.append(f"  {idx}. `{s.get('path')}:{s.get('line')}` - [{s.get('role')}] {s.get('note')}")
+
+            # SR-010 / SWR-010: guards, attack preconditions, impact and
+            # exploitability belong to the confirmed-finding presentation.
+            # Each is rendered on its own labelled line so every acceptance
+            # field traces back to its record; a missing value is stated as
+            # such, never invented.
+            guards = f.get("guards", []) or []
+            lines.append(f"- **{t('guards')}**:")
+            if guards:
+                for g in guards:
+                    lines.append(
+                        f"  - `{g.get('guard_id', '')}` [{g.get('status', 'unknown')}] "
+                        f"{g.get('mechanism', '')} "
+                        f"(applicability: {g.get('applicability', 'N/A')})"
+                    )
+            else:
+                lines.append(f"  - {t('guards_none')}")
+            lines.append(f"- **{t('attacker')}**: `{f.get('attacker', 'unknown')}`")
+            preconds = f.get("preconditions", []) or []
+            if preconds:
+                for p in preconds:
+                    lines.append(f"- **{t('preconditions')}**: {p}")
+            else:
+                lines.append(f"- **{t('preconditions')}**: {t('preconditions_none')}")
+            rating = f.get("rating", {}) or {}
+            factors = rating.get("factor_reasons", {}) or {}
+            lines.append(
+                f"- **{t('impact')}**: {rating.get('impact', 'N/A')} — "
+                f"{factors.get('impact_why', 'N/A')}"
+            )
+            lines.append(
+                f"- **{t('exploitability')}**: {rating.get('exploitability', 'N/A')} — "
+                f"{factors.get('exploitability_why', 'N/A')}"
+            )
 
             lines.append("")
             lines.append(f"{t('remediation')}: {remediation.get('change', 'N/A')}")

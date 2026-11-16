@@ -12,8 +12,10 @@ Behavioral rules (DSR-051):
 - Any required capability whose state is "unknown" is treated as NOT supported:
   the gate fails and the release conclusion is blocked. Unverified capabilities
   are never silently promoted to supported (design principle 8).
-- The aggregate verdict ("release_allowed") is False whenever any gate is fail
-  or unknown; the blocking reasons are reported explicitly.
+- The aggregate verdict ("release_allowed") is False whenever any gate is not
+  pass (fail, unknown-evidence fail, or not_applicable); the blocking reasons
+  are reported explicitly. Fail-closed: an unverified or explicitly deferred
+  gate never lets a release through.
 """
 
 # 需求追踪 (Requirement Traceability)
@@ -196,8 +198,10 @@ class ReleaseGateEvaluator:
         """Evaluate all release gates and produce the release conclusion.
 
         Returns a dict with per-gate GateResult dicts, the overall verdict and
-        blocking reasons. Any gate that is fail or unknown blocks the release;
-        not_applicable requires (and always has) an explicit reason (DSR-022).
+        blocking reasons. Any gate that is not pass blocks the release —
+        including not_applicable, which requires (and always has) an explicit
+        reason (DSR-022) and is listed as blocking so deferred gates can never
+        be silently promoted into an allowed release.
         """
         if evidence is not None:
             self.evidence = dict(evidence)

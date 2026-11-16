@@ -22,15 +22,38 @@ from __future__ import annotations
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
+from auditkit.analysis.rating import RatingEngine
 from auditkit.contracts.errors import InvalidInputError
 from auditkit.contracts.semantic_validator import (
     SemanticValidator,
-    calculate_severity,
-    calculate_urgency,
     calculate_validation_priority,
 )
+from auditkit.inventory.languages import detect_language
 
 SECOND_OPINION_SEVERITIES = ("High", "Critical")
+
+
+def derive_languages(candidate: Dict[str, Any]) -> List[str]:
+    """Derive the finding languages from observable candidate facts (P-04).
+
+    No field may carry a fabricated default: the previous hard-coded
+    ``"python"`` fallback mislabelled every non-Python candidate whose source
+    omitted ``lang`` (e.g. a JS/TS finding rendered as Python). Explicit
+    ``source.lang`` wins; otherwise the language is detected from the source
+    and sink path extensions so cross-language chains list both sides. When
+    nothing is observable the honest value is ``"unknown"``.
+    """
+    source = candidate.get("source") or {}
+    sink = candidate.get("sink") or {}
+    langs: List[str] = []
+    explicit = source.get("lang")
+    if explicit:
+        langs.append(str(explicit))
+    for endpoint in (source, sink):
+        detected = detect_language(endpoint.get("path", ""))
+        if detected != "unknown" and detected not in langs:
+            langs.append(detected)
+    return langs or ["unknown"]
 
 
 def bounded_variant_search(
@@ -229,37 +252,23 @@ class Verifier:
             },
         }
 
-        calc_sev = calculate_severity(impact, exploitability)
-        calc_urg = calculate_urgency(calc_sev, exploitability)
-
-        final_sev = calc_sev
-        final_urg = calc_urg
-        if adjustment:
-            direction = adjustment.get("direction")
-            # apply 1 grade adjustment
-            SEV_LEVELS = ["Info", "Low", "Medium", "High", "Critical"]
-            curr_idx = SEV_LEVELS.index(calc_sev)
-            if direction == "up" and curr_idx < len(SEV_LEVELS) - 1:
-                final_sev = SEV_LEVELS[curr_idx + 1]
-            elif direction == "down" and curr_idx > 0:
-                final_sev = SEV_LEVELS[curr_idx - 1]
-            final_urg = calculate_urgency(final_sev, exploitability)
-
-        rating_dict: Dict[str, Any] = {
-            "schema_version": "1.0",
-            "impact": impact,
-            "exploitability": exploitability,
-            "factor_reasons": {
-                "impact_why": impact_why or "Demonstrated sensitive sink reachability",
-                "exploitability_why": exploitability_why or "Attacker input unchecked",
-            },
-            "calculated_severity": calc_sev,
-            "calculated_urgency": calc_urg,
-            "final_severity": final_sev,
-            "final_urgency": final_urg,
-        }
-        if adjustment:
-            rating_dict["adjustment"] = adjustment
+        # The rating matrix, its bounded adjustment and the urgency
+        # recalculation have one authority (RatingEngine, DSR-028): the
+        # verifier delegates instead of duplicating the matrix here, so an
+        # explicitly declared adjustment can never be silently ignored.
+        rating_dict: Dict[str, Any] = RatingEngine.compute_rating(
+            impact=impact,
+            exploitability=exploitability,
+            impact_why=impact_why or "Demonstrated sensitive sink reachability",
+            exploitability_why=exploitability_why or "Attacker input unchecked",
+            adjustment=adjustment,
+        )
+        if verdict != "confirmed":
+            # SR-011 / DSR-028: only confirmed findings carry a repair
+            # urgency; pending findings are restricted to the validation
+            # priority (see the needs_validation branch below).
+            rating_dict.pop("calculated_urgency", None)
+            rating_dict.pop("final_urgency", None)
 
         if verdict == "confirmed":
             # DSR-027: an E2 (confirmed) verdict must come from a fresh
@@ -302,7 +311,7 @@ class Verifier:
             finding.update({
                 "title": f"Confirmed vulnerability in {sink.get('path', 'unknown')}",
                 "issue": candidate.get("issue", "general"),
-                "languages": [candidate.get("source", {}).get("lang") or "python"],
+                "languages": derive_languages(candidate),
                 "source": source,
                 "sink": sink,
                 "steps": steps,
@@ -337,28 +346,52 @@ class Verifier:
                 }
 
         elif verdict == "needs_validation":
+            # SR-008 / DSR-027: the pending disposition must carry the REAL
+            # open question — a canned blocker or plan would fabricate the
+            # reason the finding could not be resolved.
+            if not blockers or not isinstance(blockers, list):
+                raise InvalidInputError(
+                    "needs_validation verdict requires the actual open "
+                    "'blockers' (non-empty list); a canned blocker would "
+                    "fabricate the unresolved condition (SR-008)"
+                )
+            if not (validation_plan or "").strip():
+                raise InvalidInputError(
+                    "needs_validation verdict requires a concrete "
+                    "'validation_plan' stating how the blocker is resolved"
+                )
             rating_dict["validation_priority"] = calculate_validation_priority(impact, exploitability)
             finding.update({
                 "title": f"Potential issue needing validation in {candidate.get('sink', {}).get('path', 'unknown')}",
                 "issue": candidate.get("issue", "general"),
-                "languages": [candidate.get("source", {}).get("lang") or "python"],
-                "blockers": blockers or ["Runtime deployment configuration required to prove reachability"],
-                "validation_plan": validation_plan or "Conduct runtime deployment environment test",
+                "languages": derive_languages(candidate),
+                "blockers": list(blockers),
+                "validation_plan": validation_plan,
                 "rating": rating_dict,
             })
 
         elif verdict == "rejected":
-            finding.update({
-                "counter_evidence": counter_evidence or {
-                    "rationale": "Static inspection showed inputs are strictly sanitized or hardcoded",
-                    "anchors": [],
-                },
-            })
+            # SR-008 / DSR-027: a rejection without observed counter evidence
+            # is forbidden — a canned rationale would fabricate the refutation.
+            if not isinstance(counter_evidence, dict) or not (
+                counter_evidence.get("rationale") or ""
+            ).strip():
+                raise InvalidInputError(
+                    "Rejected verdict requires observed counter evidence with a "
+                    "non-empty 'rationale'; rejecting without counter evidence "
+                    "is prohibited (SR-008)"
+                )
+            finding.update({"counter_evidence": counter_evidence})
 
         elif verdict == "unverified":
-            finding.update({
-                "unverified_reason": unverified_reason or "Verification budget or execution deadline reached",
-            })
+            # SR-008: unverified is a queue disposition, not a verdict — it
+            # must state its own real reason instead of a fabricated default.
+            if not (unverified_reason or "").strip():
+                raise InvalidInputError(
+                    "Unverified disposition requires a non-empty "
+                    "'unverified_reason' stating why verification did not happen"
+                )
+            finding.update({"unverified_reason": unverified_reason})
 
         # Run semantic validation to ensure contract compliance
         self.validator.validate_finding(finding)
@@ -449,5 +482,10 @@ class Verifier:
         if "rating" in finding:
             impact = finding["rating"]["impact"]
             exploitability = finding["rating"]["exploitability"]
+            # SR-011 / DSR-028: a pending finding carries the validation
+            # priority only — the pre-demotion repair urgency is removed, not
+            # kept as a stale claim.
+            finding["rating"].pop("calculated_urgency", None)
+            finding["rating"].pop("final_urgency", None)
             finding["rating"]["validation_priority"] = calculate_validation_priority(impact, exploitability)
         return finding

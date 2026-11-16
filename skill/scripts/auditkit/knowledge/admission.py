@@ -25,6 +25,7 @@ Implements DSR-045 / DSR-071 / DSR-077 / SD-02 / SD-11:
 #
 
 from __future__ import annotations
+import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -228,8 +229,13 @@ class CardAdmissionChecker:
             reasons.append(evidence_reason)
 
         admitted = not reasons
+        # Canonical JSON digest (sort_keys): semantically identical payloads
+        # must produce identical admission records regardless of key insertion
+        # order -- repr() of nested dicts preserves insertion order and would
+        # break the reproducibility of admission audits (SWR-016/028).
         payload_digest = hashlib.sha256(
-            repr(sorted(payload.items(), key=lambda kv: kv[0])).encode("utf-8")
+            json.dumps(payload, sort_keys=True, ensure_ascii=False,
+                       separators=(",", ":")).encode("utf-8")
         ).hexdigest()
         return {
             "admitted": admitted,

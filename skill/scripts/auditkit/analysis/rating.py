@@ -56,7 +56,13 @@ class RatingEngine:
         final_sev = calc_sev
         final_urg = calc_urg
 
-        if adjustment:
+        if adjustment is not None:
+            # An explicitly supplied adjustment (even an empty object) is a
+            # declared operator action: it must carry operator, reason and a
+            # valid direction — silently ignoring it would fabricate an
+            # unadjusted grade (SR-011).
+            if not isinstance(adjustment, dict):
+                raise InvalidInputError("adjustment must be an object when present")
             operator = adjustment.get("operator")
             reason = adjustment.get("reason")
             direction = adjustment.get("direction")

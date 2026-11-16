@@ -143,3 +143,29 @@ class TestControlledImport(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_digest_is_key_order_independent(self):
+        """SWR-016/028: semantically identical payloads produce identical
+        admission records regardless of key insertion order (canonical JSON)."""
+        p1 = _valid_payload()
+        p2 = {
+            "anomaly_categories": ["coverage", "cost"],
+            "run_summary": {
+                "language": "zh",
+                "retries": 0,
+                "total_tasks_executed": 5,
+                "total_needs_validation": 0,
+                "total_confirmed_findings": 1,
+                "total_lines_audited": 400,
+                "total_files_audited": 12,
+                "run_state": "complete",
+            },
+            "run_id": "run-00000001",
+            "generation_id": "gen-00000001",
+            "schema_version": "1.0",
+        }
+        r1 = self.checker.admit_portable_review(p1, ["run-a", "run-b"])
+        r2 = self.checker.admit_portable_review(p2, ["run-a", "run-b"])
+        self.assertTrue(r1["admitted"])
+        self.assertTrue(r2["admitted"])
+        self.assertEqual(r1["payload_digest"], r2["payload_digest"])

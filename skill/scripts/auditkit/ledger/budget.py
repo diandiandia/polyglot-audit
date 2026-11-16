@@ -122,15 +122,19 @@ class BudgetLedger:
                     f"(limit: {limit_val}, settled: {settled}, reserved: {reserved}, requested: {amount})"
                 )
 
-            # Apply reservation
-            self.conn.execute(
-                """
-                UPDATE budget_dimensions
-                SET reserved = reserved + ?
-                WHERE run_id = ? AND dimension = ?
-                """,
-                (amount, run_id, dimension),
-            )
+        # Reservation accounting applies to EVERY mode: only `enforced` may
+        # refuse (hard limit), but observed/unavailable dimensions still track
+        # their outstanding reservations honestly — a reservation that is not
+        # reflected in `reserved` would under-report the committed budget
+        # (DSR-020 / SR-019: degraded dimensions stay honest, never unaccounted).
+        self.conn.execute(
+            """
+            UPDATE budget_dimensions
+            SET reserved = reserved + ?
+            WHERE run_id = ? AND dimension = ?
+            """,
+            (amount, run_id, dimension),
+        )
 
         self.conn.execute(
             """
@@ -325,8 +329,11 @@ class BudgetLedger:
         - "exact": at least one exact usage record exists.
         - "estimated": usage records exist but none is exact.
         - "unavailable": no usage data at all, or only unavailable records.
-        source is the source of the most recent usage record, or None when data
-        is missing; missing values stay null and are never defaulted to zero.
+        value is the recomputable numerator for the dimension: the sum of the
+        exact/estimated record values when any is known (matching how
+        settlement books the dimension), None otherwise. source is the source
+        of the most recent usage record, or None when data is missing; missing
+        values stay null and are never defaulted to zero.
         """
         rows = self.conn.execute(
             "SELECT dimension, mode, limit_val, settled, reserved, unit FROM budget_dimensions WHERE run_id = ?",
@@ -347,6 +354,10 @@ class BudgetLedger:
 
             if usage_rows:
                 availabilities = [u["availability"] for u in usage_rows]
+                known_values = [
+                    u["value"] for u in usage_rows
+                    if u["availability"] in ("exact", "estimated") and u["value"] is not None
+                ]
                 if "exact" in availabilities:
                     availability = "exact"
                 elif all(a == "unavailable" for a in availabilities):
@@ -354,7 +365,14 @@ class BudgetLedger:
                 else:
                     availability = "estimated"
                 source = usage_rows[0]["source"]
-                value = usage_rows[0]["value"]
+                # The reported value must be consistent with the availability
+                # label and recomputable (SR-020): when the dimension carries
+                # any known value it is the sum of the exact/estimated records
+                # — the same numerator settlement books — never just the newest
+                # record's value (a mixed dimension with an unavailable latest
+                # record would otherwise report availability "exact" and a
+                # null numerator).
+                value = sum(known_values) if known_values else None
             else:
                 availability = "unavailable"
                 source = None

@@ -69,6 +69,7 @@ CATEGORY_SUITES = {
         ("Security & Adversarial", "tests/security", "test_*.py", None, False),
         ("Holdout Wiring (synthetic corpus)", "tests/holdout", "test_*.py", None, False),
         ("End-to-End Synthetics", "tests/e2e", "test_*.py", None, False),
+        ("SWR Acceptance (per-SWR tests/swr)", "tests/swr", "test_*.py", None, False),
         ("CLI Determinism", "tests/cli", "test_*.py", None, True),  # built by another workstream
         ("Host Adapters (mock)", "tests/hosts", "test_*.py", "test_real_hosts", False),
     ],
