@@ -12,3 +12,4 @@ tests/model_eval/records/
 .tmp-*
 *.log
 events.db
+.scratch-*/

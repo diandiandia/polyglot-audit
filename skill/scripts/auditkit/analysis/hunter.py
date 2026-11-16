@@ -51,16 +51,18 @@ class HuntResultParser:
                 # record with both endpoints parses as a candidate — inferring
                 # "candidate" for a one-sided record would fabricate a
                 # complete source->sink finding from a half-chain (SR-007).
-                has_source = "source" in rec
-                has_sink = "sink" in rec
+                has_source = isinstance(rec.get("source"), dict)
+                has_sink = isinstance(rec.get("sink"), dict)
                 if has_source and has_sink:
                     kind = "candidate"
-                elif has_sink:
+                elif isinstance(rec.get("sink"), dict):
                     kind = "sink_probe"
-                elif has_source:
+                elif isinstance(rec.get("source"), dict):
                     kind = "frontier"
                 else:
-                    # Shapeless record: keep it visible as a candidate so the
+                    # Shapeless record OR non-dict endpoints (real models
+                    # sometimes emit "source": "path/to/x.py" as a bare
+                    # string): keep it visible as a candidate so the
                     # candidate contract validation rejects it with an
                     # explicit error instead of dropping it silently.
                     kind = "candidate"

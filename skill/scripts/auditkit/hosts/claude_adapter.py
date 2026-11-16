@@ -202,15 +202,23 @@ class ClaudeDriverAdapter:
             # Reset consecutive failures on success
             self.consecutive_failures = 0
 
-            # Attempt to parse output JSON
+            # Attempt to parse output JSON. Real models wrap JSON in prose
+            # ("All verification complete. ...") or markdown fences; both are
+            # accepted, with the raw error preserved for honest retryables.
             try:
-                # Find JSON block in stdout if markdown fenced
                 clean_stdout = stdout.strip()
                 if "```json" in clean_stdout:
                     clean_stdout = clean_stdout.split("```json")[1].split("```")[0].strip()
                 elif "```" in clean_stdout:
                     clean_stdout = clean_stdout.split("```")[1].split("```")[0].strip()
-                parsed = json.loads(clean_stdout)
+                try:
+                    parsed = json.loads(clean_stdout)
+                except json.JSONDecodeError:
+                    # Fallback: outermost braces scan (prose-wrapped raw JSON)
+                    start, end = clean_stdout.find("{"), clean_stdout.rfind("}")
+                    if start == -1 or end <= start:
+                        raise
+                    parsed = json.loads(clean_stdout[start:end + 1])
             except json.JSONDecodeError as e:
                 raise InvalidInputError(f"Failed to parse worker JSON output: {e}\nRaw output: {stdout[:200]}")
 

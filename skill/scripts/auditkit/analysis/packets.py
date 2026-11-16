@@ -30,20 +30,31 @@ from auditkit.contracts.errors import InvalidInputError
 
 
 # Per-role output contracts declared in the packet header (DSR-059).
+_WORKER_ENVELOPE_CONTRACT = (
+    "Emit one JSON object: {schema_version: \"1.0\", task_id, attempt_id, kind, "
+    "coverage: [{snapshot_id, unit_id, dimension (observed_read|signal_scanned|"
+    "context_supplied), ranges: [{path, line_start, line_end}]}], records: [...], "
+    "overflow: [...]}. coverage entries MUST carry snapshot_id, unit_id, "
+    "dimension and ranges with path/line_start/line_end."
+)
+
 ROLE_OUTPUT_CONTRACTS: Dict[str, str] = {
     "hunt": (
         "Emit Candidate / Frontier / SinkProbe records plus an overflow array; "
-        "never truncate silently; every record carries anchors and provenance."
+        "never truncate silently; every record carries anchors and provenance. "
+        + _WORKER_ENVELOPE_CONTRACT
     ),
     "verify": (
         "Emit a verdict object (confirmed | needs_validation | rejected | unverified) "
         "with evidence anchors and provenance; E2 requires a verification attempt id "
-        "distinct from the hunt attempt."
+        "distinct from the hunt attempt. "
+        + _WORKER_ENVELOPE_CONTRACT
     ),
     "triage": (
         "Emit sparse triage dispositions (candidate_created | dismissed | pending) "
         "plus an overflow array; strong signals left pending must never be counted "
-        "as reviewed."
+        "as reviewed. "
+        + _WORKER_ENVELOPE_CONTRACT
     ),
 }
 

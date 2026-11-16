@@ -35,7 +35,63 @@
     "coverage": {
       "type": "array",
       "items": {
-        "type": "object"
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "string"
+          },
+          "snapshot_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "dimension": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "ranges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "line_start": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "line_end": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "path",
+                "line_start",
+                "line_end"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "unit_id",
+          "dimension",
+          "ranges"
+        ],
+        "additionalProperties": false
       }
     },
     "records": {

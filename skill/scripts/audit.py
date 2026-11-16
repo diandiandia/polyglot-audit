@@ -461,7 +461,43 @@ def _build_worker_prompt(claim: dict, run_dir: str) -> str:
     return "\n".join(lines)
 
 
-def _normalize_worker_result(raw: object, claim: dict, kind: str) -> dict:
+
+def _derive_packet_coverage(run_dir: str, claim: dict) -> list:
+    """Deterministically derive ``context_supplied`` coverage from the packet.
+
+    Design principle 1 (记账交给程序) / SR-021: the packet is published by the
+    toolkit itself, so the paths and line ranges it supplied to the worker are
+    observed facts owned by the program -- never a model self-report. The
+    published packet is parsed for its ``<untrusted_code path=... lines=...>``
+    markers and each marker becomes one coverage range. Worker-claimed
+    coverage is not trusted for the denominator (SR-021: 自述不能替代观测).
+    """
+    import re as _re
+    packet_path = Path(run_dir) / "tasks" / claim["task_id"] / "packet.json"
+    ranges = []
+    try:
+        packet = json.loads(packet_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ranges
+    text = json.dumps(packet, ensure_ascii=False)
+    for m in _re.finditer(
+        r'<untrusted_code path="([^"]+)" lines="(\d+)-(\d+)"', text
+    ):
+        path, start, end = m.group(1), int(m.group(2)), int(m.group(3))
+        if ranges and ranges[-1]["path"] == path:
+            prev = ranges[-1]
+            if start <= prev["line_end"] + 1:
+                prev["line_end"] = max(prev["line_end"], end)
+                continue
+        ranges.append({
+            "path": path,
+            "line_start": start,
+            "line_end": end,
+        })
+    return ranges
+
+
+def _normalize_worker_result(raw: object, claim: dict, kind: str, run_dir: str) -> dict:
     """Bind a raw worker payload to the claim identity and worker_result schema.
 
     The claim is the authoritative identity: task_id/attempt_id/kind are
@@ -482,7 +518,7 @@ def _normalize_worker_result(raw: object, claim: dict, kind: str) -> dict:
         "attempt_id": claim["attempt_id"],
         "kind": kind,
     }
-    for field in ("coverage", "records", "overflow"):
+    for field in ("records", "overflow"):
         value = raw.get(field)
         if value is None:
             result[field] = []
@@ -495,6 +531,20 @@ def _normalize_worker_result(raw: object, claim: dict, kind: str) -> dict:
                 retryable=True,
                 details={"task_id": claim["task_id"], "field": field},
             )
+    # Coverage is program-owned accounting (design principle 1 / SR-021):
+    # derived deterministically from what the toolkit actually supplied in
+    # the packet. Model-claimed coverage entries are dropped honestly with
+    # a count on stderr -- never normalized into observed facts, and never
+    # a reason to burn a bounded retry on contract-shape non-compliance.
+    dropped = len(raw.get("coverage") or []) if isinstance(raw.get("coverage"), list) else 0
+    result["coverage"] = _derive_packet_coverage(run_dir, claim)
+    if dropped:
+        print(
+            f"[coverage] dropped {dropped} worker-claimed coverage entr"
+            "ies (untrusted self-report); context_supplied coverage "
+            "derived from the published packet instead",
+            file=sys.stderr,
+        )
     return result
 
 
@@ -526,7 +576,7 @@ def _make_execute_fn(app: AuditAppService, conn, run_dir: str, adapter) -> objec
         else:
             # Pre-envelope adapter: no per-task usage channel.
             raw, usage = outcome, None
-        return _normalize_worker_result(raw, claim, _task_kind(conn, claim)), usage
+        return _normalize_worker_result(raw, claim, _task_kind(conn, claim), run_dir), usage
     return execute_fn
 
 
@@ -628,6 +678,16 @@ def main() -> int:
         "--lease-seconds", type=int, default=300,
         help="claim lease duration per task; real LLM workers often need "
              "more than the 300s default (e.g. --lease-seconds 1800)",
+    )
+    p_run.add_argument(
+        "--task-timeout", type=int, default=None,
+        help="per-task worker timeout in seconds; real audit tasks routinely "
+             "exceed the 120s adapter default (e.g. --task-timeout 1200)",
+    )
+    p_run.add_argument(
+        "--max-tasks", type=int, default=None,
+        help="cap the number of tasks dispatched this session; remaining "
+             "queued units stay honest incomplete coverage (SR-019/DSR-066)",
     )
     p_run.add_argument("--json", action="store_true", default=True)
     _add_format_argument(p_run)
@@ -788,6 +848,10 @@ def main() -> int:
                 adapter = ClaudeDriverAdapter(claude_binary=binary)
             else:
                 adapter = CodexDriverAdapter(codex_binary=binary)
+            if args.task_timeout:
+                # Real audit tasks routinely exceed the 120s adapter default;
+                # without this the breaker trips and mass-quarantines tasks.
+                adapter.timeout_seconds = int(args.task_timeout)
             controller = ConcurrencyController(initial=args.concurrency)
             execute_fn = _make_execute_fn(app, conn, args.run_dir, adapter)
             summary = app.run_dispatch_loop(
@@ -797,6 +861,7 @@ def main() -> int:
                 adapter=adapter,
                 controller=controller,
                 lease_seconds=max(1, args.lease_seconds),
+                max_batches=args.max_tasks,
             )
             summary["stop_reason"] = _stop_reason_for_drain(conn, run_id, summary)
             queued = conn.execute(
@@ -1030,6 +1095,8 @@ def main() -> int:
         emit_failure(ae.code, ae.message, ae.retryable, ae.details, fmt=args.format)
         return ae.exit_code
     except Exception as ex:
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         emit_failure("INTERNAL_ERROR", str(ex), retryable=False, fmt=args.format)
         return 1
 

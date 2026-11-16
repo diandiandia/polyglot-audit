@@ -111,6 +111,7 @@ from auditkit.contracts.errors import (
     AuditError,
     CorruptRunError,
     GateFailedError,
+    HostFailureError,
     InvalidInputError,
     InvalidStateError,
     StaleAttemptError,
@@ -1472,6 +1473,31 @@ class AuditAppService:
         """
         if not candidates:
             return candidates
+        # SR-025 defense in depth: a candidate whose endpoints are not the
+        # contract shape (a bare string "source", etc.) must not reach the
+        # fingerprint math -- it is rejected with an explicit analysis_gap
+        # event (located, never silently dropped, never crashing the audit).
+        well_formed = []
+        for cand in candidates:
+            src_obj = cand.get("source")
+            sink_obj = cand.get("sink")
+            if isinstance(src_obj, dict) and isinstance(sink_obj, dict):
+                well_formed.append(cand)
+            else:
+                store.append_event(
+                    run_id,
+                    "analysis_gap",
+                    "service",
+                    {
+                        "reason": "candidate rejected: non-contract endpoint shape",
+                        "candidate_id": cand.get("candidate_id", ""),
+                        "source_type": type(src_obj).__name__,
+                        "sink_type": type(sink_obj).__name__,
+                    },
+                )
+        candidates = well_formed
+        if not candidates:
+            return candidates
         deduplicator = CandidateDeduplicator()
         prior = self._prior_verified_candidates(conn, run_id)
         new_ids = {c.get("candidate_id", "") for c in candidates}
@@ -2248,6 +2274,27 @@ class AuditAppService:
                 # delayed by this host failure.
                 sleep_fn(compute_backoff_delay(failures, backoff_base, backoff_max))
                 return ("failed", claim["task_id"])
+            except Exception as e:  # noqa: BLE001 -- per-task isolation
+                # SR-019/DSR-066: a single malformed worker output or an
+                # unexpected internal error must fail THAT task honestly and
+                # never take down the whole audit -- the remaining queued
+                # units stay visible as explicit incomplete coverage.
+                with db_lock:
+                    self.report_host_failure(
+                        run_dir,
+                        claim,
+                        HostFailureError(
+                            f"internal error while processing task: {type(e).__name__}: {e}",
+                            retryable=True,
+                        ),
+                        max_retries=max_retries,
+                    )
+                with ctrl_lock:
+                    ctrl.on_failure()
+                    counters["failed"] += 1
+                    failures = counters["failed"]
+                sleep_fn(compute_backoff_delay(failures, backoff_base, backoff_max))
+                return ("failed", claim["task_id"])
 
             # Usage envelope contract (P0 fix): the new execute_fn shape
             # returns (worker_result, usage_dict_or_None) — the usage captured
@@ -2280,6 +2327,29 @@ class AuditAppService:
             try:
                 with db_lock:
                     self.submit(run_dir, claim, result, digest, usage=usage)
+            except InvalidInputError as e:
+                # DSR-018 bounded format correction: a schema/semantic
+                # rejection keeps the task (not the attempt) eligible for a
+                # bounded retry with a fresh attempt and reservation; after
+                # max_retries the task is quarantined with an explicit
+                # coverage gap. The malformed output is never normalized
+                # into a success (SR-025).
+                with db_lock:
+                    self.report_host_failure(
+                        run_dir,
+                        claim,
+                        HostFailureError(
+                            f"worker output rejected by contract: {e.message}",
+                            retryable=True,
+                        ),
+                        max_retries=max_retries,
+                    )
+                with ctrl_lock:
+                    ctrl.on_failure()
+                    counters["failed"] += 1
+                    failures = counters["failed"]
+                sleep_fn(compute_backoff_delay(failures, backoff_base, backoff_max))
+                return ("failed", claim["task_id"])
             except StaleAttemptError as e:
                 # Real workers can exceed the claim lease (e.g. an LLM call
                 # longer than lease_seconds). DDS-06: the late result is
