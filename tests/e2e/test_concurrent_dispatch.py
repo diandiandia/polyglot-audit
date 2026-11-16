@@ -6,6 +6,10 @@ Covers the parallel dispatch model that the serial batch loop could not have:
   other work; even executions that outlive the lease never go stale.
 - Parallel execution: independent tasks run concurrently on the worker pool
   under the in-flight cap taken from the ConcurrencyController's CURRENT value.
+- Per-attempt usage attribution (P0 regression core): execute_fn returns the
+  (worker_result, usage) envelope — the usage captured by the SAME execution
+  — so two tasks overlapping through each other's completion tail each settle
+  their OWN usage row; the removed shared adapter slot swapped attribution.
 - AIMD mapping per task: success -> on_success (+1), failure -> on_failure
   (halve); retryable host failures requeue the task within adapter.max_retries.
 - Stop contract (CLI consumers): stop_reason is queue_drained /
@@ -42,11 +46,27 @@ SIGNAL_FILE_TEMPLATE = (
 )
 
 
-class _FakeAdapter:
-    """Minimal stand-in for a host driver adapter (last_usage interface)."""
+def _usage_for(claim, value=20, availability="exact"):
+    """Per-attempt usage dict, as the worker execution envelope returns it."""
+    return {
+        "schema_version": "1.0",
+        "attempt_id": claim["attempt_id"],
+        "dimension": "tokens",
+        "availability": availability,
+        "value": value,
+        "unit": "tokens",
+        "source": "host_cli_report",
+    }
 
-    def __init__(self, last_usage=None, max_retries=2, backoff_base=0.01, backoff_max=0.05):
-        self.last_usage = last_usage
+
+class _FakeAdapter:
+    """Minimal stand-in for a host driver adapter (dispatch attributes only).
+
+    Carries no usage state: under the per-task usage envelope the usage
+    travels with each execution's return value, never on the adapter.
+    """
+
+    def __init__(self, max_retries=2, backoff_base=0.01, backoff_max=0.05):
         self.max_retries = max_retries
         self.backoff_base = backoff_base
         self.backoff_max = backoff_max
@@ -153,9 +173,9 @@ class TestConcurrentDispatch(unittest.TestCase):
             time.sleep(0.4)
             with lock:
                 live["now"] -= 1
-            return self._worker_result(claim)
+            return self._worker_result(claim), _usage_for(claim)
 
-        adapter = _FakeAdapter({"total_tokens": 20, "availability": "exact"})
+        adapter = _FakeAdapter()
         t0 = time.monotonic()
         summary = self.app.run_dispatch_loop(
             run_id, run_dir, execute_fn, adapter=adapter, controller=controller
@@ -237,6 +257,83 @@ class TestConcurrentDispatch(unittest.TestCase):
         self.assertEqual(len(attempts), 5)
         self.assertTrue(all(a["status"] == "done" and a["generation"] == 1 for a in attempts))
         self.assertEqual(expired_events, 0)
+
+    # ------------------------------------------------------------------
+    # b2. P0 regression core: overlapping completions keep their own usage
+    # ------------------------------------------------------------------
+    def test_overlapping_completions_bind_usage_to_their_own_attempt(self):
+        """P0 usage-attribution regression: tasks whose executions overlap
+        through each other's completion tail must each settle the usage
+        captured for THEIR OWN task. The per-task (result, usage) envelope
+        replaced the shared adapter slot, which cross-attributed attempts
+        whenever two workers finished within each other's execute_fn tail;
+        the ledger must show each attempt carrying its own value."""
+        target = self._signal_target(2)
+        config = self._make_config(target)
+        prep = self._prepared(config)
+        run_id, run_dir = prep["run_id"], Path(config["run_dir"])
+
+        controller = ConcurrencyController(initial=4, maximum=4)
+        # Per-task usage values are asymmetric so any attribution swap is
+        # loud: the first-seen task settles 17, the second 27, the third 37.
+        expected: dict = {}
+        values_lock = threading.Lock()
+        hunts_arrived = threading.Barrier(2, timeout=10)
+        live = {"now": 0, "max": 0}
+        live_lock = threading.Lock()
+
+        def execute_fn(claim):
+            with live_lock:
+                live["now"] += 1
+                live["max"] = max(live["max"], live["now"])
+            with values_lock:
+                if claim["task_id"] not in expected:
+                    expected[claim["task_id"]] = 10 * (len(expected) + 1) + 7
+            kind = (claim.get("spec") or {}).get("task_kind") or "hunt"
+            if kind != "recon":
+                # Hold BOTH hunts open until they are executing at the same
+                # time, then release them together: their completions (and
+                # submit tails) interleave — the exact interleaving that used
+                # to swap usage through the shared adapter slot.
+                try:
+                    hunts_arrived.wait()
+                except threading.BrokenBarrierError:
+                    pass
+            with live_lock:
+                live["now"] -= 1
+            return self._worker_result(claim), _usage_for(
+                claim, value=expected[claim["task_id"]]
+            )
+
+        summary = self.app.run_dispatch_loop(
+            run_id, run_dir, execute_fn, adapter=_FakeAdapter(), controller=controller
+        )
+        self.assertEqual(summary["stop_reason"], "queue_drained")
+        self.assertEqual(summary["submitted"], 3)
+        self.assertEqual(summary["failed"], 0)
+        # The overlap actually happened (the test cannot pass vacuously).
+        self.assertGreaterEqual(live["max"], 2, f"tasks did not overlap: {live}")
+        self.assertEqual(len(expected), 3)
+        self.assertEqual(sorted(expected.values()), [17, 27, 37])
+
+        conn = self._db(run_dir)
+        try:
+            rows = conn.execute(
+                "SELECT u.attempt_id, u.value, u.availability, a.task_id "
+                "FROM usage_records u "
+                "JOIN attempts a ON a.attempt_id = u.attempt_id"
+            ).fetchall()
+        finally:
+            conn.close()
+        # One tokens row per attempt, bound to the attempt that executed the
+        # task, carrying THAT task's value — never a swapped one.
+        self.assertEqual(len(rows), 3)
+        by_task = {r["task_id"]: (r["value"], r["availability"]) for r in rows}
+        self.assertEqual(
+            by_task,
+            {task_id: (value, "exact") for task_id, value in expected.items()},
+            f"usage attribution swapped across overlapping attempts: {by_task}",
+        )
 
     # ------------------------------------------------------------------
     # c. AIMD: failures halve the cap, later successes raise it back
@@ -402,7 +499,7 @@ class TestConcurrentDispatch(unittest.TestCase):
         prep = self._prepared(config)
         summary = self.app.run_dispatch_loop(
             prep["run_id"], Path(config["run_dir"]), self._worker_result,
-            adapter=_FakeAdapter({"total_tokens": 7, "availability": "exact"}),
+            adapter=_FakeAdapter(),
         )
         # The dispatch summary embedded by `audit run` keeps its documented key
         # set; consumers read submitted/failed/budget_retained/concurrency/

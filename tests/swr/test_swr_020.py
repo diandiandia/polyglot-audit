@@ -352,39 +352,74 @@ class TestSWR020(unittest.TestCase):
         self.assertEqual(missing[0]["source"], "unavailable")
         self.assertIsNone(missing[0]["settled_value"])
 
-    # ------------------------------------------- build_usage 宿主接线三态
-    def test_build_usage_maps_host_blocks_to_exact_estimated_unavailable(self):
-        """宿主 usage block 接线：声明 exact 则 exact，数值但未声明则 estimated，
-        空/缺失 block 则 unavailable 且带原因；提交永远携带用量对象。"""
+    # ------------------------------------------- build_usage 用量信封三态
+    def test_build_usage_maps_worker_usage_envelope_to_exact_estimated_unavailable(self):
+        """usage 信封接线（P0）：build_usage 接受 worker 执行返回的 per-attempt
+        usage dict（usage.schema 语义），校验并回填 attempt_id/dimension/unit/
+        source 缺省；声明 exact 则 exact，数值但未声明则 estimated，空/缺失
+        block 则 unavailable 且带原因；提交永远携带用量对象。共享的
+        adapter.last_usage 槽已移除——旧签名传入 adapter 对象只会得到明确的
+        unavailable，绝不静默互换归属。"""
         self._prepare(with_tokens_budget=False)
 
-        class _Adapter:
-            def __init__(self, last_usage):
-                self.last_usage = last_usage
+        def envelope(availability="estimated", value=15, attempt_id="att-a", **extra):
+            payload = {
+                "schema_version": "1.0",
+                "dimension": "tokens",
+                "availability": availability,
+                "unit": "tokens",
+                "source": "ClaudeDriverAdapter",
+            }
+            if value is not None:
+                payload["value"] = value
+            if attempt_id:
+                payload["attempt_id"] = attempt_id
+            payload.update(extra)
+            return payload
 
-        declared = self.app.build_usage(_Adapter({"input_tokens": 10, "output_tokens": 5,
-                                                  "availability": "exact"}), "att-a")
+        declared = self.app.build_usage(envelope(availability="exact"), "att-a")
         self.assertEqual(declared["availability"], "exact")
         self.assertEqual(declared["value"], 15)
         self.assertEqual(declared["dimension"], "tokens")
+        self.assertEqual(declared["source"], "ClaudeDriverAdapter")
 
-        undeclared = self.app.build_usage(_Adapter({"input_tokens": 10, "output_tokens": 5}), "att-b")
+        undeclared = self.app.build_usage({"input_tokens": 10, "output_tokens": 5}, "att-b")
         self.assertEqual(undeclared["availability"], "estimated")
         self.assertEqual(undeclared["value"], 15)
+        self.assertEqual(undeclared["unit"], "tokens")
 
-        empty = self.app.build_usage(_Adapter({}), "att-c")
+        # The submitting claim's attempt_id ALWAYS wins: whatever the worker
+        # dict carried is overwritten (regression guard against cross-attribution).
+        foreign = self.app.build_usage(envelope(attempt_id="att-foreign"), "att-c")
+        self.assertEqual(foreign["attempt_id"], "att-c")
+
+        empty = self.app.build_usage({}, "att-d")
         self.assertEqual(empty["availability"], "unavailable")
         self.assertNotIn("value", empty)
         self.assertTrue(empty["reason"])
 
-        nothing = self.app.build_usage(_Adapter(None), "att-d")
+        nothing = self.app.build_usage(None, "att-e")
         self.assertEqual(nothing["availability"], "unavailable")
         self.assertNotIn("value", nothing)
+
+        # Legacy call shape (adapter object as the first argument): the shared
+        # last_usage slot is no longer read anywhere — an explicit unavailable
+        # record is produced, never a silently swapped one.
+        class _Adapter:
+            def __init__(self, last_usage):
+                self.last_usage = last_usage
+
+        legacy = self.app.build_usage(
+            _Adapter({"input_tokens": 10, "output_tokens": 5, "availability": "exact"}),
+            "att-f",
+        )
+        self.assertEqual(legacy["availability"], "unavailable")
+        self.assertNotIn("value", legacy)
 
         # parse_usage rejects zero-filling shortcuts: unavailable must not
         # carry a value at all.
         with self.assertRaises(InvalidInputError):
-            parse_usage(self._usage("att-e", "unavailable", value=0))
+            parse_usage(self._usage("att-g", "unavailable", value=0))
 
     # --------------------------------------------- COST.md 与 usage 一致
     def test_cost_md_summary_matches_usage_records_and_ledger(self):

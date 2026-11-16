@@ -64,6 +64,8 @@ class TestSWR008(unittest.TestCase):
             hunt_attempt_id="att-hunt-1",
             impact=4,
             exploitability=4,
+            impact_why="Attacker-controlled body is unpickled into a restored object",
+            exploitability_why="Upload endpoint reachable without authentication",
         )
         self.assertEqual(finding["verdict"], "confirmed")
         self.assertEqual(finding["evidence_level"], "E2")
@@ -83,6 +85,8 @@ class TestSWR008(unittest.TestCase):
                 broken, "confirmed", "vt-2",
                 verify_attempt_id="att-verify-2", hunt_attempt_id="att-hunt-1",
                 impact=4, exploitability=4,
+                impact_why="Attacker-controlled body is unpickled into a restored object",
+                exploitability_why="Upload endpoint reachable without authentication",
             )
         self.assertIn("source", str(ctx.exception))
 
@@ -93,6 +97,8 @@ class TestSWR008(unittest.TestCase):
                 no_sink, "confirmed", "vt-3",
                 verify_attempt_id="att-verify-3", hunt_attempt_id="att-hunt-1",
                 impact=4, exploitability=4,
+                impact_why="Attacker-controlled body is unpickled into a restored object",
+                exploitability_why="Upload endpoint reachable without authentication",
             )
 
         # A confirmed verdict whose stored trace does not end at a sink is
@@ -115,6 +121,8 @@ class TestSWR008(unittest.TestCase):
                 _anchored_candidate(), "confirmed", "vt-x",
                 verify_attempt_id="att-x", hunt_attempt_id="att-h",
                 impact=4, exploitability=4,
+                impact_why="Attacker-controlled body is unpickled into a restored object",
+                exploitability_why="Upload endpoint reachable without authentication",
             )["rating"],
             "provenance": {"hunt_tasks": [], "verify_tasks": ["vt-x"]},
         }
@@ -210,6 +218,8 @@ class TestSWR008(unittest.TestCase):
                 hunt_attempt_id="att-hunt-1",
                 # No verify_attempt_id supplied: no fresh verification attempt.
                 impact=4, exploitability=4,
+                impact_why="Attacker-controlled body is unpickled into a restored object",
+                exploitability_why="Upload endpoint reachable without authentication",
             )
         self.assertIn("attempt", str(ctx.exception))
 
@@ -220,6 +230,8 @@ class TestSWR008(unittest.TestCase):
                 verify_attempt_id="att-hunt-1",
                 hunt_attempt_id="att-hunt-1",
                 impact=4, exploitability=4,
+                impact_why="Attacker-controlled body is unpickled into a restored object",
+                exploitability_why="Upload endpoint reachable without authentication",
             )
         self.assertIn("new verification attempt", str(ctx2.exception))
 
@@ -238,6 +250,8 @@ class TestSWR008(unittest.TestCase):
             cand, "confirmed", "vt-a",
             verify_attempt_id="att-v", hunt_attempt_id="att-hunt-1",
             impact=4, exploitability=4,
+            impact_why="Attacker-controlled body is unpickled into a restored object",
+            exploitability_why="Upload endpoint reachable without authentication",
         )
         pending = self.verifier.create_finding_from_candidate(
             cand, "needs_validation", "vt-b", impact=2, exploitability=2,
@@ -258,6 +272,40 @@ class TestSWR008(unittest.TestCase):
         self.assertIn("blockers", pending)
         self.assertIn("counter_evidence", rejected)
         self.assertIn("unverified_reason", unverified)
+
+    # -- confirmed without mandatory rating reasons degrades honestly --------
+    def test_confirmed_without_factor_reasons_lands_on_needs_validation(self):
+        """SWR-011/DSR-028 (缺失因子或理由拒绝定级): a confirmed claim without
+        a non-empty impact_why / exploitability_why is never graded with the
+        old canned justifications ("Demonstrated sensitive sink reachability"
+        / "Attacker input unchecked"). It degrades to needs_validation with
+        the concrete gap recorded in blockers (SR-008: 缺部署事实转
+        needs_validation — an ungradeable claim is the same honest path).
+        """
+        confirmed = self.verifier.create_finding_from_candidate(
+            _anchored_candidate(), "confirmed", "vt-no-reasons",
+            verify_attempt_id="att-verify-9", hunt_attempt_id="att-hunt-1",
+            impact=4, exploitability=4,
+            # No impact_why / exploitability_why observed.
+        )
+        self.assertEqual(confirmed["verdict"], "needs_validation")
+        self.assertEqual(confirmed["evidence_level"], "E1")
+        self.assertIn(
+            "missing rating factor reason: impact_why", confirmed["blockers"]
+        )
+        self.assertIn(
+            "missing rating factor reason: exploitability_why",
+            confirmed["blockers"],
+        )
+        # No fabricated justification anywhere in the rating.
+        self.assertNotIn("factor_reasons", confirmed["rating"])
+        # The demotion is auditable, not silent.
+        self.assertEqual(confirmed["demoted_from"]["claimed_verdict"], "confirmed")
+        # The observed trace stays attached as pending-item evidence.
+        self.assertEqual(confirmed["steps"], _anchored_candidate()["steps"])
+        # And the demoted finding satisfies the finding contract.
+        from auditkit.contracts.semantic_validator import SemanticValidator
+        SemanticValidator().validate_finding(confirmed)
 
 
 if __name__ == "__main__":

@@ -44,7 +44,9 @@ class TestE2AttemptGate(unittest.TestCase):
         verifier = Verifier(enforce_attempt_gate=True)
         with self.assertRaises(InvalidInputError):
             verifier.create_finding_from_candidate(
-                _candidate(), "confirmed", "t-v1", impact=4, exploitability=4
+                _candidate(), "confirmed", "t-v1", impact=4, exploitability=4,
+                impact_why="Unauthenticated query execution on attacker data",
+                exploitability_why="HTTP parameter reaches the sink unchecked",
             )
 
     def test_confirmed_rejects_reused_hunt_attempt(self):
@@ -56,6 +58,8 @@ class TestE2AttemptGate(unittest.TestCase):
                 "t-v1",
                 impact=4,
                 exploitability=4,
+                impact_why="Unauthenticated query execution on attacker data",
+                exploitability_why="HTTP parameter reaches the sink unchecked",
                 verify_attempt_id="attempt-hunt-1",
             )
 
@@ -67,6 +71,8 @@ class TestE2AttemptGate(unittest.TestCase):
             "t-v1",
             impact=4,
             exploitability=4,
+            impact_why="Unauthenticated query execution on attacker data",
+            exploitability_why="HTTP parameter reaches the sink unchecked",
             verify_attempt_id="attempt-verify-1",
         )
         self.assertEqual(finding["verdict"], "confirmed")
@@ -80,7 +86,9 @@ class TestE2AttemptGate(unittest.TestCase):
         until app/service.py wiring lands (documented TODO)."""
         verifier = Verifier()
         finding = verifier.create_finding_from_candidate(
-            _candidate(), "confirmed", "t-v1", impact=4, exploitability=4
+            _candidate(), "confirmed", "t-v1", impact=4, exploitability=4,
+            impact_why="Unauthenticated query execution on attacker data",
+            exploitability_why="HTTP parameter reaches the sink unchecked",
         )
         self.assertEqual(finding["verdict"], "confirmed")
 
@@ -93,7 +101,10 @@ class TestSecondOpinionGate(unittest.TestCase):
         if severity != "critical":
             kwargs = dict(impact=1, exploitability=1)
         return verifier.create_finding_from_candidate(
-            cand, "confirmed", "t-v1", verify_attempt_id="att-v1", **kwargs
+            cand, "confirmed", "t-v1", verify_attempt_id="att-v1",
+            impact_why="observed impact on the studied path",
+            exploitability_why="observed reachability without a guard",
+            **kwargs
         )
 
     def test_only_high_or_critical_accepted(self):
@@ -138,6 +149,100 @@ class TestSecondOpinionGate(unittest.TestCase):
         self.assertEqual(so["secondary"]["anchor"], {"path": "db.py", "line": 25})
 
 
+class TestFactorReasonDemotion(unittest.TestCase):
+    """SWR-011 / DSR-028: 缺失因子或理由拒绝定级.
+
+    The canned factor-reason fallbacks ("Demonstrated sensitive sink
+    reachability" / "Attacker input unchecked") fabricated the observed
+    justification for a severity grade. A confirmed claim without a
+    non-empty impact_why / exploitability_why now degrades honestly to
+    needs_validation with the concrete gap in blockers — never a canned
+    grade, and never a crash that loses the finding.
+    """
+
+    def test_confirmed_without_impact_why_demotes_to_needs_validation(self):
+        verifier = Verifier(enforce_attempt_gate=True)
+        finding = verifier.create_finding_from_candidate(
+            _candidate(), "confirmed", "t-v1", impact=4, exploitability=4,
+            exploitability_why="HTTP parameter reaches the sink unchecked",
+            verify_attempt_id="attempt-verify-1",
+        )
+        self.assertEqual(finding["verdict"], "needs_validation")
+        self.assertEqual(finding["evidence_level"], "E1")
+        self.assertIn(
+            "missing rating factor reason: impact_why", finding["blockers"]
+        )
+        self.assertNotIn("factor_reasons", finding["rating"])
+        self.assertNotIn("calculated_urgency", finding["rating"])
+        self.assertNotIn("final_urgency", finding["rating"])
+        self.assertEqual(finding["demoted_from"]["claimed_verdict"], "confirmed")
+        # The observed trace is carried into the pending item, not fabricated.
+        self.assertEqual(finding["steps"], _candidate()["steps"])
+        # A demoted pending item must satisfy the finding contract.
+        from auditkit.contracts.semantic_validator import SemanticValidator
+        SemanticValidator().validate_finding(finding)
+
+    def test_confirmed_without_exploitability_why_demotes(self):
+        verifier = Verifier()
+        finding = verifier.create_finding_from_candidate(
+            _candidate(), "confirmed", "t-v1", impact=3, exploitability=3,
+            impact_why="Session data overwritten on the host",
+        )
+        self.assertEqual(finding["verdict"], "needs_validation")
+        self.assertIn(
+            "missing rating factor reason: exploitability_why", finding["blockers"]
+        )
+
+    def test_confirmed_without_steps_demotes_with_trace_blocker(self):
+        """SWR-009: E2 requires per-hop evidence; no canned trace is built."""
+        verifier = Verifier()
+        cand = _candidate()
+        del cand["steps"]
+        finding = verifier.create_finding_from_candidate(
+            cand, "confirmed", "t-v1", impact=3, exploitability=3,
+            impact_why="observed impact", exploitability_why="observed reach",
+        )
+        self.assertEqual(finding["verdict"], "needs_validation")
+        self.assertTrue(
+            any("per-hop trace steps" in b for b in finding["blockers"])
+        )
+
+    def test_blank_reasons_are_treated_as_missing(self):
+        verifier = Verifier()
+        finding = verifier.create_finding_from_candidate(
+            _candidate(), "confirmed", "t-v1", impact=2, exploitability=2,
+            impact_why="   ", exploitability_why="",
+        )
+        self.assertEqual(finding["verdict"], "needs_validation")
+        self.assertIn("missing rating factor reason: impact_why", finding["blockers"])
+        self.assertIn("missing rating factor reason: exploitability_why", finding["blockers"])
+
+    def test_declared_adjustment_on_demotion_is_recorded_not_silently_dropped(self):
+        verifier = Verifier()
+        finding = verifier.create_finding_from_candidate(
+            _candidate(), "confirmed", "t-v1", impact=3, exploitability=3,
+            adjustment={"operator": "op", "reason": "asset criticality", "direction": "up"},
+        )
+        self.assertEqual(finding["verdict"], "needs_validation")
+        self.assertTrue(
+            any("adjustment not applied" in b for b in finding["blockers"]),
+            "a declared operator adjustment must be recorded as unapplied, "
+            "never silently ignored (SR-011)",
+        )
+        self.assertNotIn("calculated_urgency", finding["rating"])
+
+    def test_attempt_gate_is_checked_before_demotion(self):
+        """Missing factor reasons can never bypass the E2 new-attempt gate."""
+        verifier = Verifier(enforce_attempt_gate=True)
+        with self.assertRaises(InvalidInputError) as ctx:
+            verifier.create_finding_from_candidate(
+                _candidate(), "confirmed", "t-v1", impact=4, exploitability=4,
+                hunt_attempt_id="attempt-hunt-1",
+                # no verify_attempt_id AND no factor reasons
+            )
+        self.assertIn("attempt", str(ctx.exception))
+
+
 class TestBoundedVariantSearch(unittest.TestCase):
 
     SNAPSHOT = {
@@ -157,6 +262,8 @@ class TestBoundedVariantSearch(unittest.TestCase):
             "t-v1",
             impact=4,
             exploitability=4,
+            impact_why="Unauthenticated query execution on attacker data",
+            exploitability_why="HTTP parameter reaches the sink unchecked",
             verify_attempt_id="att-v1",
         )
 
@@ -201,6 +308,8 @@ class TestBoundedVariantSearch(unittest.TestCase):
             "t-v1",
             impact=4,
             exploitability=4,
+            impact_why="Unauthenticated query execution on attacker data",
+            exploitability_why="HTTP parameter reaches the sink unchecked",
             verify_attempt_id="att-v1",
             snapshot_files=self.SNAPSHOT,
         )
@@ -213,7 +322,9 @@ class TestBoundedVariantSearch(unittest.TestCase):
     def test_without_snapshot_variants_stay_empty(self):
         verifier = Verifier()
         finding = verifier.create_finding_from_candidate(
-            _candidate(), "confirmed", "t-v1", impact=4, exploitability=4
+            _candidate(), "confirmed", "t-v1", impact=4, exploitability=4,
+            impact_why="Unauthenticated query execution on attacker data",
+            exploitability_why="HTTP parameter reaches the sink unchecked",
         )
         self.assertEqual(finding["variants"], [])
 

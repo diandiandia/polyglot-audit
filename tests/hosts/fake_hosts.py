@@ -36,12 +36,17 @@ if [ "@@SLEEP_SECONDS@@" -gt 0 ] 2>/dev/null; then
   sleep @@SLEEP_SECONDS@@
 fi
 @@COUNTER_BLOCK@@
-if [ -n "@@HEADLESS_STDERR@@" ]; then
-  echo '@@HEADLESS_STDERR@@' >&2
-fi
-if [ -n "@@HEADLESS_STDOUT@@" ]; then
-  echo '@@HEADLESS_STDOUT@@'
-fi
+# Quote-safe emission (case, not [ -n "..." ]): payloads carry JSON with
+# double quotes, which broke the old `[ -n "@@..." ]` guard and silently
+# swallowed stdout for some payload shapes.
+case '@@HEADLESS_STDERR@@' in
+  '') ;;
+  *) printf '%s\n' '@@HEADLESS_STDERR@@' >&2 ;;
+esac
+case '@@HEADLESS_STDOUT@@' in
+  '') ;;
+  *) printf '%s\n' '@@HEADLESS_STDOUT@@' ;;
+esac
 exit @@HEADLESS_EXIT@@
 """
 

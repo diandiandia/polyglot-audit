@@ -39,11 +39,27 @@ SKILL_DIR = REPO_ROOT / "skill"
 DANGER_SOURCE = "import os\n\n\ndef handler(user_input):\n    os.system(user_input)\n"
 
 
-class _FakeAdapter:
-    """Minimal host driver adapter stand-in (last_usage interface only)."""
+def _attempt_usage(claim, value=20):
+    """Per-attempt usage dict, as the worker execution envelope returns it."""
+    return {
+        "schema_version": "1.0",
+        "attempt_id": claim["attempt_id"],
+        "dimension": "tokens",
+        "availability": "exact",
+        "value": value,
+        "unit": "tokens",
+        "source": "host_cli_report",
+    }
 
-    def __init__(self, last_usage=None):
-        self.last_usage = last_usage
+
+class _FakeAdapter:
+    """Minimal host driver adapter stand-in (dispatch attributes only).
+
+    Carries no usage state: under the per-task usage envelope the usage
+    travels with each execution's return value, never on the adapter.
+    """
+
+    def __init__(self):
         self.max_retries = 2
         self.backoff_base = 0.01
         self.backoff_max = 0.05
@@ -179,12 +195,17 @@ class TestSWR022(unittest.TestCase):
         facts = {}
         for mode in ("driver", "in_session"):
             run_id, run_dir = self._prepare(mode)
-            adapter = _FakeAdapter({"total_tokens": 20, "availability": "exact"})
+            adapter = _FakeAdapter()
 
             if mode == "driver":
+                def execute_fn(claim):
+                    # Per-task usage envelope: the usage dict is returned by
+                    # the same call that produced the result.
+                    return self._worker_result(claim), _attempt_usage(claim)
+
                 summary = self.app.run_dispatch_loop(
                     run_id, run_dir,
-                    lambda claim: self._worker_result(claim),
+                    execute_fn,
                     adapter=adapter,
                     controller=ConcurrencyController(initial=2, maximum=2),
                 )
@@ -199,7 +220,9 @@ class TestSWR022(unittest.TestCase):
                     for claim in claims:
                         session.start_task(claim)
                         result = self._worker_result(claim)
-                        usage = self.app.build_usage(adapter, claim["attempt_id"])
+                        usage = self.app.build_usage(
+                            _attempt_usage(claim), claim["attempt_id"]
+                        )
                         session.submit_task(claim, result, sha256_text(
                             json.dumps(result, sort_keys=True, ensure_ascii=False)
                         ), usage=usage)
@@ -298,7 +321,7 @@ class TestSWR022(unittest.TestCase):
         """driver 派发 1 个任务后暂停：两条路径都如实拒绝新派发（stop sequence），
         resume+activate 后 in-session 接续完成，终态 complete，账本无重复结果。"""
         run_id, run_dir = self._prepare("switch")
-        adapter = _FakeAdapter({"total_tokens": 20, "availability": "exact"})
+        adapter = _FakeAdapter()
 
         # Driver path: dispatch exactly one task, then stop on the caller cap.
         summary = self.app.run_dispatch_loop(
@@ -352,7 +375,7 @@ class TestSWR022(unittest.TestCase):
             for claim in claims:
                 session.start_task(claim)
                 result = self._worker_result(claim)
-                usage = self.app.build_usage(adapter, claim["attempt_id"])
+                usage = self.app.build_usage(_attempt_usage(claim), claim["attempt_id"])
                 session.submit_task(claim, result, sha256_text(
                     json.dumps(result, sort_keys=True, ensure_ascii=False)
                 ), usage=usage)

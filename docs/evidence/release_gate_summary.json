@@ -1,0 +1,417 @@
+{
+  "schema_version": "1.0",
+  "tool": "tools/generate_release_evidence.py",
+  "requirement": "DSR-051 / SR-029 / SWR-026",
+  "run_id": "ev-8683cc8e",
+  "generated_at": "2026-11-16T15:05:58Z",
+  "environment": {
+    "python_version": "3.14.4",
+    "platform": "Linux-7.0.12-linuxkit-aarch64-with-glibc2.43",
+    "machine": "aarch64",
+    "processor": "unknown",
+    "cpu_count": 18,
+    "hostname": "73ebd4c7787b",
+    "memory_total_bytes": 17007304704
+  },
+  "verdict": "release_blocked",
+  "release_allowed": false,
+  "release_gate": {
+    "schema_version": "1.0",
+    "verdict": "release_blocked",
+    "release_allowed": false,
+    "gates": [
+      {
+        "schema_version": "1.0",
+        "gate_id": "GATE-01",
+        "status": "fail",
+        "checks": [
+          {
+            "check_id": "GATE-01-b",
+            "name": "Real-host capability verification",
+            "status": "fail",
+            "message": "必需能力未在真实宿主验证（unknown 不标支持）: claude_cli.execution_isolation=unknown, claude_cli.filesystem_isolation=unknown, claude_cli.hard_token_budget=unknown, claude_cli.network_isolation=unknown, claude_cli.structured_output=unknown, codex_cli.config_loading=unknown, codex_cli.execution_isolation=unknown, codex_cli.filesystem_isolation=unknown, codex_cli.hard_token_budget=unknown, codex_cli.headless_cli=unknown, codex_cli.network_isolation=unknown, codex_cli.structured_output=unknown, in_session.mcp_os_sandbox=not_enforced, in_session.mcp_stdio_transport=unknown, in_session.sequential_session_fallback=unknown, in_session.subagent_delegation=unknown, python_core.filesystem_isolation=not_enforced, python_core.network_isolation=not_enforced"
+          }
+        ],
+        "revision": 0,
+        "reason": "存在 unknown/unverified 必需能力"
+      },
+      {
+        "schema_version": "1.0",
+        "gate_id": "GATE-02",
+        "status": "pass",
+        "checks": [
+          {
+            "check_id": "GATE-02-a",
+            "name": "用并发/崩溃/迟到提交及快照竞态夹具验证一致性，给出文件系统适用范围。",
+            "status": "pass",
+            "message": "类别 fault_injection: tests=7 fail=0 error=0 skipped=0 耗时 0.1s"
+          }
+        ],
+        "revision": 0,
+        "reason": "类别 fault_injection: tests=7 fail=0 error=0 skipped=0 耗时 0.1s"
+      },
+      {
+        "schema_version": "1.0",
+        "gate_id": "GATE-03",
+        "status": "fail",
+        "checks": [
+          {
+            "check_id": "GATE-03-a",
+            "name": "以宿主证据证明 token/费用最坏上限和用量完整性，或只发布明确的软预算/任务预算模式。",
+            "status": "fail",
+            "message": "GATE-03: 未提供证据"
+          }
+        ],
+        "revision": 0,
+        "reason": "GATE-03: 未提供证据"
+      },
+      {
+        "schema_version": "1.0",
+        "gate_id": "GATE-04",
+        "status": "fail",
+        "checks": [
+          {
+            "check_id": "GATE-04-a",
+            "name": "逐语言评审 150 类的公开依据、适用性和正反例，实际测量跨单元与留出语料。",
+            "status": "fail",
+            "message": "已自动化：信号级留出语料接线评测（分母=300, 检出 tp=150, 漏报 fn=0, 误报 fp=37, 未决 pending=0, unknown 类别=0/150）。未自动化（保持 unknown）：LLM 在线评测（llm_results=unknown）、独立留出集、150 类逐语言专家评审。"
+          }
+        ],
+        "revision": 0,
+        "reason": "已自动化：信号级留出语料接线评测（分母=300, 检出 tp=150, 漏报 fn=0, 误报 fp=37, 未决 pending=0, unknown 类别=0/150）。未自动化（保持 unknown）：LLM 在线评测（llm_results=unknown）、独立留出集、150 类逐语言专家评审。"
+      },
+      {
+        "schema_version": "1.0",
+        "gate_id": "GATE-05",
+        "status": "pass",
+        "checks": [
+          {
+            "check_id": "GATE-05-a",
+            "name": "在规定机器、文件分布、预算及统计口径下测量性能、成本与覆盖；公布缺失数据。",
+            "status": "pass",
+            "message": "类别 scale: tests=19 fail=0 error=0 skipped=1 耗时 5.3s（1 项跳过，单列不计入通过分母）"
+          }
+        ],
+        "revision": 0,
+        "reason": "类别 scale: tests=19 fail=0 error=0 skipped=1 耗时 5.3s（1 项跳过，单列不计入通过分母）"
+      },
+      {
+        "schema_version": "1.0",
+        "gate_id": "GATE-06",
+        "status": "fail",
+        "checks": [
+          {
+            "check_id": "GATE-06-a",
+            "name": "明确导出字段、敏感性、人工审核责任和失败关闭行为；以合成反例测试。",
+            "status": "fail",
+            "message": "GATE-06: 未提供证据"
+          }
+        ],
+        "revision": 0,
+        "reason": "GATE-06: 未提供证据"
+      },
+      {
+        "schema_version": "1.0",
+        "gate_id": "GATE-07",
+        "status": "pass",
+        "checks": [
+          {
+            "check_id": "GATE-07-a",
+            "name": "Python 下限 / Schema 子集 / CLI+MCP 接口版本",
+            "status": "pass",
+            "message": "类别 deterministic: tests=807 fail=0 error=0 skipped=0 耗时 18.9s"
+          },
+          {
+            "check_id": "GATE-07-b",
+            "name": "Compatibility test suite",
+            "status": "pass",
+            "message": "确定性套件代理口径（contracts/snapshot/ledger/analysis/knowledge/reporting/security/holdout-wiring/e2e/swr/CLI 确定性/宿主 mock）: 类别 deterministic: tests=807 fail=0 error=0 skipped=0 耗时 18.9s；stdlib-only 环境检查随 GATE-05 类别运行。"
+          }
+        ],
+        "revision": 0,
+        "reason": "类别 deterministic: tests=807 fail=0 error=0 skipped=0 耗时 18.9s"
+      }
+    ],
+    "blocking": [
+      "GATE-01: fail — 存在 unknown/unverified 必需能力 — 必需能力未在真实宿主验证（unknown 不标支持）: claude_cli.execution_isolation=unknown, claude_cli.filesystem_isolation=unknown, claude_cli.hard_token_budget=unknown, claude_cli.network_isolation=unknown, claude_cli.structured_output=unknown, codex_cli.config_loading=unknown, codex_cli.execution_isolation=unknown, codex_cli.filesystem_isolation=unknown, codex_cli.hard_token_budget=unknown, codex_cli.headless_cli=unknown, codex_cli.network_isolation=unknown, codex_cli.structured_output=unknown, in_session.mcp_os_sandbox=not_enforced, in_session.mcp_stdio_transport=unknown, in_session.sequential_session_fallback=unknown, in_session.subagent_delegation=unknown, python_core.filesystem_isolation=not_enforced, python_core.network_isolation=not_enforced",
+      "GATE-03: fail — GATE-03: 未提供证据 — GATE-03: 未提供证据",
+      "GATE-04: fail — 已自动化：信号级留出语料接线评测（分母=300, 检出 tp=150, 漏报 fn=0, 误报 fp=37, 未决 pending=0, unknown 类别=0/150）。未自动化（保持 unknown）：LLM 在线评测（llm_results=unknown）、独立留出集、150 类逐语言专家评审。 — 已自动化：信号级留出语料接线评测（分母=300, 检出 tp=150, 漏报 fn=0, 误报 fp=37, 未决 pending=0, unknown 类别=0/150）。未自动化（保持 unknown）：LLM 在线评测（llm_results=unknown）、独立留出集、150 类逐语言专家评审。",
+      "GATE-06: fail — GATE-06: 未提供证据 — GATE-06: 未提供证据"
+    ],
+    "conclusion": "发布被阻止：存在 fail/unknown 门禁或未验证（unknown）必需能力；相应组合不标受支持。"
+  },
+  "orchestrator": {
+    "exit_code": 0,
+    "total": {
+      "tests": 846,
+      "fail": 0,
+      "error": 0,
+      "skipped": 2,
+      "missing_suites": 0,
+      "duration_seconds": 363.6
+    },
+    "result_line": "NO FAILURES OR ERRORS (missing/skipped categories remain honestly unclaimed)",
+    "suites": [
+      {
+        "category": "deterministic",
+        "suite": "Contracts & Schemas",
+        "tests": 28,
+        "fail": 0,
+        "error": 0,
+        "skipped": 0,
+        "duration_seconds": 0.0,
+        "status": "PASS"
+      },
+      {
+        "category": "deterministic",
+        "suite": "Snapshot & Paths",
+        "tests": 69,
+        "fail": 0,
+        "error": 0,
+        "skipped": 0,
+        "duration_seconds": 0.1,
+        "status": "PASS"
+      },
+      {
+        "category": "deterministic",
+        "suite": "Ledger, Tasks, & Budget",
+        "tests": 30,
+        "fail": 0,
+        "error": 0,
+        "skipped": 0,
+        "duration_seconds": 0.6,
+        "status": "PASS"
+      },
+      {
+        "category": "deterministic",
+        "suite": "Analysis, Verifier, & Rating",
+        "tests": 72,
+        "fail": 0,
+        "error": 0,
+        "skipped": 0,
+        "duration_seconds": 0.0,
+        "status": "PASS"
+      },
+      {
+        "category": "deterministic",
+        "suite": "Knowledge Catalog & 150 Cards",
+        "tests": 21,
+        "fail": 0,
+        "error": 0,
+        "skipped": 0,
+        "duration_seconds": 0.0,
+        "status": "PASS"
+      },
+      {
+        "category": "deterministic",
+        "suite": "Reporting & Coverage",
+        "tests": 35,
+        "fail": 0,
+        "error": 0,
+        "skipped": 0,
+        "duration_seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "category": "deterministic",
+        "suite": "Security & Adversarial",
+        "tests": 8,
+        "fail": 0,
+        "error": 0,
+        "skipped": 0,
+        "duration_seconds": 0.3,
+        "status": "PASS"
+      },
+      {
+        "category": "deterministic",
+        "suite": "Holdout Wiring (synthetic corpus)",
+        "tests": 12,
+        "fail": 0,
+        "error": 0,
+        "skipped": 0,
+        "duration_seconds": 0.0,
+        "status": "PASS"
+      },
+      {
+        "category": "deterministic",
+        "suite": "End-to-End Synthetics",
+        "tests": 65,
+        "fail": 0,
+        "error": 0,
+        "skipped": 0,
+        "duration_seconds": 3.8,
+        "status": "PASS"
+      },
+      {
+        "category": "deterministic",
+        "suite": "SWR Acceptance (per-SWR tests/swr)",
+        "tests": 317,
+        "fail": 0,
+        "error": 0,
+        "skipped": 0,
+        "duration_seconds": 2.0,
+        "status": "PASS"
+      },
+      {
+        "category": "deterministic",
+        "suite": "CLI Determinism",
+        "tests": 59,
+        "fail": 0,
+        "error": 0,
+        "skipped": 0,
+        "duration_seconds": 6.6,
+        "status": "PASS"
+      },
+      {
+        "category": "deterministic",
+        "suite": "Host Adapters (mock)",
+        "tests": 91,
+        "fail": 0,
+        "error": 0,
+        "skipped": 0,
+        "duration_seconds": 5.1,
+        "status": "PASS"
+      },
+      {
+        "category": "real_cli",
+        "suite": "Real Host CLI",
+        "tests": 7,
+        "fail": 0,
+        "error": 0,
+        "skipped": 1,
+        "duration_seconds": 246.5,
+        "status": "PASS"
+      },
+      {
+        "category": "model_eval",
+        "suite": "Model-in-the-loop Evaluation",
+        "tests": 6,
+        "fail": 0,
+        "error": 0,
+        "skipped": 0,
+        "duration_seconds": 92.7,
+        "status": "PASS"
+      },
+      {
+        "category": "fault_injection",
+        "suite": "Fault Injection",
+        "tests": 7,
+        "fail": 0,
+        "error": 0,
+        "skipped": 0,
+        "duration_seconds": 0.1,
+        "status": "PASS"
+      },
+      {
+        "category": "scale",
+        "suite": "Performance & Scale",
+        "tests": 19,
+        "fail": 0,
+        "error": 0,
+        "skipped": 1,
+        "duration_seconds": 5.3,
+        "status": "PASS"
+      }
+    ]
+  },
+  "evidence_files": {
+    "GATE-01": "/root/polyglot-audit/docs/evidence/gate01-summary.json",
+    "GATE-02": "/root/polyglot-audit/docs/evidence/gate02-summary.json",
+    "GATE-05": "/root/polyglot-audit/docs/evidence/gate05-summary.json",
+    "GATE-07": "/root/polyglot-audit/docs/evidence/gate07-summary.json",
+    "GATE-04": "/root/polyglot-audit/docs/evidence/gate04-holdout.json",
+    "GATE-01-isolation": "/root/polyglot-audit/docs/evidence/gate01-isolation.json",
+    "GATE-01-matrix": "/root/polyglot-audit/docs/evidence/gate01-capability-matrix.json"
+  },
+  "evidence_inline": {
+    "compatibility_tests": {
+      "status": "pass",
+      "summary": "确定性套件代理口径（contracts/snapshot/ledger/analysis/knowledge/reporting/security/holdout-wiring/e2e/swr/CLI 确定性/宿主 mock）: 类别 deterministic: tests=807 fail=0 error=0 skipped=0 耗时 18.9s；stdlib-only 环境检查随 GATE-05 类别运行。"
+    }
+  },
+  "steps": [
+    {
+      "step": "run_all_tests",
+      "command": [
+        "/usr/bin/python3",
+        "/root/polyglot-audit/tools/run_all_tests.py"
+      ],
+      "ok": true,
+      "exit_code": 0,
+      "status": "ok",
+      "duration_seconds": 363.6
+    },
+    {
+      "step": "evaluate_holdout",
+      "command": [
+        "/usr/bin/python3",
+        "/root/polyglot-audit/tools/evaluate_holdout.py",
+        "--corpus",
+        "/root/polyglot-audit/tests/fixtures/holdout",
+        "--knowledge",
+        "/root/polyglot-audit/skill/knowledge",
+        "--out",
+        "/tmp/evidence-holdout-mhs2k94i"
+      ],
+      "ok": true,
+      "exit_code": 0,
+      "status": "ok",
+      "duration_seconds": 0.1
+    },
+    {
+      "step": "probe_isolation",
+      "command": [
+        "/usr/bin/python3",
+        "/root/polyglot-audit/tools/probe_isolation.py",
+        "--out",
+        "/tmp/evidence-isolation-g2yzksm6"
+      ],
+      "ok": true,
+      "exit_code": 0,
+      "status": "ok",
+      "duration_seconds": 0.1
+    },
+    {
+      "step": "doctor_probe",
+      "command": [
+        "/usr/bin/python3",
+        "/root/polyglot-audit/skill/scripts/audit.py",
+        "doctor",
+        "--probe",
+        "--format",
+        "json"
+      ],
+      "ok": true,
+      "exit_code": 0,
+      "status": "ok",
+      "duration_seconds": 92.0
+    }
+  ],
+  "manual_pending": [
+    {
+      "gate": "GATE-01",
+      "item": "aggressive 级隔离反例（执行/网络隔离）与结构化输出/用量证明未由 doctor --probe 执行",
+      "status": "unknown"
+    },
+    {
+      "gate": "GATE-03",
+      "item": "token/费用最坏上限证据（上游用量完整性）无法离线自动化；或显式发布软预算/任务预算模式",
+      "status": "unknown"
+    },
+    {
+      "gate": "GATE-04",
+      "item": "LLM 在线评测、独立维护者留出集、150 类逐语言专家评审",
+      "status": "unknown"
+    },
+    {
+      "gate": "GATE-06",
+      "item": "导出字段敏感性与人工审核责任的专家评审及合成反例评审",
+      "status": "unknown"
+    }
+  ],
+  "automation_notes": [
+    "每步独立采集：单步失败仅将对应门禁证据记为 error+unknown，不影响其余步骤。",
+    "所有无法自动化的项保持 unknown 并列入 manual_pending；本工具不伪造在线评测或专家评审。",
+    "release_blocked 是未完成人工项时的如实结论，不是工具失败。"
+  ]
+}

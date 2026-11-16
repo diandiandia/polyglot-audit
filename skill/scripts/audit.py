@@ -501,15 +501,32 @@ def _normalize_worker_result(raw: object, claim: dict, kind: str) -> dict:
 def _make_execute_fn(app: AuditAppService, conn, run_dir: str, adapter) -> object:
     """Build the execute_fn consumed by run_dispatch_loop.
 
-    Calls the adapter's worker execution entry point (execute_worker), then
-    normalizes the payload into a schema-valid worker_result bound to the
-    claim. Adapter.last_usage is converted by run_dispatch_loop itself via
-    app.build_usage into the trusted usage object submitted per attempt.
+    Calls the adapter's worker execution entry point (execute_worker), which
+    returns ``(worker_result, usage_dict_or_None)``: the usage dict is
+    captured by the SAME invocation that produced the result, so concurrent
+    workers can never cross-attribute per-attempt usage through a shared
+    adapter slot (P0 usage envelope contract). run_dispatch_loop converts the
+    returned usage via app.build_usage into the trusted usage object submitted
+    per attempt; the claim's attempt_id is passed through so the usage dict is
+    stamped with the attempt this call executes.
+
+    Adapters built on the pre-envelope contract (bare worker_result return)
+    still work: execute_fn then yields a ``None`` usage and run_dispatch_loop
+    falls back to the legacy build_usage path.
     """
-    def execute_fn(claim: dict) -> dict:
+    def execute_fn(claim: dict) -> object:
         prompt = _build_worker_prompt(claim, run_dir)
-        raw = adapter.execute_worker(prompt, task_id=claim["task_id"])
-        return _normalize_worker_result(raw, claim, _task_kind(conn, claim))
+        outcome = adapter.execute_worker(
+            prompt,
+            task_id=claim["task_id"],
+            attempt_id=claim["attempt_id"],
+        )
+        if isinstance(outcome, tuple) and len(outcome) == 2:
+            raw, usage = outcome
+        else:
+            # Pre-envelope adapter: no per-task usage channel.
+            raw, usage = outcome, None
+        return _normalize_worker_result(raw, claim, _task_kind(conn, claim)), usage
     return execute_fn
 
 
@@ -607,6 +624,11 @@ def main() -> int:
     p_run.add_argument("--run-dir", required=True, help="Run directory")
     p_run.add_argument("--host", choices=["claude", "codex", "session"], default="session")
     p_run.add_argument("--concurrency", type=int, default=1)
+    p_run.add_argument(
+        "--lease-seconds", type=int, default=300,
+        help="claim lease duration per task; real LLM workers often need "
+             "more than the 300s default (e.g. --lease-seconds 1800)",
+    )
     p_run.add_argument("--json", action="store_true", default=True)
     _add_format_argument(p_run)
 
@@ -774,6 +796,7 @@ def main() -> int:
                 execute_fn,
                 adapter=adapter,
                 controller=controller,
+                lease_seconds=max(1, args.lease_seconds),
             )
             summary["stop_reason"] = _stop_reason_for_drain(conn, run_id, summary)
             queued = conn.execute(

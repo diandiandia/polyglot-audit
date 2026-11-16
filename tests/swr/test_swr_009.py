@@ -61,6 +61,8 @@ class TestSWR009(unittest.TestCase):
             self.verifier.create_finding_from_candidate(
                 _candidate(), "confirmed", "vt-1",
                 hunt_attempt_id="att-hunt", impact=4, exploitability=4,
+                impact_why="Attacker body reaches unpickle without validation",
+            exploitability_why="Upload endpoint needs no authentication",
             )
         self.assertIn("attempt", str(missing.exception))
 
@@ -69,6 +71,8 @@ class TestSWR009(unittest.TestCase):
                 _candidate(), "confirmed", "vt-2",
                 verify_attempt_id="att-hunt",  # equals the hunt attempt
                 hunt_attempt_id="att-hunt", impact=4, exploitability=4,
+                impact_why="Attacker body reaches unpickle without validation",
+            exploitability_why="Upload endpoint needs no authentication",
             )
         self.assertIn("must differ", str(reused.exception))
 
@@ -76,6 +80,8 @@ class TestSWR009(unittest.TestCase):
             _candidate(), "confirmed", "vt-3",
             verify_attempt_id="att-verify",
             hunt_attempt_id="att-hunt", impact=4, exploitability=4,
+            impact_why="Attacker body reaches unpickle without validation",
+            exploitability_why="Upload endpoint needs no authentication",
         )
         self.assertEqual(finding["evidence_level"], "E2")
         self.assertEqual(finding["provenance"]["verify_attempt_id"], "att-verify")
@@ -88,6 +94,8 @@ class TestSWR009(unittest.TestCase):
                 _candidate(), "confirmed", "vt-4",
                 verify_attempt_id="att-hunt", hunt_attempt_id="att-hunt",
                 impact=4, exploitability=4,
+                impact_why="Attacker body reaches unpickle without validation",
+            exploitability_why="Upload endpoint needs no authentication",
             )
 
     # -- E2 requires per-hop evidence ----------------------------------------
@@ -97,6 +105,8 @@ class TestSWR009(unittest.TestCase):
             _candidate(), "confirmed", "vt-5",
             verify_attempt_id="att-verify", hunt_attempt_id="att-hunt",
             impact=4, exploitability=4,
+            impact_why="Attacker body reaches unpickle without validation",
+            exploitability_why="Upload endpoint needs no authentication",
         )
 
         one_step = dict(base)
@@ -134,6 +144,8 @@ class TestSWR009(unittest.TestCase):
             _candidate(), "confirmed", "vt-6",
             verify_attempt_id="att-verify", hunt_attempt_id="att-hunt",
             impact=4, exploitability=4,
+            impact_why="Attacker body reaches unpickle without validation",
+            exploitability_why="Upload endpoint needs no authentication",
         )
         e3 = dict(base)
         e3["evidence_level"] = "E3"
@@ -197,6 +209,8 @@ class TestSWR009(unittest.TestCase):
             _candidate(), "confirmed", "vt-11",
             verify_attempt_id="att-verify", hunt_attempt_id="att-hunt",
             impact=4, exploitability=4,
+            impact_why="Attacker body reaches unpickle without validation",
+            exploitability_why="Upload endpoint needs no authentication",
         )
         for drop in ("remediation", "rating", "languages", "title"):
             broken = dict(base)
@@ -220,6 +234,8 @@ class TestSWR009(unittest.TestCase):
             _candidate(), "confirmed", "vt-12",
             verify_attempt_id="att-verify", hunt_attempt_id="att-hunt",
             impact=3, exploitability=3,
+            impact_why="Attacker body reaches unpickle without validation",
+            exploitability_why="Upload endpoint needs no authentication",
         )
         cyclic = dict(base)
         cyclic["finding_id"] = "cand-e2-1"

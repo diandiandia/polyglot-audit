@@ -202,8 +202,13 @@ class TestRunDriverLoop(DriverLoopTestCase):
         conn = sqlite3.connect(str(self.run_dir / "events.db"))
         try:
             rows = conn.execute(
-                "SELECT dimension, availability, value FROM usage_records"
+                "SELECT dimension, availability, value, attempt_id FROM usage_records"
             ).fetchall()
+            # P0 usage envelope: each attempt settles its OWN usage row, bound
+            # to the attempt the dispatch loop actually submitted.
+            attempt_ids = {
+                r[0] for r in conn.execute("SELECT attempt_id FROM attempts").fetchall()
+            }
         finally:
             conn.close()
         self.assertTrue(rows, "no usage record persisted by the driver loop")
@@ -213,6 +218,15 @@ class TestRunDriverLoop(DriverLoopTestCase):
         self.assertTrue(
             exact,
             f"expected exact usage value 20 (12+8) from the fake host, got {rows}",
+        )
+        # Every usage row binds to a real attempt of this run, one row per
+        # attempt: no attempt was left unattributed or double-attributed.
+        for row in rows:
+            self.assertIn(row[3], attempt_ids, f"usage row bound to unknown attempt: {row}")
+        token_rows = [r for r in rows if r[0] == "tokens"]
+        self.assertEqual(
+            len({r[3] for r in token_rows}), len(token_rows),
+            f"a single attempt carries multiple tokens usage rows: {token_rows}",
         )
 
     def test_missing_host_cli_exits_nonzero_without_idling(self):

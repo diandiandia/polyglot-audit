@@ -303,7 +303,11 @@ class TestDualEngineEquivalence(unittest.TestCase):
         self.assertTrue(claims, f"{engine}: no hunt tasks dispatched")
         for claim in claims:
             app.start(run_dir, claim)
-            parsed = adapter.execute_worker(prompt=f"hunt {claim['task_id']}", task_id=claim["task_id"])
+            parsed, hunt_usage = adapter.execute_worker(
+                prompt=f"hunt {claim['task_id']}",
+                task_id=claim["task_id"],
+                attempt_id=claim["attempt_id"],
+            )
             # The adapter output may carry host metadata; it must not enter
             # the contract boundary.
             worker_result = assemble_worker_result(parsed, claim)
@@ -323,8 +327,10 @@ class TestDualEngineEquivalence(unittest.TestCase):
                 break
             for claim in claims:
                 app.start(run_dir, claim)
-                parsed = verify_adapter.execute_worker(
-                    prompt=f"verify {claim['task_id']}", task_id=claim["task_id"]
+                parsed, _verify_usage = verify_adapter.execute_worker(
+                    prompt=f"verify {claim['task_id']}",
+                    task_id=claim["task_id"],
+                    attempt_id=claim["attempt_id"],
                 )
                 worker_result = assemble_worker_result(parsed, claim)
                 rec = worker_result["records"][0]
@@ -348,7 +354,7 @@ class TestDualEngineEquivalence(unittest.TestCase):
             "snapshot_id": prep["snapshot_id"],
             "finalize": fin,
             "status": status,
-            "hunt_usage": adapter.last_usage,
+            "hunt_usage": hunt_usage,
             "normalized_hunt": normalized_hunt_results,
             "normalized_verify": normalized_verify_results,
             "findings": [normalize(f) for f in findings],

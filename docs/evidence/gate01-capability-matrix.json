@@ -1,0 +1,225 @@
+{
+  "schema_version": "1.0",
+  "gate": "GATE-01",
+  "evidence_kind": "host_capability_matrix",
+  "generated_at": "2026-11-16T15:05:58Z",
+  "environment": {
+    "python_version": "3.14.4",
+    "platform": "Linux-7.0.12-linuxkit-aarch64-with-glibc2.43",
+    "machine": "aarch64",
+    "processor": "unknown",
+    "cpu_count": 18,
+    "hostname": "73ebd4c7787b",
+    "memory_total_bytes": 17007304704
+  },
+  "status": "fail",
+  "summary": "存在未验证（unknown/not_enforced）能力；相应组合不标受支持: claude_cli.execution_isolation=unknown, claude_cli.filesystem_isolation=unknown, claude_cli.hard_token_budget=unknown, claude_cli.network_isolation=unknown, claude_cli.structured_output=unknown, codex_cli.config_loading=unknown, codex_cli.execution_isolation=unknown, codex_cli.filesystem_isolation=unknown, codex_cli.hard_token_budget=unknown, codex_cli.headless_cli=unknown, codex_cli.network_isolation=unknown, codex_cli.structured_output=unknown 等 18 项",
+  "capability_matrix": {
+    "python_core": {
+      "sqlite_wal": "enforced",
+      "stdlib_offline": "enforced",
+      "filesystem_isolation": "not_enforced",
+      "network_isolation": "not_enforced",
+      "execution_isolation": "enforced"
+    },
+    "claude_cli": {
+      "installed": "enforced",
+      "version": "enforced",
+      "headless_cli": "enforced",
+      "structured_output": "unknown",
+      "hard_token_budget": "unknown",
+      "filesystem_isolation": "unknown",
+      "network_isolation": "unknown",
+      "execution_isolation": "unknown"
+    },
+    "codex_cli": {
+      "installed": "enforced",
+      "version": "enforced",
+      "headless_cli": "unknown",
+      "structured_output": "unknown",
+      "hard_token_budget": "unknown",
+      "filesystem_isolation": "unknown",
+      "network_isolation": "unknown",
+      "execution_isolation": "unknown",
+      "config_loading": "unknown"
+    },
+    "in_session": {
+      "subagent_delegation": "unknown",
+      "sequential_session_fallback": "unknown",
+      "mcp_stdio_transport": "unknown",
+      "mcp_os_sandbox": "not_enforced"
+    }
+  },
+  "real_cli_gate": {
+    "status": "pass",
+    "summary": "类别 real_cli: tests=7 fail=0 error=0 skipped=1 耗时 246.5s（1 项跳过，单列不计入通过分母）"
+  },
+  "adapters": [
+    {
+      "schema_version": "1.0",
+      "adapter": "python_core",
+      "adapter_version": "3.14.4",
+      "checked_at": "2026-11-16T15:04:27.003824+00:00",
+      "features": {
+        "sqlite_wal": {
+          "state": "enforced",
+          "method": "sqlite3.sqlite_version introspection",
+          "evidence": "SQLite 3.46.1 with WAL and BEGIN IMMEDIATE support"
+        },
+        "stdlib_offline": {
+          "state": "enforced",
+          "method": "python -c import probe of core stdlib modules",
+          "evidence": "imported offline without third-party packages: sqlite3, hashlib, json, secrets, subprocess, pathlib, unittest"
+        },
+        "filesystem_isolation": {
+          "state": "not_enforced",
+          "method": "runtime policy review",
+          "reason": "Process runs with current OS user permissions; relies on path checks"
+        },
+        "network_isolation": {
+          "state": "not_enforced",
+          "method": "runtime policy review",
+          "reason": "OS socket access not restricted by runtime"
+        },
+        "execution_isolation": {
+          "state": "enforced",
+          "method": "runtime policy review",
+          "evidence": "Audit tool does not execute target repository code"
+        }
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "adapter": "claude_cli",
+      "adapter_version": "2.1.319 (Claude Code)",
+      "checked_at": "2026-11-16T15:04:28.888613+00:00",
+      "features": {
+        "installed": {
+          "state": "enforced",
+          "method": "shutil.which('claude') against PATH",
+          "evidence": "/root/.local/bin/claude"
+        },
+        "version": {
+          "state": "enforced",
+          "method": "/root/.local/bin/claude --version",
+          "evidence": "2.1.319 (Claude Code)"
+        },
+        "headless_cli": {
+          "state": "enforced",
+          "method": "/root/.local/bin/claude --print reply with OK",
+          "evidence": "headless call returned 2 chars; first 80: 'OK'"
+        },
+        "structured_output": {
+          "state": "unknown",
+          "method": "headless structured-output trial (aggressive level)",
+          "reason": "Host JSON schema output enforcement unverified"
+        },
+        "hard_token_budget": {
+          "state": "unknown",
+          "method": "single-call budget probe (aggressive level)",
+          "reason": "Upstream token limit enforcement unverified"
+        },
+        "filesystem_isolation": {
+          "state": "unknown",
+          "method": "write-a-file execution counterexample (aggressive level only)",
+          "reason": "counterexample not executed (probe_level=headless)"
+        },
+        "network_isolation": {
+          "state": "unknown",
+          "method": "loopback socket counterexample (aggressive level only)",
+          "reason": "counterexample not executed (probe_level=headless)"
+        },
+        "execution_isolation": {
+          "state": "unknown",
+          "method": "write-a-file execution counterexample (aggressive level only)",
+          "reason": "counterexample not executed (probe_level=headless)"
+        }
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "adapter": "codex_cli",
+      "adapter_version": "codex-cli 0.167.0",
+      "checked_at": "2026-11-16T15:05:58.935350+00:00",
+      "features": {
+        "installed": {
+          "state": "enforced",
+          "method": "shutil.which('codex') against PATH",
+          "evidence": "/root/.local/bin/codex"
+        },
+        "version": {
+          "state": "enforced",
+          "method": "/root/.local/bin/codex --version",
+          "evidence": "codex-cli 0.167.0"
+        },
+        "headless_cli": {
+          "state": "unknown",
+          "method": "/root/.local/bin/codex exec --skip-git-repo-check reply with OK",
+          "reason": "headless probe timed out after 90s"
+        },
+        "structured_output": {
+          "state": "unknown",
+          "method": "headless structured-output trial (aggressive level)",
+          "reason": "Host JSON schema output enforcement unverified"
+        },
+        "hard_token_budget": {
+          "state": "unknown",
+          "method": "single-call budget probe (aggressive level)",
+          "reason": "Upstream token limit enforcement unverified"
+        },
+        "filesystem_isolation": {
+          "state": "unknown",
+          "method": "write-a-file execution counterexample (aggressive level only)",
+          "reason": "counterexample not executed (probe_level=headless)"
+        },
+        "network_isolation": {
+          "state": "unknown",
+          "method": "loopback socket counterexample (aggressive level only)",
+          "reason": "counterexample not executed (probe_level=headless)"
+        },
+        "execution_isolation": {
+          "state": "unknown",
+          "method": "write-a-file execution counterexample (aggressive level only)",
+          "reason": "counterexample not executed (probe_level=headless)"
+        },
+        "config_loading": {
+          "state": "unknown",
+          "method": "target project config loading trial (aggressive level)",
+          "reason": "Target project config loading unverified"
+        }
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "adapter": "in_session",
+      "adapter_version": "1.0",
+      "checked_at": "2026-11-16T15:05:58.935366+00:00",
+      "features": {
+        "subagent_delegation": {
+          "state": "unknown",
+          "method": "minimal in-session sub-agent delegation trial (aggressive level)",
+          "reason": "delegation trial not executed; availability depends on the caller host session and must be measured, not assumed"
+        },
+        "sequential_session_fallback": {
+          "state": "unknown",
+          "method": "InSessionAdapter mode introspection",
+          "reason": "session mode not determined; adapter not instantiated or mode unset"
+        },
+        "mcp_stdio_transport": {
+          "state": "unknown",
+          "method": "stdio JSON-RPC initialize handshake with the MCP server (probe not run)",
+          "reason": "handshake not executed; start the stdio MCP server and pass mcp_server_cmd to verify the transport"
+        },
+        "mcp_os_sandbox": {
+          "state": "not_enforced",
+          "method": "protocol review",
+          "reason": "MCP protocol is a transport adapter, not an OS sandbox"
+        }
+      }
+    }
+  ],
+  "notes": [
+    "矩阵由 `audit.py doctor --probe`（headless 级）归一化；状态为探测原值，未提升。",
+    "aggressive 级反例（执行/网络隔离）未由本工具执行；对应能力保持探测原状态。"
+  ]
+}

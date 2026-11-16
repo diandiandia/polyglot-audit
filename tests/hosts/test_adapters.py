@@ -1,12 +1,14 @@
 """Tests for driver adapters: exit classification (DSR-029), rate-limit
-backoff, circuit breakers, usage extraction and termination-uncertain budget
-retention (DSR-064). All host CLIs are fakes from fake_hosts.py."""
+backoff, circuit breakers, the per-task usage envelope and termination-
+uncertain budget retention (DSR-064). All host CLIs are fakes from
+fake_hosts.py."""
 
 import json
 import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
@@ -102,7 +104,7 @@ class TestExitClassification(unittest.TestCase, RetryTestMixin):
             self.temp_dir, "codex", headless_stdout='{"ok": true}'
         )
         adapter = self.make_codex(binary)
-        result = adapter.execute_worker("reply with OK", "t1")
+        result, _usage = adapter.execute_worker("reply with OK", "t1")
         self.assertEqual(result["ok"], True)
         invoked = fake_hosts.last_invoked_args(self.temp_dir, "codex")
         self.assertEqual(invoked, ["exec", "--skip-git-repo-check", "reply with OK"])
@@ -116,7 +118,7 @@ class TestExitClassification(unittest.TestCase, RetryTestMixin):
             self.temp_dir, "codex", headless_stdout='{"ok": true}'
         )
         adapter = self.make_codex(binary)
-        result = adapter.execute_worker("reply with OK", "t1")
+        result, _usage = adapter.execute_worker("reply with OK", "t1")
         self.assertEqual(result["ok"], True)
         invoked = fake_hosts.last_invoked_args(self.temp_dir, "codex")
         self.assertIn("--skip-git-repo-check", invoked)
@@ -172,7 +174,7 @@ class TestBackoffAndRetry(unittest.TestCase, RetryTestMixin):
     def test_retryable_failure_backs_off_then_succeeds(self):
         binary = fake_hosts.create_rate_limited_fake_host(self.temp_dir, "claude", fail_first=2)
         adapter = self.make_claude(binary, max_retries=2, backoff_base=0.0)
-        result = adapter.execute_worker("prompt", "t1")
+        result, _usage = adapter.execute_worker("prompt", "t1")
         self.assertEqual(result["ok"], True)
         counter = os.path.join(self.temp_dir, "claude.attempt_counter")
         with open(counter, encoding="utf-8") as f:
@@ -242,17 +244,66 @@ class TestUsageExtraction(unittest.TestCase, RetryTestMixin):
     def tearDown(self):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def test_usage_captured_when_present(self):
+    def test_claude_usage_envelope_captured_when_present(self):
+        """P0 usage envelope: execute_worker returns (result, usage) with the
+        usage dict bound to THIS execution's attempt (usage.schema semantics).
+        The shared last_usage slot is gone: concurrent workers on one adapter
+        can no longer cross-attribute per-attempt usage."""
         payload = {"ok": True, "usage": {"input_tokens": 10, "output_tokens": 5}}
         binary = fake_hosts.create_fake_host(
             self.temp_dir, "claude", headless_stdout=json.dumps(payload)
         )
         adapter = self.make_claude(binary)
-        adapter.execute_worker("prompt", "t1")
-        self.assertEqual(adapter.last_usage, {"input_tokens": 10, "output_tokens": 5})
+        result, usage = adapter.execute_worker("prompt", "t1", attempt_id="att-1")
+        self.assertEqual(result["ok"], True)
+        self.assertEqual(usage, {
+            "schema_version": "1.0",
+            "attempt_id": "att-1",
+            "dimension": "tokens",
+            "availability": "estimated",
+            "value": 15,
+            "unit": "tokens",
+            "source": "ClaudeDriverAdapter",
+        })
+        self.assertFalse(
+            hasattr(adapter, "last_usage"),
+            "the shared last_usage slot must be gone from the execution path",
+        )
         self.assertEqual(
             adapter.extract_usage(payload), {"input_tokens": 10, "output_tokens": 5}
         )
+
+    def test_codex_usage_envelope_declared_exact(self):
+        payload = {"ok": True, "usage": {"total_tokens": 42, "availability": "exact"}}
+        binary = fake_hosts.create_fake_host(
+            self.temp_dir, "codex", headless_stdout=json.dumps(payload)
+        )
+        adapter = self.make_codex(binary)
+        result, usage = adapter.execute_worker("prompt", "t1", attempt_id="att-2")
+        self.assertEqual(result["ok"], True)
+        self.assertEqual(usage, {
+            "schema_version": "1.0",
+            "attempt_id": "att-2",
+            "dimension": "tokens",
+            "availability": "exact",
+            "value": 42,
+            "unit": "tokens",
+            "source": "CodexDriverAdapter",
+        })
+
+    def test_usage_envelope_unavailable_when_block_has_no_numbers(self):
+        """A usage block without numeric values maps to an explicit
+        unavailable record with a reason, never an invented value."""
+        payload = {"ok": True, "usage": {"note": "metering disabled"}}
+        binary = fake_hosts.create_fake_host(
+            self.temp_dir, "claude", headless_stdout=json.dumps(payload)
+        )
+        adapter = self.make_claude(binary)
+        _result, usage = adapter.execute_worker("prompt", "t1", attempt_id="att-3")
+        self.assertEqual(usage["availability"], "unavailable")
+        self.assertTrue(usage["reason"])
+        self.assertNotIn("value", usage)
+        self.assertEqual(usage["attempt_id"], "att-3")
 
     def test_usage_none_when_absent(self):
         """DSR-029: missing usage is reported as None, never invented."""
@@ -260,10 +311,68 @@ class TestUsageExtraction(unittest.TestCase, RetryTestMixin):
             self.temp_dir, "codex", headless_stdout='{"ok": true}'
         )
         adapter = self.make_codex(binary)
-        adapter.execute_worker("prompt", "t1")
-        self.assertIsNone(adapter.last_usage)
+        result, usage = adapter.execute_worker("prompt", "t1")
+        self.assertEqual(result["ok"], True)
+        self.assertIsNone(usage)
         self.assertIsNone(extract_usage({"ok": True}))
         self.assertIsNone(extract_usage("not a dict"))
+
+    def test_concurrent_executions_bind_usage_to_their_own_attempt(self):
+        """P0 regression (real concurrency): two threads driving the SAME
+        adapter on different overlapping tasks must each receive the usage
+        captured for their OWN invocation. Under the removed shared
+        last_usage slot, overlapping completions swapped attribution; with
+        the per-task envelope each return carries its own task's values."""
+        # The fake host inspects the prompt (argv[2]) for the task marker and
+        # emits the matching payload, so ONE shared adapter serves both tasks
+        # with distinct usage through genuinely concurrent invocations.
+        script = (
+            "#!/bin/sh\n"
+            "if [ \"$1\" = \"--version\" ]; then echo 'fake-host version 9.9.9'; exit 0; fi\n"
+            "sleep 0.2\n"
+            "case \"$2\" in\n"
+            "  *TASK-A*) echo '{\"ok\": true, \"task\": \"TASK-A\", "
+            "\"usage\": {\"total_tokens\": 150, \"availability\": \"exact\"}}';;\n"
+            "  *TASK-B*) echo '{\"ok\": true, \"task\": \"TASK-B\", "
+            "\"usage\": {\"total_tokens\": 700, \"availability\": \"exact\"}}';;\n"
+            "esac\n"
+            "exit 0\n"
+        )
+        binary = fake_hosts._write_executable(
+            os.path.join(self.temp_dir, "claude"), script
+        )
+        adapter = self.make_claude(binary, timeout_seconds=30)
+        start = threading.Barrier(2, timeout=30)
+        collected = {}
+        errors = []
+
+        def run(marker, tokens):
+            try:
+                for round_no in range(3):
+                    start.wait()
+                    _result, usage = adapter.execute_worker(
+                        f"work {marker}", f"task-{marker}-{round_no}",
+                        attempt_id=f"att-{marker}-{round_no}",
+                    )
+                    collected[(marker, round_no)] = (usage or {}).get("value")
+            except Exception as exc:  # surfaced below, never silently dropped
+                errors.append(exc)
+
+        threads = [
+            threading.Thread(target=run, args=("TASK-A", 150)),
+            threading.Thread(target=run, args=("TASK-B", 700)),
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=60)
+        self.assertEqual(errors, [], f"worker threads raised: {errors}")
+        self.assertEqual(len(collected), 6)
+        for (marker, _round), value in collected.items():
+            self.assertEqual(
+                value, 150 if marker == "TASK-A" else 700,
+                f"usage cross-attributed for {marker}: got {value}",
+            )
 
 
 class TestTerminationUncertain(unittest.TestCase, RetryTestMixin):

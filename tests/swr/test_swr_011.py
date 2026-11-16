@@ -19,6 +19,11 @@ Covered here:
   bogus direction is rejected; both ends (Critical/Info) are bounded.
 - A needs_validation finding carries only the validation priority (no
   remediation urgency, no remediation field); factor bounds reject 0/5.
+- 缺失因子或理由拒绝定级 (design §verify/SWR-011): a confirmed claim without
+  non-empty impact_why / exploitability_why is demoted to needs_validation
+  with the gap recorded as a blocker (the old canned factor-reason fallbacks
+  fabricated the severity justification); a pending claim without reasons
+  keeps a rating with no fabricated factor_reasons.
 """
 
 import unittest
@@ -344,10 +349,101 @@ class TestSWR011(unittest.TestCase):
             candidate, "confirmed", "vt-r4",
             verify_attempt_id="att-v", hunt_attempt_id="att-h",
             impact=4, exploitability=4,
+            impact_why="Unauthenticated deserialization restores attacker objects",
+            exploitability_why="HTTP body reaches the sink without any guard",
         )
         self.assertEqual(confirmed["rating"]["calculated_severity"], "Critical")
         self.assertEqual(confirmed["rating"]["final_urgency"], "P0")
         self.assertIn("remediation", confirmed)
+
+    # -- 缺理由拒绝定级: confirmed claims degrade honestly ---------------------
+    def _candidate_with_trace(self) -> dict:
+        return {
+            "candidate_id": "cand-r-10",
+            "issue": "py-01",
+            "source": {"path": "app/a.py", "line": 1, "kind": "http", "lang": "python"},
+            "sink": {"path": "app/b.py", "line": 2, "kind": "rce"},
+            "steps": [
+                {"path": "app/a.py", "line": 1, "role": "source"},
+                {"path": "app/b.py", "line": 2, "role": "sink"},
+            ],
+            "provenance": {"hunt_tasks": ["t1"]},
+        }
+
+    def test_confirmed_without_factor_reasons_is_demoted_not_canned(self):
+        """设计原文 '缺失因子或理由拒绝定级': the verifier used to grade a
+        reason-less confirmation with canned factor reasons ("Demonstrated
+        sensitive sink reachability" / "Attacker input unchecked") — that
+        fabricated the observed justification for the severity. Now the
+        claim degrades to needs_validation with the missing reason recorded
+        as the actual blocker (SR-008 pending semantics), never a canned
+        grade and never a hard crash that loses the finding.
+        """
+        verifier = Verifier(enforce_attempt_gate=True)
+        demoted = verifier.create_finding_from_candidate(
+            self._candidate_with_trace(), "confirmed", "vt-r10",
+            verify_attempt_id="att-v10", hunt_attempt_id="att-h10",
+            impact=4, exploitability=4,
+            # Neither factor reason observed.
+        )
+        self.assertEqual(demoted["verdict"], "needs_validation")
+        self.assertEqual(demoted["evidence_level"], "E1")
+        self.assertIn(
+            "missing rating factor reason: impact_why", demoted["blockers"]
+        )
+        self.assertIn(
+            "missing rating factor reason: exploitability_why",
+            demoted["blockers"],
+        )
+        self.assertNotIn("factor_reasons", demoted["rating"])
+        self.assertNotIn("final_urgency", demoted["rating"])
+        self.assertEqual(
+            demoted["rating"]["validation_priority"],
+            calculate_validation_priority(4, 4),
+        )
+        self.assertEqual(demoted["demoted_from"]["claimed_verdict"], "confirmed")
+        # The demoted finding satisfies the pending-finding contract.
+        self.validator.validate_finding(demoted)
+
+    def test_needs_validation_without_factor_reasons_stays_pending_unfabricated(self):
+        """A pending claim without factor reasons keeps the item pending and
+        carries NO fabricated factor_reasons — the rating holds the observed
+        numbers and the validation priority only.
+        """
+        verifier = Verifier()
+        pending = verifier.create_finding_from_candidate(
+            self._candidate_with_trace(), "needs_validation", "vt-r11",
+            impact=3, exploitability=2,
+            blockers=["runtime deployment unknown"],
+            validation_plan="probe the deployment",
+            # No factor reasons observed.
+        )
+        self.assertEqual(pending["verdict"], "needs_validation")
+        self.assertNotIn("factor_reasons", pending["rating"])
+        self.assertEqual(pending["rating"]["impact"], 3)
+        self.assertEqual(pending["rating"]["exploitability"], 2)
+        self.assertEqual(
+            pending["rating"]["validation_priority"],
+            calculate_validation_priority(3, 2),
+        )
+        self.validator.validate_finding(pending)
+
+        # With real reasons the rating keeps them verbatim.
+        rated = verifier.create_finding_from_candidate(
+            self._candidate_with_trace(), "needs_validation", "vt-r12",
+            impact=3, exploitability=2,
+            impact_why="limited file overwrite on the studied path",
+            exploitability_why="authenticated session required",
+            blockers=["runtime deployment unknown"],
+            validation_plan="probe the deployment",
+        )
+        self.assertEqual(
+            rated["rating"]["factor_reasons"],
+            {
+                "impact_why": "limited file overwrite on the studied path",
+                "exploitability_why": "authenticated session required",
+            },
+        )
 
 
 if __name__ == "__main__":

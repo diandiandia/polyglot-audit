@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "gate": "GATE-02",
+  "evidence_kind": "unified_test_category",
+  "title": "并发/崩溃/迟到提交/快照竞态夹具",
+  "source": {
+    "tool": "tools/run_all_tests.py",
+    "category": "fault_injection",
+    "orchestrator_exit_code": 0,
+    "orchestrator_result": "NO FAILURES OR ERRORS (missing/skipped categories remain honestly unclaimed)"
+  },
+  "generated_at": "2026-11-16T15:04:26Z",
+  "environment": {
+    "python_version": "3.14.4",
+    "platform": "Linux-7.0.12-linuxkit-aarch64-with-glibc2.43",
+    "machine": "aarch64",
+    "processor": "unknown",
+    "cpu_count": 18,
+    "hostname": "73ebd4c7787b",
+    "memory_total_bytes": 17007304704
+  },
+  "status": "pass",
+  "summary": "类别 fault_injection: tests=7 fail=0 error=0 skipped=0 耗时 0.1s",
+  "counts": {
+    "tests": 7,
+    "fail": 0,
+    "error": 0,
+    "skipped": 0,
+    "missing_suites": 0
+  },
+  "duration_seconds": 0.1,
+  "skipped_or_missing_suites": [],
+  "suites": [
+    {
+      "category": "fault_injection",
+      "suite": "Fault Injection",
+      "tests": 7,
+      "fail": 0,
+      "error": 0,
+      "skipped": 0,
+      "duration_seconds": 0.1,
+      "status": "PASS"
+    }
+  ],
+  "notes": [
+    "skip 清单为套件粒度（编排器只输出套件级 skipped 计数；不伪造逐测试 skip id）。"
+  ]
+}

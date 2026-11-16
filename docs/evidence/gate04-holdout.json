@@ -1,0 +1,2164 @@
+{
+  "schema_version": "1.0",
+  "gate": "GATE-04",
+  "evidence_kind": "holdout_evaluation",
+  "generated_at": "2026-11-16T15:04:26Z",
+  "environment": {
+    "python_version": "3.14.4",
+    "platform": "Linux-7.0.12-linuxkit-aarch64-with-glibc2.43",
+    "machine": "aarch64",
+    "processor": "unknown",
+    "cpu_count": 18,
+    "hostname": "73ebd4c7787b",
+    "memory_total_bytes": 17007304704
+  },
+  "status": "unknown",
+  "summary": "已自动化：信号级留出语料接线评测（分母=300, 检出 tp=150, 漏报 fn=0, 误报 fp=37, 未决 pending=0, unknown 类别=0/150）。未自动化（保持 unknown）：LLM 在线评测（llm_results=unknown）、独立留出集、150 类逐语言专家评审。",
+  "totals": {
+    "denominator": 300,
+    "true_positive": 150,
+    "false_negative": 0,
+    "true_negative": 113,
+    "false_positive": 37,
+    "pending": 0,
+    "unknown_categories": 0,
+    "cards_total": 150
+  },
+  "llm_results": "unknown",
+  "llm_worker": {
+    "status": "host_available_dry_run_only",
+    "host_clis": {
+      "claude": true,
+      "codex": true
+    },
+    "note": "host CLI detected but no model call is executed by this tool; LLM-side holdout results remain unknown until a real evaluation run",
+    "llm_results": "unknown"
+  },
+  "corpus_status": "present",
+  "disclaimer": "本报告为开发期合成语料的接线/回归评测，不构成独立留出集结论；不得据此宣称客观排名、模型能力或全覆盖。正式留出集必须由维护者独立编写，且在评测前不得参与任何调参。",
+  "report": {
+    "schema_version": "1.0",
+    "generated_at": "2026-11-16T15:04:26Z",
+    "corpus_dir": "/root/polyglot-audit/tests/fixtures/holdout",
+    "knowledge_dir": "/root/polyglot-audit/skill/knowledge",
+    "corpus_status": "present",
+    "totals": {
+      "denominator": 300,
+      "true_positive": 150,
+      "false_negative": 0,
+      "true_negative": 113,
+      "false_positive": 37,
+      "pending": 0,
+      "unknown_categories": 0,
+      "cards_total": 150
+    },
+    "languages": {
+      "c": {
+        "cards": {
+          "c-01": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_c_06"
+                ]
+              }
+            ]
+          },
+          "c-02": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_c_02"
+                ]
+              }
+            ]
+          },
+          "c-03": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_c_03"
+                ]
+              }
+            ]
+          },
+          "c-04": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "c-05": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "c-06": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_c_05"
+                ]
+              }
+            ]
+          },
+          "c-07": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "c-08": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "src_file_read"
+                ]
+              }
+            ]
+          },
+          "c-09": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "c-10": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          }
+        },
+        "denominator": 20,
+        "true_positive": 10,
+        "false_negative": 0,
+        "true_negative": 5,
+        "false_positive": 5,
+        "pending": 0,
+        "unknown_cards": 0
+      },
+      "cpp": {
+        "cards": {
+          "cpp-01": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "cpp-02": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "cpp-03": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "cpp-04": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_cpp_04"
+                ]
+              }
+            ]
+          },
+          "cpp-05": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "cpp-06": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "cpp-07": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "cpp-08": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "cpp-09": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "cpp-10": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          }
+        },
+        "denominator": 20,
+        "true_positive": 10,
+        "false_negative": 0,
+        "true_negative": 9,
+        "false_positive": 1,
+        "pending": 0,
+        "unknown_cards": 0
+      },
+      "csharp": {
+        "cards": {
+          "csharp-01": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "csharp-02": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "csharp-03": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "csharp-04": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "csharp-05": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_csharp_05"
+                ]
+              }
+            ]
+          },
+          "csharp-06": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "csharp-07": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "csharp-08": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "csharp-09": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "csharp-10": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          }
+        },
+        "denominator": 20,
+        "true_positive": 10,
+        "false_negative": 0,
+        "true_negative": 9,
+        "false_positive": 1,
+        "pending": 0,
+        "unknown_cards": 0
+      },
+      "go": {
+        "cards": {
+          "go-01": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "go-02": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "go-03": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_go_03",
+                  "src_http_input"
+                ]
+              }
+            ]
+          },
+          "go-04": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_go_04"
+                ]
+              }
+            ]
+          },
+          "go-05": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "src_http_input"
+                ]
+              }
+            ]
+          },
+          "go-06": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "go-07": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sink_path_traversal"
+                ]
+              }
+            ]
+          },
+          "go-08": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "go-09": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "go-10": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          }
+        },
+        "denominator": 20,
+        "true_positive": 10,
+        "false_negative": 0,
+        "true_negative": 6,
+        "false_positive": 4,
+        "pending": 0,
+        "unknown_cards": 0
+      },
+      "java": {
+        "cards": {
+          "java-01": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "java-02": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_java_02"
+                ]
+              }
+            ]
+          },
+          "java-03": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "java-04": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "java-05": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "java-06": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sink_rce"
+                ]
+              }
+            ]
+          },
+          "java-07": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "java-08": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "java-09": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "java-10": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          }
+        },
+        "denominator": 20,
+        "true_positive": 10,
+        "false_negative": 0,
+        "true_negative": 8,
+        "false_positive": 2,
+        "pending": 0,
+        "unknown_cards": 0
+      },
+      "javascript": {
+        "cards": {
+          "js-01": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_js_01"
+                ]
+              }
+            ]
+          },
+          "js-02": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "js-03": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "boundary_subprocess",
+                  "sink_rce"
+                ]
+              }
+            ]
+          },
+          "js-04": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "js-05": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "js-06": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sink_path_traversal",
+                  "src_file_read"
+                ]
+              }
+            ]
+          },
+          "js-07": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "js-08": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "js-09": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "js-10": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          }
+        },
+        "denominator": 20,
+        "true_positive": 10,
+        "false_negative": 0,
+        "true_negative": 7,
+        "false_positive": 3,
+        "pending": 0,
+        "unknown_cards": 0
+      },
+      "kotlin": {
+        "cards": {
+          "kotlin-01": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "kotlin-02": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "kotlin-03": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "kotlin-04": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "kotlin-05": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "kotlin-06": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "kotlin-07": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sink_rce"
+                ]
+              }
+            ]
+          },
+          "kotlin-08": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "kotlin-09": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "kotlin-10": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          }
+        },
+        "denominator": 20,
+        "true_positive": 10,
+        "false_negative": 0,
+        "true_negative": 9,
+        "false_positive": 1,
+        "pending": 0,
+        "unknown_cards": 0
+      },
+      "php": {
+        "cards": {
+          "php-01": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "php-02": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "php-03": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "php-04": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_php_04",
+                  "sink_rce"
+                ]
+              }
+            ]
+          },
+          "php-05": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "php-06": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "php-07": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_php_07"
+                ]
+              }
+            ]
+          },
+          "php-08": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "php-09": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "php-10": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          }
+        },
+        "denominator": 20,
+        "true_positive": 10,
+        "false_negative": 0,
+        "true_negative": 8,
+        "false_positive": 2,
+        "pending": 0,
+        "unknown_cards": 0
+      },
+      "python": {
+        "cards": {
+          "py-01": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "py-02": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_py_02",
+                  "sink_rce"
+                ]
+              }
+            ]
+          },
+          "py-03": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "boundary_subprocess",
+                  "sink_rce",
+                  "src_file_read"
+                ]
+              }
+            ]
+          },
+          "py-04": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sink_path_traversal"
+                ]
+              }
+            ]
+          },
+          "py-05": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sink_sqli"
+                ]
+              }
+            ]
+          },
+          "py-06": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "py-07": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "py-08": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_py_08",
+                  "src_file_read"
+                ]
+              }
+            ]
+          },
+          "py-09": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "py-10": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          }
+        },
+        "denominator": 20,
+        "true_positive": 10,
+        "false_negative": 0,
+        "true_negative": 5,
+        "false_positive": 5,
+        "pending": 0,
+        "unknown_cards": 0
+      },
+      "ruby": {
+        "cards": {
+          "ruby-01": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "ruby-02": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "ruby-03": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sink_rce",
+                  "src_file_read"
+                ]
+              }
+            ]
+          },
+          "ruby-04": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "ruby-05": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "ruby-06": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "ruby-07": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "guard_sanitize"
+                ]
+              }
+            ]
+          },
+          "ruby-08": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "ruby-09": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "ruby-10": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          }
+        },
+        "denominator": 20,
+        "true_positive": 10,
+        "false_negative": 0,
+        "true_negative": 8,
+        "false_positive": 2,
+        "pending": 0,
+        "unknown_cards": 0
+      },
+      "rust": {
+        "cards": {
+          "rust-01": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_rust_01"
+                ]
+              }
+            ]
+          },
+          "rust-02": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "rust-03": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "rust-04": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "rust-05": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "rust-06": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_rust_06"
+                ]
+              }
+            ]
+          },
+          "rust-07": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "rust-08": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "rust-09": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "rust-10": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          }
+        },
+        "denominator": 20,
+        "true_positive": 10,
+        "false_negative": 0,
+        "true_negative": 8,
+        "false_positive": 2,
+        "pending": 0,
+        "unknown_cards": 0
+      },
+      "scala": {
+        "cards": {
+          "scala-01": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "scala-02": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "scala-03": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "scala-04": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "scala-05": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "scala-06": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "scala-07": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "scala-08": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "scala-09": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "guard_sanitize"
+                ]
+              }
+            ]
+          },
+          "scala-10": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_scala_10"
+                ]
+              }
+            ]
+          }
+        },
+        "denominator": 20,
+        "true_positive": 10,
+        "false_negative": 0,
+        "true_negative": 8,
+        "false_positive": 2,
+        "pending": 0,
+        "unknown_cards": 0
+      },
+      "shell": {
+        "cards": {
+          "shell-01": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "shell-02": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "shell-03": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "shell-04": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "shell-05": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "shell-06": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_shell_06"
+                ]
+              }
+            ]
+          },
+          "shell-07": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "shell-08": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "shell-09": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "shell-10": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          }
+        },
+        "denominator": 20,
+        "true_positive": 10,
+        "false_negative": 0,
+        "true_negative": 9,
+        "false_positive": 1,
+        "pending": 0,
+        "unknown_cards": 0
+      },
+      "swift": {
+        "cards": {
+          "swift-01": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "swift-02": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "swift-03": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "swift-04": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "swift-05": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "swift-06": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "swift-07": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "swift-08": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "swift-09": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "swift-10": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_swift_10"
+                ]
+              }
+            ]
+          }
+        },
+        "denominator": 20,
+        "true_positive": 10,
+        "false_negative": 0,
+        "true_negative": 9,
+        "false_positive": 1,
+        "pending": 0,
+        "unknown_cards": 0
+      },
+      "typescript": {
+        "cards": {
+          "ts-01": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "src_http_input"
+                ]
+              }
+            ]
+          },
+          "ts-02": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "ts-03": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "ts-04": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "ts-05": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "ts-06": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_ts_06"
+                ]
+              }
+            ]
+          },
+          "ts-07": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_ts_07"
+                ]
+              }
+            ]
+          },
+          "ts-08": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "sig_ts_08"
+                ]
+              }
+            ]
+          },
+          "ts-09": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 1,
+            "false_positive": 0,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": []
+          },
+          "ts-10": {
+            "denominator": 2,
+            "true_positive": 1,
+            "false_negative": 0,
+            "true_negative": 0,
+            "false_positive": 1,
+            "pending": 0,
+            "detected_by_card_signal": 1,
+            "status": "evaluated",
+            "detail": [
+              {
+                "role": "safe",
+                "signal_ids": [
+                  "guard_sanitize"
+                ]
+              }
+            ]
+          }
+        },
+        "denominator": 20,
+        "true_positive": 10,
+        "false_negative": 0,
+        "true_negative": 5,
+        "false_positive": 5,
+        "pending": 0,
+        "unknown_cards": 0
+      }
+    },
+    "unknown_categories": [],
+    "language_signal_load_errors": {},
+    "llm_worker": {
+      "status": "host_available_dry_run_only",
+      "host_clis": {
+        "claude": true,
+        "codex": true
+      },
+      "note": "host CLI detected but no model call is executed by this tool; LLM-side holdout results remain unknown until a real evaluation run",
+      "llm_results": "unknown"
+    },
+    "disclaimer": "本报告为开发期合成语料的接线/回归评测，不构成独立留出集结论；不得据此宣称客观排名、模型能力或全覆盖。正式留出集必须由维护者独立编写，且在评测前不得参与任何调参。",
+    "claims": {
+      "objective_ranking": false,
+      "full_coverage": false,
+      "independent_holdout": false,
+      "note": "synthetic development-time corpus; no ranking or coverage claim is made"
+    }
+  },
+  "not_automated": [
+    "LLM 在线评测（不伪造在线模型结论；llm_results 保持 unknown）",
+    "独立维护者编写的留出集（当前语料为开发期合成数据）",
+    "150 类知识卡逐语言公开依据/适用性/正反例专家评审"
+  ]
+}

@@ -113,6 +113,7 @@ from auditkit.contracts.errors import (
     GateFailedError,
     InvalidInputError,
     InvalidStateError,
+    StaleAttemptError,
     StorageError,
 )
 from auditkit.contracts.gates import GateEvaluator
@@ -2027,43 +2028,78 @@ class AuditAppService:
     # ------------------------------------------------------------------
     def build_usage(
         self,
-        adapter: Any,
-        attempt_id: str,
+        usage: Optional[Dict[str, Any]] = None,
+        attempt_id: Optional[str] = None,
         dimension: str = "tokens",
         unit: str = "tokens",
         source: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Build a trusted usage object from a host adapter (DSR-033 wiring).
+        """Build a trusted per-attempt usage object (DSR-033 wiring).
 
-        Reads the adapter's ``last_usage`` (populated by ``extract_usage``).
+        Usage envelope contract (P0 fix): ``usage`` is the per-attempt usage
+        dict the worker execution itself returned (the second element of the
+        ``execute_worker`` tuple), captured from the same invocation that
+        produced the result — so concurrent workers can never cross-attribute
+        usage through a shared adapter slot. The submitting claim's
+        ``attempt_id`` (this method's argument) ALWAYS wins: whatever
+        attempt_id the worker dict carried is overwritten, so the returned
+        record is bound to the attempt actually being submitted.
+
+        Back-compat shim: the previous ``build_usage(adapter, attempt_id,
+        ...)`` call shape still works — a non-dict first argument (an adapter
+        object) is IGNORED and treated as "no usage supplied". The shared
+        ``adapter.last_usage`` slot is no longer read anywhere (it
+        cross-attributed attempts under real concurrency), so the shim yields
+        an explicit ``unavailable`` record, never a silently swapped one.
+
         Host-reported numbers map to availability "exact" only when the host
-        explicitly declared it, otherwise "estimated"; a missing or non-numeric
-        usage block maps to "unavailable" with an explicit reason. Usage is
-        never omitted: a submission always carries a usage object.
+        explicitly declared it, otherwise "estimated"; a missing or
+        non-numeric usage block maps to "unavailable" with an explicit reason.
+        Usage is never omitted: a submission always carries a usage object.
         """
-        raw = getattr(adapter, "last_usage", None)
-        usage: Dict[str, Any] = {
+        if usage is not None and not isinstance(usage, dict):
+            # Legacy positional shape: the first argument was the adapter.
+            usage = None
+        if usage is not None and not attempt_id:
+            attempt_id = usage.get("attempt_id") or None
+        if not attempt_id:
+            raise InvalidInputError("usage.attempt_id is required")
+
+        record: Dict[str, Any] = {
             "schema_version": "1.0",
             "attempt_id": attempt_id,
             "dimension": dimension,
             "unit": unit,
-            "source": source or (type(adapter).__name__ if adapter is not None else "service"),
+            "source": source or (usage or {}).get("source") or "service",
         }
-        if isinstance(raw, dict):
-            numeric = [
-                v for v in raw.values() if isinstance(v, int) and not isinstance(v, bool)
+        if usage is None:
+            record["availability"] = "unavailable"
+            record["reason"] = "worker execution returned no usage block"
+            return record
+
+        availability = usage.get("availability")
+        value = usage.get("value")
+        if not isinstance(value, int) or isinstance(value, bool):
+            # Schema-shaped dicts carry "value"; raw host usage blocks carry
+            # typed counter fields instead — sum the numeric ones.
+            numerics = [
+                v for v in usage.values() if isinstance(v, int) and not isinstance(v, bool)
             ]
-            if numeric:
-                declared = raw.get("availability")
-                usage["availability"] = declared if declared in ("exact", "estimated") else "estimated"
-                usage["value"] = sum(numeric)
-                return usage
-            usage["availability"] = "unavailable"
-            usage["reason"] = "host adapter usage block contained no numeric values"
-            return usage
-        usage["availability"] = "unavailable"
-        usage["reason"] = "host adapter reported no usage block"
-        return usage
+            value = sum(numerics) if numerics else None
+        if availability == "unavailable" or value is None:
+            record["availability"] = "unavailable"
+            record["reason"] = (
+                usage.get("reason")
+                or (
+                    "host reported no usable usage values"
+                    if availability == "unavailable"
+                    else "host usage block contained no numeric values"
+                )
+            )
+            return record
+        record["availability"] = availability if availability in ("exact", "estimated") else "estimated"
+        record["value"] = value
+        return record
 
     # ------------------------------------------------------------------
     # HST -> service wiring: AIMD-driven dispatch loop.
@@ -2072,7 +2108,7 @@ class AuditAppService:
         self,
         run_id: str,
         run_dir: str | Path,
-        execute_fn: Callable[[Dict[str, Any]], Dict[str, Any]],
+        execute_fn: Callable[[Dict[str, Any]], Any],
         adapter: Any = None,
         controller: Optional[ConcurrencyController] = None,
         max_batches: Optional[int] = None,
@@ -2115,14 +2151,16 @@ class AuditAppService:
         - ``adapter``: host driver adapter; its ``max_retries`` bounds queue
           retries and its ``backoff_base``/``backoff_max`` bound the backoff
           sleep after retryable failures (slept by the failing worker only).
-          ``last_usage`` feeds the trusted usage object submitted for every
-          attempt (built via ``build_usage``). Known limitation (hosts-layer
-          debt, not fixable in the service): adapters that publish usage through
-          a single shared ``adapter.last_usage`` slot can cross-attribute
-          per-attempt usage when two workers finish within each other's
-          execute_fn tail; usage totals and availability accounting stay exact,
-          only the per-attempt binding can swap. A per-task usage channel in
-          the host adapters removes the residual window.
+          ``execute_fn``'s usage envelope feeds the trusted usage object
+          submitted for every attempt (built via ``build_usage``): the new
+          contract returns ``(worker_result, usage_dict_or_None)`` from the
+          SAME execution, so per-attempt usage can never be cross-attributed
+          through shared adapter state (the former shared ``last_usage`` slot
+          swapped attribution when two workers finished within each other's
+          execute_fn tail — removed). A bare ``worker_result`` return is still
+          accepted for backward compatibility; its usage then falls back to
+          the legacy ``build_usage(adapter, ...)`` path, which now yields an
+          explicit ``unavailable`` record instead of reading the shared slot.
         - ``sleep_fn`` stays injectable (used for the post-failure backoff).
         - TerminationUncertainError retains the attempt budget (no release) and
           is converted into an incomplete candidate reason at finalize.
@@ -2189,7 +2227,7 @@ class AuditAppService:
             with db_lock:
                 self.start(run_dir, claim)
             try:
-                result = execute_fn(claim)
+                outcome = execute_fn(claim)
             except TerminationUncertainError as e:
                 # Budget is retained, never released (DSR-064).
                 with db_lock:
@@ -2211,16 +2249,59 @@ class AuditAppService:
                 sleep_fn(compute_backoff_delay(failures, backoff_base, backoff_max))
                 return ("failed", claim["task_id"])
 
-            usage = self.build_usage(
-                adapter,
-                claim["attempt_id"],
-                dimension=usage_dimension,
-                unit=usage_unit,
-                source=usage_source,
-            )
+            # Usage envelope contract (P0 fix): the new execute_fn shape
+            # returns (worker_result, usage_dict_or_None) — the usage captured
+            # by the SAME execution that produced the result, so two workers
+            # overlapping through each other's submit tail each settle their
+            # OWN usage. A bare worker_result (pre-envelope consumers) is
+            # still accepted: its usage falls back to the legacy
+            # build_usage(adapter, ...) path, which no longer reads the shared
+            # adapter slot and therefore yields an explicit unavailable
+            # record, never a cross-attributed one.
+            if isinstance(outcome, tuple) and len(outcome) == 2:
+                result, captured_usage = outcome
+                usage = self.build_usage(
+                    captured_usage,
+                    claim["attempt_id"],
+                    dimension=usage_dimension,
+                    unit=usage_unit,
+                    source=usage_source,
+                )
+            else:
+                result = outcome
+                usage = self.build_usage(
+                    adapter,
+                    claim["attempt_id"],
+                    dimension=usage_dimension,
+                    unit=usage_unit,
+                    source=usage_source,
+                )
             digest = sha256_text(json.dumps(result, sort_keys=True, ensure_ascii=False))
-            with db_lock:
-                self.submit(run_dir, claim, result, digest, usage=usage)
+            try:
+                with db_lock:
+                    self.submit(run_dir, claim, result, digest, usage=usage)
+            except StaleAttemptError as e:
+                # Real workers can exceed the claim lease (e.g. an LLM call
+                # longer than lease_seconds). DDS-06: the late result is
+                # rejected and the task is atomically requeued with a fresh
+                # generation -- surface that as a task-level retryable
+                # failure instead of crashing the whole driver loop.
+                with db_lock:
+                    self.report_host_failure(
+                        run_dir,
+                        claim,
+                        HostFailureError(
+                            f"claim lease expired before submit: {e.message}",
+                            retryable=True,
+                        ),
+                        max_retries=max_retries,
+                    )
+                with ctrl_lock:
+                    ctrl.on_failure()
+                    counters["failed"] += 1
+                    failures = counters["failed"]
+                sleep_fn(compute_backoff_delay(failures, backoff_base, backoff_max))
+                return ("failed", claim["task_id"])
             with ctrl_lock:
                 ctrl.on_success()
                 counters["submitted"] += 1

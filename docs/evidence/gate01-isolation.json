@@ -1,0 +1,150 @@
+{
+  "schema_version": "1.0",
+  "gate": "GATE-01",
+  "evidence_kind": "isolation_probe",
+  "generated_at": "2026-11-16T15:04:26Z",
+  "environment": {
+    "python_version": "3.14.4",
+    "platform": "Linux-7.0.12-linuxkit-aarch64-with-glibc2.43",
+    "machine": "aarch64",
+    "processor": "unknown",
+    "cpu_count": 18,
+    "hostname": "73ebd4c7787b",
+    "memory_total_bytes": 17007304704
+  },
+  "status": "unknown",
+  "summary": "开发期 demo 夹具探测: symlink_escape=detected, race_write=detected, symlink_swap=detected, path_alias=canonicalized; 真实目标隔离结果 real_target_results=unknown（保持 unknown）",
+  "probes": [
+    {
+      "probe": "symlink_escape",
+      "observed": true,
+      "status": "detected",
+      "detail": "",
+      "escaped_flag_recorded": true,
+      "gap_entries": [
+        {
+          "path": "src/innocent_link.py",
+          "reason": "symlink_excluded",
+          "detail": "symlink target escapes target root"
+        }
+      ]
+    },
+    {
+      "probe": "race_write",
+      "attempts": [
+        {
+          "attempt": 0,
+          "drift_detected_gap": true,
+          "drift_gap_count": 1,
+          "observed": true
+        },
+        {
+          "attempt": 1,
+          "drift_detected_gap": true,
+          "drift_gap_count": 1,
+          "observed": true
+        },
+        {
+          "attempt": 2,
+          "drift_detected_gap": true,
+          "drift_gap_count": 1,
+          "observed": true
+        }
+      ],
+      "observed": true,
+      "status": "detected",
+      "detail": "content-level drift detection is exercised via mock timing"
+    },
+    {
+      "probe": "symlink_swap",
+      "observed": true,
+      "status": "detected",
+      "detail": "SnapshotInconsistentError('[SNAPSHOT_INCONSISTENT] Source files modified during snapshot collection: 1 files altered')",
+      "raised": "SnapshotInconsistentError"
+    },
+    {
+      "probe": "path_alias",
+      "observed": true,
+      "status": "canonicalized",
+      "root_hash_match": true,
+      "snapshot_id_a": "snp-ffd5dad980af",
+      "snapshot_id_b": "snp-ffd5dad980af",
+      "detail": "alias traversal must not change the canonical manifest"
+    }
+  ],
+  "real_target_results": "unknown",
+  "limitations": [
+    "probe result applies to the development-time demo fixture only; real-target isolation is measured in the unified test phase and remains unknown until then. Probes never claim races or escapes are eliminated.",
+    "race probes use mock timing hooks (deterministic); wall-clock races are inherently non-deterministic and are re-run in the unified test phase",
+    "this tool never claims that collection races or symlink escapes are eliminated in general"
+  ],
+  "report": {
+    "schema_version": "1.0",
+    "generated_at": "2026-11-16T15:04:26Z",
+    "scope": "development-time demo fixtures (tempdir); real-target run deferred to unified test phase",
+    "probes": [
+      {
+        "probe": "symlink_escape",
+        "observed": true,
+        "status": "detected",
+        "detail": "",
+        "escaped_flag_recorded": true,
+        "gap_entries": [
+          {
+            "path": "src/innocent_link.py",
+            "reason": "symlink_excluded",
+            "detail": "symlink target escapes target root"
+          }
+        ]
+      },
+      {
+        "probe": "race_write",
+        "attempts": [
+          {
+            "attempt": 0,
+            "drift_detected_gap": true,
+            "drift_gap_count": 1,
+            "observed": true
+          },
+          {
+            "attempt": 1,
+            "drift_detected_gap": true,
+            "drift_gap_count": 1,
+            "observed": true
+          },
+          {
+            "attempt": 2,
+            "drift_detected_gap": true,
+            "drift_gap_count": 1,
+            "observed": true
+          }
+        ],
+        "observed": true,
+        "status": "detected",
+        "detail": "content-level drift detection is exercised via mock timing"
+      },
+      {
+        "probe": "symlink_swap",
+        "observed": true,
+        "status": "detected",
+        "detail": "SnapshotInconsistentError('[SNAPSHOT_INCONSISTENT] Source files modified during snapshot collection: 1 files altered')",
+        "raised": "SnapshotInconsistentError"
+      },
+      {
+        "probe": "path_alias",
+        "observed": true,
+        "status": "canonicalized",
+        "root_hash_match": true,
+        "snapshot_id_a": "snp-ffd5dad980af",
+        "snapshot_id_b": "snp-ffd5dad980af",
+        "detail": "alias traversal must not change the canonical manifest"
+      }
+    ],
+    "real_target_results": "unknown",
+    "limitations": [
+      "probe result applies to the development-time demo fixture only; real-target isolation is measured in the unified test phase and remains unknown until then. Probes never claim races or escapes are eliminated.",
+      "race probes use mock timing hooks (deterministic); wall-clock races are inherently non-deterministic and are re-run in the unified test phase",
+      "this tool never claims that collection races or symlink escapes are eliminated in general"
+    ]
+  }
+}

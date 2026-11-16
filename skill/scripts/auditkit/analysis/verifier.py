@@ -1,10 +1,14 @@
 """Independent verification engine, 4-way verdicts, and second-opinion adjudication.
 
-Implements DSR-027 / DSR-061 / DSR-062 / SD-05 / SR-008 / SR-009:
+Implements DSR-027 / DSR-061 / DSR-062 / SD-05 / SR-008 / SR-009 / DSR-028:
 - Four formal verdicts: confirmed, needs_validation, rejected, unverified.
 - Static proof yields E2; absence of E3 strictly enforced.
 - Independent second opinion adjudication for High/Critical findings.
 - Bounded variant search across the snapshot.
+- Rating factor reasons are mandatory: a confirmed claim without a non-empty
+  impact_why / exploitability_why is demoted to needs_validation with the
+  gap recorded as a blocker — canned factor reasons are never fabricated
+  (SWR-011 / DSR-028: 缺失因子或理由拒绝定级).
 """
 
 # 需求追踪 (Requirement Traceability)
@@ -26,11 +30,18 @@ from auditkit.analysis.rating import RatingEngine
 from auditkit.contracts.errors import InvalidInputError
 from auditkit.contracts.semantic_validator import (
     SemanticValidator,
+    calculate_severity,
     calculate_validation_priority,
 )
 from auditkit.inventory.languages import detect_language
 
 SECOND_OPINION_SEVERITIES = ("High", "Critical")
+
+# Honest downgrade record attached to a confirmed claim that was demoted to
+# needs_validation because mandatory rating/trace inputs were missing. The
+# structure preserves WHAT was claimed and WHY it could not stand, so the
+# demotion is auditable instead of silent.
+DEMOTE_MARKER_KEY = "demoted_from"
 
 
 def derive_languages(candidate: Dict[str, Any]) -> List[str]:
@@ -234,7 +245,21 @@ class Verifier:
         max_variants: int = 5,
         max_files: int = 20,
     ) -> Dict[str, Any]:
-        """Construct structured Finding object complying with IFC-02."""
+        """Construct structured Finding object complying with IFC-02.
+
+        Rating factor reasons are mandatory (SWR-011 / DSR-028: 缺失因子或理由
+        拒绝定级). A ``confirmed`` claim whose ``impact_why`` or
+        ``exploitability_why`` is empty/blank is NOT silently graded with a
+        canned justification: it is demoted to ``needs_validation`` with the
+        concrete gap recorded in ``blockers`` ("missing rating factor reason:
+        ...") and a ``demoted_from`` marker. A ``needs_validation`` finding
+        without factor reasons stays pending with a rating that carries only
+        the numbers and the validation priority — no fabricated
+        ``factor_reasons``. The previous canned defaults
+        ("Demonstrated sensitive sink reachability" /
+        "Attacker input unchecked") fabricated the observed justification for
+        a severity and were removed.
+        """
         finding_id = f"F-{uuid.uuid4().hex[:6].upper()}"
         cand_id = candidate.get("candidate_id", "")
         hunt_tasks = candidate.get("provenance", {}).get("hunt_tasks", [])
@@ -252,27 +277,29 @@ class Verifier:
             },
         }
 
-        # The rating matrix, its bounded adjustment and the urgency
-        # recalculation have one authority (RatingEngine, DSR-028): the
-        # verifier delegates instead of duplicating the matrix here, so an
-        # explicitly declared adjustment can never be silently ignored.
-        rating_dict: Dict[str, Any] = RatingEngine.compute_rating(
-            impact=impact,
-            exploitability=exploitability,
-            impact_why=impact_why or "Demonstrated sensitive sink reachability",
-            exploitability_why=exploitability_why or "Attacker input unchecked",
-            adjustment=adjustment,
-        )
-        if verdict != "confirmed":
-            # SR-011 / DSR-028: only confirmed findings carry a repair
-            # urgency; pending findings are restricted to the validation
-            # priority (see the needs_validation branch below).
-            rating_dict.pop("calculated_urgency", None)
-            rating_dict.pop("final_urgency", None)
+        # Rating factor bounds are checked once here so every branch (and the
+        # demotion path below) fails on the same explicit condition
+        # (DSR-028: 穷举因子两端越界拒绝).
+        for name, value in (("impact", impact), ("exploitability", exploitability)):
+            if not isinstance(value, int) or isinstance(value, bool) or not (1 <= value <= 4):
+                raise InvalidInputError(f"{name} must be integer 1..4, got {value!r}")
+
+        # Observed reasons only: blank/whitespace input is treated as missing,
+        # never replaced with canned text (SWR-011 / DSR-028).
+        impact_why_s = (impact_why or "").strip()
+        exploitability_why_s = (exploitability_why or "").strip()
+        missing_factor_reasons = [
+            name for name, value in (
+                ("impact_why", impact_why_s),
+                ("exploitability_why", exploitability_why_s),
+            ) if not value
+        ]
 
         if verdict == "confirmed":
             # DSR-027: an E2 (confirmed) verdict must come from a fresh
-            # verification attempt, distinct from the hunt attempt.
+            # verification attempt, distinct from the hunt attempt. The gate
+            # is evaluated against the CLAIMED verdict before any demotion,
+            # so missing factor reasons can never be used to bypass it.
             hunt_attempt = hunt_attempt_id or candidate.get("provenance", {}).get(
                 "hunt_attempt_id", ""
             )
@@ -297,16 +324,43 @@ class Verifier:
             if verify_attempt_id:
                 finding["provenance"]["verify_attempt_id"] = verify_attempt_id
 
+            demotion_blockers: List[str] = [
+                f"missing rating factor reason: {name}" for name in missing_factor_reasons
+            ]
+            steps = candidate.get("steps") or []
+            if not steps:
+                # SWR-009: E2 requires per-hop evidence. When the candidate
+                # carries no trace, no canned two-step trace is fabricated —
+                # the finding stays pending with the gap recorded.
+                demotion_blockers.append(
+                    "missing per-hop trace steps: a confirmed (E2) finding requires "
+                    "an observed source-to-sink trace"
+                )
+
+            if demotion_blockers:
+                return self._demote_confirmed_claim(
+                    finding,
+                    candidate,
+                    demotion_blockers,
+                    impact=impact,
+                    exploitability=exploitability,
+                    adjustment=adjustment,
+                )
+
+            # The rating matrix, its bounded adjustment and the urgency
+            # recalculation have one authority (RatingEngine, DSR-028): the
+            # verifier delegates instead of duplicating the matrix here, so an
+            # explicitly declared adjustment can never be silently ignored.
+            rating_dict: Dict[str, Any] = RatingEngine.compute_rating(
+                impact=impact,
+                exploitability=exploitability,
+                impact_why=impact_why_s,
+                exploitability_why=exploitability_why_s,
+                adjustment=adjustment,
+            )
+
             source = candidate.get("source", {})
             sink = candidate.get("sink", {})
-            steps = candidate.get("steps", [])
-
-            # Ensure steps begin with source and end with sink
-            if not steps:
-                steps = [
-                    {"path": source.get("path", ""), "line": source.get("line", 1), "role": "source", "note": "Input entry"},
-                    {"path": sink.get("path", ""), "line": sink.get("line", 1), "role": "sink", "note": "Sensitive sink execution"},
-                ]
 
             finding.update({
                 "title": f"Confirmed vulnerability in {sink.get('path', 'unknown')}",
@@ -360,6 +414,23 @@ class Verifier:
                     "needs_validation verdict requires a concrete "
                     "'validation_plan' stating how the blocker is resolved"
                 )
+            if missing_factor_reasons:
+                # SWR-011 / DSR-028: missing factor reasons keep the item
+                # pending WITHOUT fabricating them — the rating carries the
+                # observed numbers and the validation priority only.
+                rating_dict = self._pending_rating(impact, exploitability)
+            else:
+                # The rating matrix has one authority (RatingEngine,
+                # DSR-028); pending findings are restricted to the validation
+                # priority (SR-011 — no repair urgency).
+                rating_dict = RatingEngine.compute_rating(
+                    impact=impact,
+                    exploitability=exploitability,
+                    impact_why=impact_why_s,
+                    exploitability_why=exploitability_why_s,
+                )
+                rating_dict.pop("calculated_urgency", None)
+                rating_dict.pop("final_urgency", None)
             rating_dict["validation_priority"] = calculate_validation_priority(impact, exploitability)
             finding.update({
                 "title": f"Potential issue needing validation in {candidate.get('sink', {}).get('path', 'unknown')}",
@@ -394,6 +465,104 @@ class Verifier:
             finding.update({"unverified_reason": unverified_reason})
 
         # Run semantic validation to ensure contract compliance
+        self.validator.validate_finding(finding)
+        return finding
+
+    # ------------------------------------------------------------------
+    # SWR-011 / DSR-028: honest degradation for incomplete confirmations.
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _pending_rating(impact: int, exploitability: int) -> Dict[str, Any]:
+        """Pending rating built from observed numbers only (no fabricated text).
+
+        Carries no ``factor_reasons`` (none were observed) and no repair
+        urgency (SR-011: pending findings carry the validation priority).
+        Satisfies SemanticValidator.validate_rating(is_confirmed=False).
+        """
+        return {
+            "schema_version": "1.0",
+            "impact": impact,
+            "exploitability": exploitability,
+            "calculated_severity": calculate_severity(impact, exploitability),
+            "final_severity": calculate_severity(impact, exploitability),
+            "validation_priority": calculate_validation_priority(impact, exploitability),
+            "adjustment": None,
+        }
+
+    def _demote_confirmed_claim(
+        self,
+        finding: Dict[str, Any],
+        candidate: Dict[str, Any],
+        demotion_blockers: List[str],
+        *,
+        impact: int,
+        exploitability: int,
+        adjustment: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Demote a confirmed claim that lacks mandatory inputs (SR-008).
+
+        A confirmed (E2) verdict without the mandatory rating factor reasons
+        (or without the per-hop trace) cannot be graded: instead of fabricating
+        a canned justification, the claim stays pending (needs_validation) with
+        the concrete gap recorded verbatim in ``blockers`` and an auditable
+        ``demoted_from`` marker. The validation plan states exactly what must
+        be observed before the claim can be re-confirmed.
+        """
+        finding["verdict"] = "needs_validation"
+        finding["evidence_level"] = "E1"
+        sink = candidate.get("sink") or {}
+        source = candidate.get("source") or {}
+        steps = candidate.get("steps") or []
+
+        if adjustment is not None:
+            # SR-011: a declared operator adjustment is never silently
+            # ignored — on the demoted (pending) rating it is explicitly
+            # recorded as unapplied, because pending items carry no repair
+            # grade to adjust.
+            demotion_blockers = list(demotion_blockers) + [
+                "declared manual adjustment not applied: pending findings carry "
+                "no repair urgency to adjust"
+            ]
+
+        plan_parts: List[str] = []
+        if any("impact_why" in b or "exploitability_why" in b for b in demotion_blockers):
+            plan_parts.append(
+                "record the observed impact and exploitability reasons "
+                "(impact_why / exploitability_why) from the verified trace, then "
+                "re-rate via RatingEngine"
+            )
+        if any("per-hop trace steps" in b for b in demotion_blockers):
+            plan_parts.append(
+                "record the observed per-hop source-to-sink trace and re-attempt "
+                "the E2 confirmation with the completed trace"
+            )
+        validation_plan = "; ".join(plan_parts) or (
+            "re-run verification and record the missing evidence before confirming"
+        )
+
+        # Real observed trace data (source/sink/steps) is carried into the
+        # pending item when present — it is the verifier's evidence, not a
+        # fabricated anchor.
+        finding.update({
+            "title": f"Potential issue needing validation in {sink.get('path', 'unknown')}",
+            "issue": candidate.get("issue", "general"),
+            "languages": derive_languages(candidate),
+            "blockers": list(demotion_blockers),
+            "validation_plan": validation_plan,
+            "rating": self._pending_rating(impact, exploitability),
+        })
+        if source:
+            finding["source"] = source
+        if sink:
+            finding["sink"] = sink
+        if steps:
+            finding["steps"] = steps
+        finding[DEMOTE_MARKER_KEY] = {
+            "schema_version": "1.0",
+            "claimed_verdict": "confirmed",
+            "blockers": list(demotion_blockers),
+        }
+
         self.validator.validate_finding(finding)
         return finding
 

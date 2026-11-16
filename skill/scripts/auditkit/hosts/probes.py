@@ -18,6 +18,12 @@ that could have falsified it actually ran and confirmed it.
 
 Claude and Codex are probed independently; no result is ever inferred from
 the other host (DSR-003).
+
+Headless probe timeouts are per host (claude 30s, codex 90s): a real codex
+reasoning-model round trip can exceed 30s, and capping every host at 30s
+turned working codex installs into fabricated "unknown" verdicts. An
+explicit timeout argument overrides the default; a host slower than its
+window still stays honestly UNKNOWN with the timed-out reason.
 """
 
 # 需求追踪 (Requirement Traceability)
@@ -47,6 +53,30 @@ PROBE_LEVEL_HEADLESS = "headless"
 PROBE_LEVEL_AGGRESSIVE = "aggressive"
 
 VALID_PROBE_LEVELS = (PROBE_LEVEL_CONSERVATIVE, PROBE_LEVEL_HEADLESS, PROBE_LEVEL_AGGRESSIVE)
+
+# Per-host default headless probe timeout (seconds), DSR-002.
+# Measured deviation (P1): a real codex reasoning-model round trip routinely
+# exceeds 30s, so the previous uniform 30s cap turned real, working hosts
+# into a fabricated "unknown" — the probe failed on OUR budget, not on the
+# host. codex therefore gets a 90s window; claude keeps 30s. An explicit
+# ``timeout`` argument always overrides these defaults. A host that is still
+# slower than its window stays honestly UNKNOWN with the timed-out reason.
+DEFAULT_PROBE_TIMEOUTS: Dict[str, int] = {"claude": 30, "codex": 90}
+FALLBACK_PROBE_TIMEOUT = 30
+
+
+def resolve_probe_timeout(host: str, timeout: Optional[int] = None) -> int:
+    """Resolve the headless probe timeout for a host (DSR-002).
+
+    An explicit ``timeout`` argument wins; otherwise the per-host default
+    applies (claude 30s, codex 90s — real reasoning-model round trips are
+    slower); unknown hosts fall back to the conservative 30s.
+    """
+    if timeout is not None:
+        if int(timeout) <= 0:
+            raise ValueError(f"timeout must be a positive number of seconds, got {timeout!r}")
+        return int(timeout)
+    return DEFAULT_PROBE_TIMEOUTS.get(host, FALLBACK_PROBE_TIMEOUT)
 
 # Headless invocation shape per host binary (DSR-002: one real headless call).
 # Each entry is a function of the prompt text producing the full argument
@@ -179,15 +209,18 @@ def probe_cli_version(binary_path: str, timeout: int = 10) -> Dict[str, Any]:
 def probe_headless_invocation(
     binary_path: str,
     host: str,
-    timeout: int = 30,
+    timeout: Optional[int] = None,
     prompt: str = "reply with OK",
 ) -> Dict[str, Any]:
     """DSR-002/003: perform ONE real headless invocation of the host CLI.
 
+    The timeout defaults per host (claude 30s, codex 90s — see
+    ``resolve_probe_timeout``); an explicit ``timeout`` argument overrides it.
     A non-zero exit, timeout, or empty output leaves headless_cli UNKNOWN with
     the probe error as reason — it is never promoted to ENFORCED on a mere
     `--version` success.
     """
+    effective_timeout = resolve_probe_timeout(host, timeout)
     args = _headless_args(host, prompt)
     cmd = [binary_path] + args
     method = " ".join(cmd)
@@ -195,13 +228,14 @@ def probe_headless_invocation(
         # stdin detached: a headless probe must neither block on nor ingest
         # the runner's input stream (codex exec reads stdin when not a TTY).
         res = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL
+            cmd, capture_output=True, text=True, timeout=effective_timeout,
+            stdin=subprocess.DEVNULL
         )
     except subprocess.TimeoutExpired:
         return make_feature(
             FeatureState.UNKNOWN,
             method=method,
-            reason=f"headless probe timed out after {timeout}s",
+            reason=f"headless probe timed out after {effective_timeout}s",
         )
     except OSError as exc:
         return make_feature(
@@ -520,7 +554,7 @@ def probe_host_capabilities(
     binary_name: str,
     host: str,
     probe_level: str = PROBE_LEVEL_CONSERVATIVE,
-    timeout: int = 30,
+    timeout: Optional[int] = None,
 ) -> Dict[str, Any]:
     """DSR-001/002/003: unified per-host capability probe.
 
@@ -530,10 +564,17 @@ def probe_host_capabilities(
     reported as UNKNOWN with the probe plan described. Each feature entry
     carries the probe `method` used (DSR-001 evidence-with-command report).
 
+    ``timeout`` defaults per host (claude 30s, codex 90s — real
+    reasoning-model round trips are slower than the old uniform 30s cap,
+    which turned working codex hosts into fabricated unknowns); an explicit
+    value overrides the default for every probe that accepts one.
+
     Returns a dict: {"binary", "probe_level", "features"}.
     """
     if probe_level not in VALID_PROBE_LEVELS:
         raise ValueError(f"invalid probe_level: {probe_level!r}")
+
+    effective_timeout = resolve_probe_timeout(host, timeout)
 
     binary_path = shutil.which(binary_name)
     features: Dict[str, Any] = {}
@@ -557,7 +598,9 @@ def probe_host_capabilities(
         reason=f"headless probe not executed (probe_level={probe_level})",
     )
     if probe_level in (PROBE_LEVEL_HEADLESS, PROBE_LEVEL_AGGRESSIVE):
-        features["headless_cli"] = probe_headless_invocation(binary_path, host, timeout=timeout)
+        features["headless_cli"] = probe_headless_invocation(
+            binary_path, host, timeout=effective_timeout
+        )
 
     features["structured_output"] = make_feature(
         FeatureState.UNKNOWN,
@@ -589,10 +632,12 @@ def probe_host_capabilities(
         workdir = tempfile.mkdtemp(prefix="auditkit-probe-")
         try:
             features["filesystem_isolation"] = probe_execution_counterexample(
-                binary_path, host, workdir, timeout=timeout
+                binary_path, host, workdir, timeout=effective_timeout
             )
             features["execution_isolation"] = dict(features["filesystem_isolation"])
-            features["network_isolation"] = probe_network_counterexample(timeout=timeout)
+            features["network_isolation"] = probe_network_counterexample(
+                timeout=effective_timeout
+            )
         finally:
             try:
                 marker = os.path.join(workdir, "auditkit_exec_probe_marker.txt")

@@ -81,8 +81,13 @@ class TestAnalysis(unittest.TestCase):
             "provenance": {"hunt_tasks": ["t1"]},
         }
 
-        # Confirmed -> E2
-        f_conf = verifier.create_finding_from_candidate(cand, "confirmed", "t-v1", impact=4, exploitability=4)
+        # Confirmed -> E2 (factor reasons are mandatory, SWR-011/DSR-028:
+        # missing reasons demote to needs_validation instead of a canned grade)
+        f_conf = verifier.create_finding_from_candidate(
+            cand, "confirmed", "t-v1", impact=4, exploitability=4,
+            impact_why="Unauthenticated pickle.load of attacker-controlled body",
+            exploitability_why="HTTP endpoint reachable without credentials",
+        )
         self.assertEqual(f_conf["verdict"], "confirmed")
         self.assertEqual(f_conf["evidence_level"], "E2")
         self.assertEqual(f_conf["rating"]["final_severity"], "Critical")
@@ -107,7 +112,11 @@ class TestAnalysis(unittest.TestCase):
             ],
             "provenance": {"hunt_tasks": ["t1"]},
         }
-        finding = verifier.create_finding_from_candidate(cand, "confirmed", "t-v1", impact=4, exploitability=4)
+        finding = verifier.create_finding_from_candidate(
+            cand, "confirmed", "t-v1", impact=4, exploitability=4,
+            impact_why="Unauthenticated pickle.load of attacker-controlled body",
+            exploitability_why="HTTP endpoint reachable without credentials",
+        )
 
         # Second opinion disagrees!
         adj = verifier.adjudicate_second_opinion(finding, "rejected", "Sanitizer observed on line 25")

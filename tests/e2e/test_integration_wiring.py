@@ -6,7 +6,8 @@ Covers the inter-module wiring that individual domain suites cannot see:
   run_id and merged into finalize; verify completion is accounted.
 - ANA -> LED: connector evaluations run a full reserve -> settle budget
   lifecycle; unresolved/incompatible/capped records become events.
-- HST -> LED: adapter last_usage is converted into a trusted usage object
+- HST -> LED: the worker execution's per-attempt usage dict (the
+  execute_worker envelope) is converted into a trusted usage object
   (exact / estimated / unavailable + reason) and settles into the budget
   ledger; no submission is left without a usage object.
 - SNP/INT -> service: T3/T4 units get no hunt tasks (disposition marker events
@@ -36,10 +37,13 @@ SKILL_DIR = Path("/root/polyglot-audit/skill")
 
 
 class _FakeAdapter:
-    """Minimal stand-in for a host driver adapter (last_usage interface)."""
+    """Minimal stand-in for a host driver adapter (dispatch attributes only).
 
-    def __init__(self, last_usage=None, max_retries=2, backoff_base=0.01, backoff_max=0.05):
-        self.last_usage = last_usage
+    Carries no usage state: under the per-task usage envelope the usage
+    travels with each execution's return value, never on the adapter.
+    """
+
+    def __init__(self, max_retries=2, backoff_base=0.01, backoff_max=0.05):
         self.max_retries = max_retries
         self.backoff_base = backoff_base
         self.backoff_max = backoff_max
@@ -227,15 +231,26 @@ class TestIntegrationWiring(unittest.TestCase):
             run_dir, recon_claim, self._recon_result(recon_claim, [self._recon_guard()]), "digest-recon-01",
         )
 
-        # --- hunt: candidate produced and submitted with adapter usage ---
+        # --- hunt: candidate produced and submitted with worker usage ---
         hunt_claim = next(c for c in all_claims if not self._is_recon(c))
         self.app.start(run_dir, hunt_claim)
         candidate = self._candidate_record(hunt_claim)
-        adapter = _FakeAdapter({"total_tokens": 500})
-        usage = self.app.build_usage(adapter, hunt_claim["attempt_id"])
+        usage = self.app.build_usage(
+            {
+                "schema_version": "1.0",
+                "attempt_id": hunt_claim["attempt_id"],
+                "dimension": "tokens",
+                "availability": "estimated",
+                "value": 500,
+                "unit": "tokens",
+                "source": "host_cli_report",
+            },
+            hunt_claim["attempt_id"],
+        )
         self.assertEqual(usage["availability"], "estimated")
         self.assertEqual(usage["value"], 500)
-        self.assertEqual(usage["source"], "_FakeAdapter")
+        self.assertEqual(usage["source"], "host_cli_report")
+        self.assertEqual(usage["attempt_id"], hunt_claim["attempt_id"])
         self.app.submit(
             run_dir,
             hunt_claim,
@@ -275,7 +290,15 @@ class TestIntegrationWiring(unittest.TestCase):
             hunt_attempt_id=hunt_claim["attempt_id"],
         )
         verify_usage = self.app.build_usage(
-            _FakeAdapter({"total_tokens": 300, "availability": "exact"}),
+            {
+                "schema_version": "1.0",
+                "attempt_id": verify_claim["attempt_id"],
+                "dimension": "tokens",
+                "availability": "exact",
+                "value": 300,
+                "unit": "tokens",
+                "source": "host_cli_report",
+            },
             verify_claim["attempt_id"],
         )
         self.assertEqual(verify_usage["availability"], "exact")
@@ -362,11 +385,14 @@ class TestIntegrationWiring(unittest.TestCase):
         self.assertTrue(self._is_recon(claims[0]))
         for claim in claims:
             self.app.start(run_dir, claim)
-            adapter = _FakeAdapter(None)
-            usage = self.app.build_usage(adapter, claim["attempt_id"], dimension="tasks", unit="tasks")
+            # No usage block: the worker envelope carries None, and the
+            # legacy adapter-shaped call yields the explicit unavailable
+            # record too (the shared last_usage slot is no longer read).
+            usage = self.app.build_usage(None, claim["attempt_id"], dimension="tasks", unit="tasks")
             self.assertEqual(usage["availability"], "unavailable")
             self.assertTrue(usage["reason"])
             self.assertNotIn("value", usage)
+            self.assertEqual(usage["attempt_id"], claim["attempt_id"])
             result = (
                 self._recon_result(claim, []) if self._is_recon(claim)
                 else self._hunt_result(claim, prep["snapshot_id"], [])
@@ -375,7 +401,7 @@ class TestIntegrationWiring(unittest.TestCase):
 
         tasks_budget = self._budget(run_id, run_dir, "tasks")
         self.assertEqual(tasks_budget["availability"], "unavailable")
-        self.assertEqual(tasks_budget["source"], "_FakeAdapter")
+        self.assertEqual(tasks_budget["source"], "service")
         # Unknown usage keeps the reserved amount settled, never freed.
         self.assertEqual(tasks_budget["settled"], len(claims))
         self.assertEqual(tasks_budget["reserved"], 0)
@@ -666,17 +692,34 @@ class TestIntegrationWiring(unittest.TestCase):
         snapshot_id = prep["snapshot_id"]
 
         controller = ConcurrencyController(initial=1, maximum=4)
-        adapter = _FakeAdapter({"total_tokens": 120, "availability": "exact"})
+        adapter = _FakeAdapter()
 
         recon_results = {"used": False}
 
         def execute_fn(claim):
             # The dispatch loop must answer recon claims with recon results and
-            # hunt claims with hunt results (both flow through the same service).
+            # hunt claims with hunt results (both flow through the same service);
+            # each submission carries its own per-attempt usage envelope.
             if self._is_recon(claim) and not recon_results["used"]:
                 recon_results["used"] = True
-                return self._recon_result(claim, [self._recon_guard()])
-            return self._hunt_result(claim, snapshot_id, [])
+                return self._recon_result(claim, [self._recon_guard()]), {
+                    "schema_version": "1.0",
+                    "attempt_id": claim["attempt_id"],
+                    "dimension": "tokens",
+                    "availability": "exact",
+                    "value": 120,
+                    "unit": "tokens",
+                    "source": "host_cli_report",
+                }
+            return self._hunt_result(claim, snapshot_id, []), {
+                "schema_version": "1.0",
+                "attempt_id": claim["attempt_id"],
+                "dimension": "tokens",
+                "availability": "exact",
+                "value": 120,
+                "unit": "tokens",
+                "source": "host_cli_report",
+            }
 
         summary = self.app.run_dispatch_loop(
             run_id, run_dir, execute_fn, adapter=adapter, controller=controller,
