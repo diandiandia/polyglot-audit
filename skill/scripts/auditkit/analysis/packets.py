@@ -63,8 +63,11 @@ ROLE_OUTPUT_CONTRACTS: Dict[str, str] = {
         + _WORKER_ENVELOPE_CONTRACT
     ),
     "verify": (
-        "Emit a verdict object (confirmed | needs_validation | rejected | unverified) "
-        "with evidence anchors and provenance; E2 requires a verification attempt id "
+        "Emit records: [{verdict: \"confirmed|needs_validation|rejected|unverified\", "
+        "finding_id: \"F-<short>\", title, issue, source: {path, line}, "
+        "sink: {path, line}, steps: [\"path:LINE ...\"], impact_claim, "
+        "counter_evidence (required for rejected)}]. Every record MUST carry "
+        "verdict and finding_id. E2 (confirmed) requires a verification attempt id "
         "distinct from the hunt attempt. "
         + _WORKER_ENVELOPE_CONTRACT
     ),

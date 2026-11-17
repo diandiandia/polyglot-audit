@@ -46,3 +46,20 @@
 1. **合成套件对真实数据形态存在系统性盲区**：六轮缺陷无一来自合成场景——全部来自真实模型输出形态与真实仓库规模参数。整改：把 run-008 的真实 worker 输出固化为 fixture（待办 O-10）。
 2. **"诚实 unknown"会掩盖代码缺陷**：探测/结算失败与能力缺失产出相同状态——real_cli 测试必须区分断言（L-01/L-02 的教训，已部分实施）。
 3. **每轮 bounded real run 都是廉价的真实测试**：run-001~008 每轮以 ≤10 任务预算暴露 1-3 个缺陷，成本远低于全量盲跑。
+
+## 5. 第二批真实运行教训（run-009b~011，验证闭环迭代）
+
+| # | 问题 | 根因 | 状态 |
+|---|---|---|---|
+| L-10 | 并发事件追加撞 (run_id, revision) UNIQUE 约束 → STORAGE_ERROR | EventStore 的 revision SELECT-then-INSERT 不在事务内 | ✅ 已修复：append_event 包 BEGIN IMMEDIATE + 回滚；并发回归测试 |
+| L-11 | 崩溃 driver 的**有效租约**预留滞留（reclaim 只回收过期）→ verify 连底座都领不到 | 设计空白：无管理路径处理"进程死亡但租约未过期" | ⚠️ 开放：reclaim 增加 force 参数或租约上限收紧 |
+| L-12 | verify 包渲染对真实候选形状崩溃（steps 为文本串、端点为 {artifact,validation}）→ 熔断隔离 6 个验证任务 | service 层未做与 packets 同级的形状防御 | ✅ 已修复：路径按 manifest 后缀唯一解析、解析感知提取、渲染失败 3 次熔断隔离 |
+| L-13 | scope.include 精确文件路径**未收窄**快照（10,160 文件仍入清单） | scope 匹配语义未核查 | ⚠️ 开放：核查 scope 匹配实现（RUN-LESSONS O-10） |
+| O-12 🔴 | **finalize 运行中修改代码** → 发布中断 → run 终态 corrupt（本次 run-011） | 流程缺陷：代码编辑与运行中 finalize 并发 | 流程红线：finalize 运行期间禁止编辑仓库代码；corrupt run 按设计需新 run 替代 |
+
+第二批已修复的生产缺陷（验收测试派生）：
+- finalize 合并点 SR-011 降级：confirmed 缺 rating 因子理由 → needs_validation（保留全部已验证证据与 blockers）
+- service store 路径同步 H′ 降级语义（verifier 与 service 双路径一致）
+- 真实候选元数据绑定：verified finding 缺 title/issue/source/sink/steps 时从 verify spec 的 candidate 档案补齐（程序拥有的卷宗数据）
+- 畸形候选去重池守卫 + hunter 端点类型分类（字符串端点不再崩指纹计算）
+- coverage 记账程序派生（packet 内容 = 程序观测事实，模型自报丢弃并计数）

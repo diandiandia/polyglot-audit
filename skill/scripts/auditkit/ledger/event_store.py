@@ -71,20 +71,26 @@ class EventStore:
         event_id = f"evt-{uuid.uuid4().hex[:12]}"
         now = utc_now_iso()
 
-        # Query and lock current revision
-        row = self.conn.execute(
-            "SELECT revision FROM runs WHERE run_id = ?",
-            (run_id,),
-        ).fetchone()
-        if not row:
-            raise StorageError(f"Run '{run_id}' not found")
-
-        current_rev = row["revision"]
-        new_rev = current_rev + 1
-
         payload_str = json.dumps(payload, sort_keys=True, ensure_ascii=False)
 
+        # IFC-05 / SR-018: revision must be read and advanced inside one
+        # BEGIN IMMEDIATE critical section. Real concurrent drivers append
+        # events from multiple worker threads (separate connections); a
+        # bare SELECT-then-INSERT races on the same revision and trips the
+        # (run_id, revision) UNIQUE constraint (RUN-LESSONS, ZCode run-009b).
+        own_tx = not self.conn.in_transaction
+        if own_tx:
+            self.conn.execute("BEGIN IMMEDIATE")
         try:
+            row = self.conn.execute(
+                "SELECT revision FROM runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if not row:
+                raise StorageError(f"Run '{run_id}' not found")
+
+            new_rev = row["revision"] + 1
+
             self.conn.execute(
                 """
                 INSERT INTO events (event_id, run_id, revision, event_type, occurred_at, actor, payload_version, payload_json)
@@ -97,7 +103,15 @@ class EventStore:
                 (new_rev, now, run_id),
             )
         except sqlite3.IntegrityError as e:
+            if own_tx:
+                self.conn.execute("ROLLBACK")
             raise StorageError(f"Failed to append event to run {run_id}: {e}")
+        except BaseException:
+            if own_tx:
+                self.conn.execute("ROLLBACK")
+            raise
+        if own_tx:
+            self.conn.execute("COMMIT")
 
         return new_rev
 

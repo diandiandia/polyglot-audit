@@ -506,6 +506,49 @@ class TestLedger(unittest.TestCase):
             queue.claim(self.run_id, batch_size=1)
 
 
+    def test_concurrent_event_appends_unique_revisions(self):
+        """RUN-LESSONS (ZCode run-009b): concurrent append_event from multiple
+        threads must serialize revisions -- never trip the (run_id, revision)
+        UNIQUE constraint (IFC-05 / SR-018)."""
+        import threading
+
+        n_threads, per_thread = 6, 15
+        errors = []
+
+        def worker(tid):
+            conn = get_db_connection(self.db_path)
+            try:
+                store = EventStore(conn)
+                for i in range(per_thread):
+                    try:
+                        store.append_event(
+                            self.run_id, "task_enqueued", f"worker-{tid}",
+                            {"seq": i, "thread": tid},
+                        )
+                    except Exception as e:  # noqa: BLE001
+                        errors.append(e)
+            finally:
+                conn.close()
+
+        threads = [threading.Thread(target=worker, args=(t,)) for t in range(n_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        self.assertEqual(errors, [], f"concurrent appends failed: {errors[:3]}")
+        conn = get_db_connection(self.db_path)
+        try:
+            rows = conn.execute(
+                "SELECT revision FROM events ORDER BY revision"
+            ).fetchall()
+            revs = [r["revision"] for r in rows]
+            self.assertEqual(revs, list(range(1, len(revs) + 1)), "revisions must be contiguous 1..N")
+            runs = conn.execute("SELECT revision FROM runs").fetchone()
+            self.assertEqual(runs["revision"], len(revs))
+        finally:
+            conn.close()
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -107,6 +107,7 @@ from auditkit.analysis.verifier import (
     Verifier,
     bounded_variant_search,
 )
+import re
 from auditkit.contracts.errors import (
     AuditError,
     CorruptRunError,
@@ -802,6 +803,20 @@ class AuditAppService:
                 self._publish_claim_packet(conn, run_path, catalog, builder, claim)
             except Exception as e:  # fail closed: release the claim, record the reason
                 reason = f"packet rendering failed: {type(e).__name__}: {e}"
+                # Render-failure circuit breaker (RUN-LESSONS O-01/O-11): a
+                # task that fails to render 3 times is permanently unrenderable
+                # (e.g. an unresolvable path) -- release-then-reclaim would
+                # loop forever. Quarantine it with an explicit coverage gap so
+                # the remaining queue keeps flowing.
+                prior = 0
+                try:
+                    prior = conn.execute(
+                        "SELECT count(*) AS cnt FROM events "
+                        "WHERE event_type = 'packet_render_failed' AND payload_json LIKE ?",
+                        (f'%"{claim["task_id"]}"%',),
+                    ).fetchone()[0]
+                except Exception:
+                    prior = 0
                 try:
                     EventStore(conn).append_event(
                         run_id,
@@ -811,17 +826,52 @@ class AuditAppService:
                             "task_id": claim["task_id"],
                             "attempt_id": claim["attempt_id"],
                             "reason": reason,
+                            "prior_failures": prior,
                         },
                     )
                 finally:
-                    queue.release_claim(
-                        run_id=claim["run_id"],
-                        task_id=claim["task_id"],
-                        attempt_id=claim["attempt_id"],
-                        generation=claim["generation"],
-                        claim_token=claim["claim_token"],
-                        reason=reason,
-                    )
+                    if prior >= 2:
+                        # Third failure: quarantine instead of releasing.
+                        try:
+                            self.report_host_failure(
+                                run_dir,
+                                claim,
+                                HostFailureError(
+                                    f"packet rendering failed 3 times: {reason}",
+                                    retryable=False,
+                                ),
+                                max_retries=0,
+                            )
+                            EventStore(conn).append_event(
+                                run_id,
+                                "coverage_gap",
+                                "service",
+                                {
+                                    "task_id": claim["task_id"],
+                                    "attempt_id": claim["attempt_id"],
+                                    "reason": "packet render unrenderable after 3 attempts",
+                                },
+                            )
+                        except Exception as qe:  # noqa: BLE001
+                            EventStore(conn).append_event(
+                                run_id,
+                                "packet_render_failed",
+                                "service",
+                                {
+                                    "task_id": claim["task_id"],
+                                    "quarantine_error": str(qe),
+                                    "reason": reason,
+                                },
+                            )
+                    else:
+                        queue.release_claim(
+                            run_id=claim["run_id"],
+                            task_id=claim["task_id"],
+                            attempt_id=claim["attempt_id"],
+                            generation=claim["generation"],
+                            claim_token=claim["claim_token"],
+                            reason=reason,
+                        )
                 continue
             published.append(claim)
         return published
@@ -854,7 +904,9 @@ class AuditAppService:
         unit = spec.get("unit")
         if unit is None:
             if kind == "verify":
-                unit = self._verify_unit_from_spec(spec)
+                unit = self._verify_unit_from_spec(
+                    spec, snapshot_paths=self._snapshot_paths(run_path)
+                )
             else:
                 raise InvalidInputError(
                     f"Task '{task_id}' spec carries no unit; packet cannot be rendered"
@@ -937,52 +989,106 @@ class AuditAppService:
         return receipt
 
     @staticmethod
-    def _verify_unit_from_spec(spec: Dict[str, Any]) -> Dict[str, Any]:
+    @staticmethod
+    def _snapshot_paths(run_path: Path) -> List[str]:
+        """Snapshot-relative paths from the frozen manifest (program-owned)."""
+        try:
+            manifest = json.loads(
+                (Path(run_path) / "snapshot" / "manifest.json").read_text(encoding="utf-8")
+            )
+            return [f.get("path", "") for f in manifest.get("files", [])]
+        except (OSError, json.JSONDecodeError):
+            return []
+
+    @staticmethod
+    def _resolve_snapshot_path(path: str, snapshot_paths: List[str]) -> str:
+        """Resolve an abbreviated model path against the frozen manifest.
+
+        Real workers cite shortened paths ("zcode-protocol/plugins.ts"); the
+        manifest is program-owned ground truth. Unique suffix match wins;
+        ambiguous or unmatched paths keep the raw value and render as a
+        degraded/unavailable block -- never guessed (SR-025).
+        """
+        if not path or path in snapshot_paths:
+            return path
+        matches = [p for p in snapshot_paths if p.endswith("/" + path) or p.endswith(path)]
+        if len(matches) == 1:
+            return matches[0]
+        return path
+
+    @staticmethod
+    def _verify_unit_from_spec(spec: Dict[str, Any], snapshot_paths: Optional[List[str]] = None) -> Dict[str, Any]:
         """Synthesize a packet unit for a verify task from its candidate/finding."""
+        snapshot_paths = snapshot_paths or []
         payload = (spec.get("input") or {})
         target = payload.get("candidate") or payload.get("finding") or {}
         ranges: List[Dict[str, Any]] = []
         seen: set = set()
 
-        def _range_from_text(text: str, window: int) -> Optional[Dict[str, Any]]:
-            """Extract a path(:line) reference from free-form model text.
-
-            Real workers emit steps/endpoints as prose with embedded
-            ``path/to/file.ext:LINE`` references (RUN-LESSONS L-07/O-01 real
-            shapes). This is program-owned location extraction for packet
-            context supply -- not a verdict on the text's semantics.
-            """
-            m = re.search(r"([A-Za-z0-9_./\-]+\.[A-Za-z][A-Za-z0-9]{1,8})(?::(\d+))?", text or "")
-            if not m:
-                return None
-            path = m.group(1)
-            line = int(m.group(2) or 1)
-            return {"path": path, "line_start": max(1, line - window), "line_end": line + window}
-
         def _add_range(endpoint: Any, window: int = 5) -> None:
-            rng = None
+            """Extract a snapshot-resolvable location from an endpoint.
+
+            Real workers emit endpoints as dicts whose location lives in free
+            text (artifact/validation/...), or as prose strings. Tokens that
+            resolve against the frozen manifest (exact, then unique suffix)
+            become packet context ranges -- resolution-aware, no guessing
+            (SR-025); unresolvable endpoints contribute no range (honest).
+            """
+            texts: List[str] = []
             if isinstance(endpoint, dict):
-                path = endpoint.get("path") or ""
-                line = endpoint.get("line") or 1
-                if path:
-                    rng = {"path": path, "line_start": max(1, int(line) - window), "line_end": int(line) + window}
-                else:
-                    # Real shape: {"artifact": "path:3983-3989 schema ..."} without path/line
-                    rng = _range_from_text(str(endpoint.get("artifact") or endpoint.get("location") or ""), window)
+                explicit_path = endpoint.get("path") or ""
+                explicit_line = endpoint.get("line")
+                if explicit_path and explicit_path in snapshot_paths:
+                    line = int(explicit_line or 1)
+                    rng = {"path": explicit_path,
+                           "line_start": max(1, line - window),
+                           "line_end": line + window}
+                    key = (rng["path"], rng["line_start"], rng["line_end"])
+                    if key not in seen:
+                        seen.add(key)
+                        ranges.append(rng)
+                    return
+                for field in ("path", "artifact", "validation", "location", "symbol"):
+                    v = endpoint.get(field)
+                    if isinstance(v, str) and v:
+                        texts.append(v)
             elif isinstance(endpoint, str):
-                # Real shape: steps as prose lines with embedded path:line
-                rng = _range_from_text(endpoint, window)
-            if not rng:
+                texts.append(endpoint)
+            else:
                 return
-            key = (rng["path"], rng["line_start"], rng["line_end"])
-            if key not in seen:
-                seen.add(key)
-                ranges.append(rng)
+
+            import re as _re
+            tokens = [
+                (m.group(1), m.group(2))
+                for m in _re.finditer(
+                    r"([A-Za-z0-9_./\-]+\.[A-Za-z][A-Za-z0-9]{1,8})(?::(\d+))?",
+                    " ".join(texts),
+                )
+            ]
+            for token_path, token_line in tokens:
+                resolved = AuditAppService._resolve_snapshot_path(token_path, snapshot_paths)
+                if resolved == token_path and token_path not in snapshot_paths:
+                    continue  # unresolvable guess: honestly skipped
+                line = int(token_line or 1)
+                rng = {"path": resolved,
+                       "line_start": max(1, line - window),
+                       "line_end": line + window}
+                key = (rng["path"], rng["line_start"], rng["line_end"])
+                if key not in seen:
+                    seen.add(key)
+                    ranges.append(rng)
+                return  # first resolvable location wins
+
+        def _resolve(rng: Dict[str, Any]) -> Dict[str, Any]:
+            resolved = dict(rng)
+            resolved["path"] = AuditAppService._resolve_snapshot_path(rng["path"], snapshot_paths)
+            return resolved
 
         _add_range(target.get("source"))
         _add_range(target.get("sink"))
         for step in target.get("steps") or []:
             _add_range(step, window=2)
+        ranges = [_resolve(r) for r in ranges]
 
         candidate_id = target.get("candidate_id") or spec.get("candidate_id") or "unknown"
         return {
@@ -1750,15 +1856,19 @@ class AuditAppService:
         self._enqueue_verify_tasks(conn, run_id, connector_candidates, claim["task_id"])
         return result
 
-    def _extract_findings(self, records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _extract_findings(self, records: List[Dict[str, Any]], claim_hint: str = "x") -> List[Dict[str, Any]]:
         """Extract draft finding objects from verify-task result records."""
         findings: List[Dict[str, Any]] = []
-        for rec in records or []:
+        for n, rec in enumerate(records or []):
             if not isinstance(rec, dict) or rec.get("verdict") not in VERIFIED_FINDING_VERDICTS:
                 continue
             finding = rec.get("finding") if isinstance(rec.get("finding"), dict) else rec
-            if finding.get("finding_id"):
-                findings.append(finding)
+            if not finding.get("finding_id"):
+                # Program-owned record identity (not evidence): models omit
+                # the id even when the verdict payload is well-formed
+                # (RUN-LESSONS real-shape series, run-009b/010).
+                finding["finding_id"] = f"F-VERIFY-{claim_hint}-{n}"
+            findings.append(finding)
         return findings
 
     def _store_verified_findings(
@@ -1782,13 +1892,54 @@ class AuditAppService:
         before it is persisted, so same-sink variants are surfaced as explicit
         requires_independent_verification entries instead of staying empty.
         """
-        findings = self._extract_findings(worker_result.get("records", []))
+        findings = self._extract_findings(worker_result.get("records", []), claim.get("attempt_id", "x"))
         if not findings:
             return []
+        # Bind verified findings to their candidate dossier metadata (title/
+        # issue/source/sink/steps) when the worker verdict payload omits them:
+        # the verify spec's candidate record is program-owned dossier data
+        # (RUN-LESSONS real-shape series, ZCode run-011).
+        spec = self._task_spec(conn, claim)
+        cand = ((spec.get("input") or {}).get("candidate")) or {}
+        for finding in findings:
+            for field in ("title", "issue", "category", "impact_claim"):
+                if not finding.get(field) and cand.get(field):
+                    finding[field] = cand[field]
+            for field in ("source", "sink"):
+                cur = finding.get(field)
+                if (not isinstance(cur, dict) or not cur) and isinstance(cand.get(field), dict):
+                    finding[field] = cand[field]
+            if not finding.get("steps") and cand.get("steps"):
+                finding["steps"] = cand["steps"]
         stamped: List[Dict[str, Any]] = []
         snapshot_data: Optional[Dict[str, Any]] = None
         for f in findings:
             f["run_id"] = run_id
+            if f.get("verdict") == "confirmed":
+                # SR-008/SR-011 (H′ demotion semantics on the service store
+                # path): a confirmed finding without rating factor reasons is
+                # demoted honestly to needs_validation -- severity cannot be
+                # claimed without factor evidence, but the verified evidence
+                # itself is preserved (DSR-010 anchors, remediation, arms).
+                rating = f.get("rating") or {}
+                reasons_missing = [
+                    k for k in ("impact_why", "exploitability_why")
+                    if not str(rating.get(k) or "").strip()
+                ]
+                if reasons_missing:
+                    f["verdict"] = "needs_validation"
+                    f["demoted_from"] = "confirmed"
+                    f.setdefault("blockers", []).extend(
+                        f"missing rating factor reason: {k}" for k in reasons_missing
+                    )
+                    f["validation_plan"] = (
+                        "re-rate with impact/exploitability factor reasons and "
+                        "re-submit through an independent verification attempt"
+                    )
+                    f["rating"] = {
+                        k: v for k, v in rating.items()
+                        if k in ("calculated_severity", "calculated_urgency", "validation_priority")
+                    }
             if f.get("verdict") == "confirmed":
                 # DSR-062 is a fixed action for confirmed findings: no config
                 # switch. The snapshot is read lazily and at most once per
@@ -2923,6 +3074,34 @@ class AuditAppService:
                     )
                 for f in stored if isinstance(stored, list) else []:
                     merged_findings[f.get("finding_id") or f"anon-{len(merged_findings)}"] = f
+        # SR-011 at the merge point (reports derive from records): a stored
+        # confirmed finding without rating factor reasons cannot be presented
+        # as a rated confirmed finding in the report -- demote honestly to
+        # needs_validation, preserving all verified evidence (RUN-LESSONS
+        # ZCode run-011: real verified findings lacked rating factors).
+        for f in merged_findings.values():
+            if f.get("verdict") != "confirmed":
+                continue
+            rating = f.get("rating") or {}
+            missing = [
+                k for k in ("impact_why", "exploitability_why")
+                if not str(rating.get(k) or "").strip()
+            ]
+            if missing:
+                f["verdict"] = "needs_validation"
+                f["demoted_from"] = "confirmed"
+                f.setdefault("blockers", []).extend(
+                    f"missing rating factor reason: {k}" for k in missing
+                )
+                f["validation_plan"] = (
+                    "re-rate with impact/exploitability factor reasons and "
+                    "re-submit through an independent verification attempt"
+                )
+                f["rating"] = {
+                    k: v for k, v in rating.items()
+                    if k in ("calculated_severity", "calculated_urgency", "validation_priority")
+                }
+
         all_findings = list(merged_findings.values())
 
         # DSR-066: candidates whose verify task never completed before finalize
@@ -2963,7 +3142,11 @@ class AuditAppService:
                 "candidate_refs": [cand_id],
                 "verdict": "unverified",
                 "evidence_level": "E1",
-                "unverified_reason": UNVERIFIED_SYNTHETIC_REASON,
+                "unverified_reason": (
+                    UNVERIFIED_SYNTHETIC_REASON
+                    if row["state"] != "quarantined"
+                    else "verification_task_quarantined_after_retries"
+                ),
                 "issue": cand.get("issue", "unknown"),
                 "source": cand.get("source", {}),
                 "sink": cand.get("sink", {}),
