@@ -67,7 +67,8 @@ REPORT_MEDIA = [
     "report/coverage.csv",
     "report/AUDIT-TRAIL.md",
     "report/COST.md",
-    "report/SKILL-REVIEW.md",
+    # The skill self-review lives in its own dossier directory (design §10.1).
+    "skill-review/SKILL-REVIEW.md",
 ]
 
 

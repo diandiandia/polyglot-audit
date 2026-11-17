@@ -6,7 +6,8 @@ Every fix has at least one assertion that crosses layers:
 
 1.  Recon stage wiring (DDS-05 S1 / DSR-024 / SR-006): prepare dispatches a
     single recon task before any hunt task; a recon submission persists the
-    guard baseline (event + tasks/{task_id}/result.json artifact); hunt
+    guard baseline (event + recon/recon-result.json summary artifact, plus
+    the raw worker result at tasks/{task_id}/result.json); hunt
     packets published afterwards carry the guard summary; without a recon
     submission no baseline is fabricated (packet stays without a guard
     section = unknown).
@@ -311,19 +312,25 @@ class TestReconPipeline(PipelineClosureBase):
 
     def test_recon_submission_persists_guard_baseline_and_reaches_hunt_packets(self):
         self.prepared_pyapp()
-        self.drain_recon()
+        recon_claim = self.drain_recon()
 
         baseline_events = self.events("guard_baseline")
         self.assertEqual(len(baseline_events), 1)
         self.assertEqual(baseline_events[0]["guards_reported"], 1)
-        rel_path = baseline_events[0]["artifact"]
-        self.assertTrue(rel_path.startswith("tasks/"))
-        self.assertTrue(rel_path.endswith("/result.json"))
-        artifact = self.run_dir / rel_path
+        # §10.1: the guard baseline summary is published in the recon/ directory.
+        self.assertEqual(baseline_events[0]["artifact"], "recon/recon-result.json")
+        artifact = self.run_dir / baseline_events[0]["artifact"]
         self.assertTrue(artifact.exists())
         stored = json.loads(artifact.read_text(encoding="utf-8"))
         self.assertEqual(stored["guards"][0]["guard_id"], "guard-mw")
         self.assertEqual(stored["guards_reported"], 1)
+        # The raw recon worker result itself is persisted per task, exactly
+        # like every other accepted submission (§10.1 tasks/<id>/result.json).
+        raw = json.loads(
+            (self.run_dir / "tasks" / recon_claim["task_id"] / "result.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(raw["kind"], "recon")
+        self.assertEqual([g["guard_id"] for g in raw["records"]], ["guard-mw"])
 
         # The guard summary established by recon reaches every later hunt packet.
         claims = self.claim_all()
@@ -636,10 +643,10 @@ class TestFinalizeClosure(PipelineClosureBase):
 
     def test_finalize_skill_review_receives_real_inputs(self):
         self._run_hunts(with_usage=False)
-        # Attempts without usage records must surface in SKILL-REVIEW.md
+        # Attempts without usage records must surface in the skill self-review
         # (inputs really transmitted; the anomaly list is not constant-empty).
         self.app.finalize(self.run_id, self.run_dir, findings=[])
-        review = (self.run_dir / "report" / "SKILL-REVIEW.md").read_text(encoding="utf-8")
+        review = (self.run_dir / "skill-review" / "SKILL-REVIEW.md").read_text(encoding="utf-8")
         self.assertIn("usage_missing", review)
         self.assertIn("attempts lack host usage records", review)
         self.assertIn("[cost]", review)  # token telemetry missing -> cost anomaly

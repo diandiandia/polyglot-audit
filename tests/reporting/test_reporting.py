@@ -24,15 +24,20 @@ SECRET_VALUE = "supersecretpassword99"
 SECRET_SNIPPET = f"password = '{SECRET_VALUE}'"
 REDACT_MARKER = "[REDACTED_PASSWORD]"
 
+# The §9.3 report set — paths are run-directory relative. The skill
+# self-review is NOT part of it: design §10.1 keeps it in its own
+# skill-review/ dossier directory (see SELF_REVIEW_MEDIA below).
 REPORT_MEDIA = [
-    "REPORT.md",
-    "findings.json",
-    "NEEDS-VALIDATION.md",
-    "COVERAGE.md",
-    "coverage.csv",
-    "AUDIT-TRAIL.md",
-    "COST.md",
-    "SKILL-REVIEW.md",
+    "report/REPORT.md",
+    "report/findings.json",
+    "report/NEEDS-VALIDATION.md",
+    "report/COVERAGE.md",
+    "report/coverage.csv",
+    "report/AUDIT-TRAIL.md",
+    "report/COST.md",
+]
+SELF_REVIEW_MEDIA = [
+    "skill-review/SKILL-REVIEW.md",
 ]
 
 
@@ -132,7 +137,9 @@ class ReportingTestBase(unittest.TestCase):
         )
 
     def read(self, fname):
-        return (self.rep_dir / fname).read_text(encoding="utf-8")
+        """Read a dossier file; ``fname`` is run-directory relative
+        ("report/REPORT.md", "skill-review/SKILL-REVIEW.md")."""
+        return (Path(self.temp_dir) / fname).read_text(encoding="utf-8")
 
 
 class TestReporting(ReportingTestBase):
@@ -184,19 +191,29 @@ class TestReporting(ReportingTestBase):
         gen_id = self.generate()
         self.assertTrue(gen_id.startswith("gen-"))
 
-        expected_files = REPORT_MEDIA
-        for fname in expected_files:
-            self.assertTrue((self.rep_dir / fname).exists(), f"Missing expected report file: {fname}")
-        self.assertFalse((self.rep_dir / "skill-review.json").exists())
+        for fname in REPORT_MEDIA:
+            self.assertTrue(
+                (Path(self.temp_dir) / fname).exists(),
+                f"Missing expected report file: {fname}",
+            )
+        # §10.1: the local self-review exists in skill-review/; report/ holds
+        # only the report set; the portable export stays unwritten by default.
+        for fname in SELF_REVIEW_MEDIA:
+            self.assertTrue(
+                (Path(self.temp_dir) / fname).exists(),
+                f"Missing expected skill-review file: {fname}",
+            )
+        self.assertFalse((self.rep_dir / "SKILL-REVIEW.md").exists())
+        review_dir = Path(self.temp_dir) / "skill-review"
+        self.assertFalse((review_dir / "portable.json").exists())
 
     def test_skill_review_json_exported_when_explicitly_enabled(self):
         self.generate(export_skill_review=True)
-        self.assertTrue((self.rep_dir / "skill-review.json").exists())
-        exported = json.loads(self.read("skill-review.json"))
+        exported = json.loads(self.read("skill-review/portable.json"))
 
         self.assertEqual(set(exported.keys()), set(SKILL_REVIEW_EXPORT_ALLOWED_ROOT_KEYS))
         self.assertTrue(set(exported["run_summary"].keys()).issubset(SKILL_REVIEW_EXPORT_ALLOWED_RUN_SUMMARY_KEYS))
-        review_md = self.read("SKILL-REVIEW.md")
+        review_md = self.read("skill-review/SKILL-REVIEW.md")
         gen_in_md = review_md.split("`gen-")[1][:8]
         self.assertEqual(exported["generation_id"], f"gen-{gen_in_md}")
         self.assertEqual(exported["schema_version"], "1.0")
@@ -227,19 +244,19 @@ class TestReporting(ReportingTestBase):
     # ------------------------------------------------------- DSR-069 / SWR-010
     def test_all_media_mask_secrets(self):
         self.generate(export_skill_review=True)
-        media = REPORT_MEDIA + ["skill-review.json"]
+        media = REPORT_MEDIA + SELF_REVIEW_MEDIA + ["skill-review/portable.json"]
         for fname in media:
             content = self.read(fname)
             self.assertNotIn(SECRET_VALUE, content, f"raw secret leaked in {fname}")
         # Redaction markers appear in every medium that carried the secret:
         # the step note reaches REPORT.md and findings.json, the cost
         # unavailable-reason reaches COST.md.
-        for fname in ("REPORT.md", "findings.json", "COST.md"):
+        for fname in ("report/REPORT.md", "report/findings.json", "report/COST.md"):
             self.assertIn(REDACT_MARKER, self.read(fname), f"expected redaction marker in {fname}")
 
     def test_report_contains_unrecognized_secret_risk_clause(self):
         self.generate()
-        report = self.read("REPORT.md")
+        report = self.read("report/REPORT.md")
         self.assertIn("unrecognized", report.lower())
         self.assertIn("manually review", report.lower())
 
@@ -250,10 +267,10 @@ class TestReporting(ReportingTestBase):
         findings = sample_findings()
         self.generate(findings=findings)
 
-        on_disk = json.loads(self.read("findings.json"))
+        on_disk = json.loads(self.read("report/findings.json"))
         self.assertEqual(on_disk[0]["provenance"], findings[0]["provenance"])
 
-        trail = self.read("AUDIT-TRAIL.md")
+        trail = self.read("report/AUDIT-TRAIL.md")
         prov = findings[0]["provenance"]
         for anchor in (
             prov["hunt_tasks"][0], prov["verify_tasks"][0],
@@ -273,7 +290,7 @@ class TestReporting(ReportingTestBase):
         cost["total_tasks"] = 12
         cost["total_executed"] = 4
         self.generate(cost=cost)
-        cost_md = self.read("COST.md")
+        cost_md = self.read("report/COST.md")
         self.assertIn("**Total Enqueued Tasks**: 12", cost_md)
         self.assertIn("**Total Executed Tasks**: 4", cost_md)
         self.assertNotIn("**Total Executed Tasks**: 12", cost_md)
@@ -287,40 +304,43 @@ class TestReporting(ReportingTestBase):
         cost.pop("total_executed")
         cost.pop("total_enqueued")
         self.generate(cost=cost)
-        cost_md = self.read("COST.md")
+        cost_md = self.read("report/COST.md")
         self.assertIn("**Total Executed Tasks**: 4 (executed count not recorded", cost_md)
         self.assertIn("**Total Enqueued Tasks**: 4", cost_md)
 
     # ------------------------------------------------- DSR-068 / SWR-012 i18n
     def test_language_en_default_headings(self):
         self.generate()  # default language is en
-        report = self.read("REPORT.md")
+        report = self.read("report/REPORT.md")
         self.assertIn("Findings Summary", report)
         self.assertNotIn("发现总表", report)
 
     def test_language_zh_headings(self):
         self.generate(generator=self.make_generator(language="zh"))
-        self.assertIn("发现总表", self.read("REPORT.md"))
+        self.assertIn("发现总表", self.read("report/REPORT.md"))
 
     def test_unknown_language_falls_back_to_zh_and_is_recorded(self):
         self.generate(generator=self.make_generator(language="klingon"))
-        report = self.read("REPORT.md")
+        report = self.read("report/REPORT.md")
         self.assertIn("发现总表", report)
         self.assertIn("klingon", report)  # fallback recorded in the report header
         self.assertIn("zh", report)
 
     def test_generation_id_in_all_attached_reports(self):
         gen_id = self.generate()
-        for fname in ("REPORT.md", "NEEDS-VALIDATION.md", "COVERAGE.md", "AUDIT-TRAIL.md", "COST.md", "SKILL-REVIEW.md"):
+        for fname in (
+            "report/REPORT.md", "report/NEEDS-VALIDATION.md", "report/COVERAGE.md",
+            "report/AUDIT-TRAIL.md", "report/COST.md", "skill-review/SKILL-REVIEW.md",
+        ):
             self.assertIn(gen_id, self.read(fname), f"generation id missing from {fname}")
-        csv_content = self.read("coverage.csv")
+        csv_content = self.read("report/coverage.csv")
         self.assertTrue(csv_content.startswith(f"# generation_id: {gen_id}"))
 
     # ------------------------------------------------ DSR-036 / SWR-012 atomic
     def test_write_failure_at_nth_file_leaves_no_mixed_generation(self):
         gen_a = self.generate()
         before_files = sorted(p.name for p in self.rep_dir.iterdir())
-        before_report = self.read("REPORT.md")
+        before_report = self.read("report/REPORT.md")
         self.assertIn(gen_a, before_report)
 
         # Fail the tmp write of the Nth staged file (fsync raises on 4th call).
@@ -340,9 +360,9 @@ class TestReporting(ReportingTestBase):
         # Old generation fully intact: same file set, same generation id.
         after_files = sorted(p.name for p in self.rep_dir.iterdir())
         self.assertEqual(before_files, after_files)
-        self.assertEqual(self.read("REPORT.md"), before_report)
+        self.assertEqual(self.read("report/REPORT.md"), before_report)
         for fname in REPORT_MEDIA:
-            if fname == "findings.json":
+            if fname == "report/findings.json":
                 continue  # findings.json is a plain list; no generation marker by design
             self.assertIn(gen_a, self.read(fname), f"{fname} lost its generation after failed publish")
         # No staged temp leftovers.
@@ -383,7 +403,7 @@ class TestReporting(ReportingTestBase):
             generator=self.make_generator(state="complete"),
             self_review_inputs=stats,
         )
-        review = self.read("SKILL-REVIEW.md")
+        review = self.read("skill-review/SKILL-REVIEW.md")
         self.assertIn(gen_id, review)
         self.assertIn("No significant process or contract anomalies detected.", review)
 
@@ -405,14 +425,14 @@ class TestReporting(ReportingTestBase):
             generator=self.make_generator(state="incomplete"),
             self_review_inputs=stats,
         )
-        review = self.read("SKILL-REVIEW.md")
+        review = self.read("skill-review/SKILL-REVIEW.md")
         self.assertIn("incomplete", review)
         for category in ("flow", "coverage", "cost", "verification", "knowledge", "adaptation", "error", "usage_missing"):
             self.assertIn(category, review)
 
     def test_skill_review_write_failure_raises_storage_error_and_preserves_state(self):
         self.generate()  # establish a good generation first
-        before = self.read("SKILL-REVIEW.md")
+        before = self.read("skill-review/SKILL-REVIEW.md")
 
         real_fsync = __import__("os").fsync
 
@@ -423,7 +443,7 @@ class TestReporting(ReportingTestBase):
             with self.assertRaises(StorageError):
                 self.generate()
 
-        self.assertEqual(self.read("SKILL-REVIEW.md"), before)
+        self.assertEqual(self.read("skill-review/SKILL-REVIEW.md"), before)
 
     def test_skill_review_registered_in_artifacts_table(self):
         gen_id = self.generate()
@@ -432,7 +452,9 @@ class TestReporting(ReportingTestBase):
         ).fetchall()
         rel_paths = {r["relative_path"] for r in rows}
         for fname in REPORT_MEDIA:
-            self.assertIn(f"report/{fname}", rel_paths)
+            self.assertIn(fname, rel_paths)
+        self.assertIn("skill-review/SKILL-REVIEW.md", rel_paths)
+        self.assertNotIn("report/SKILL-REVIEW.md", rel_paths)
         self.assertTrue(all(r["generation"] == gen_id for r in rows))
 
 

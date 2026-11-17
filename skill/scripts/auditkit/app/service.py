@@ -48,6 +48,21 @@ Cross-domain wiring owned here (ANA/LED, SNP/INT, HST/LED):
   telemetry (SR-020 / DSR-067), reads report_language from the run config
   (SR-012), and evaluates G4 AFTER the reports are published, against the
   published artifacts (user-confirmed ordering fix);
+- the run dossier follows the design §10.1 directory layout: prepare
+  publishes the immutable run metadata (run.json: target, snapshot, skill
+  version + payload digest, dossier version, frozen config, profile,
+  budgets), the plan (plan/plan.json) and the inventory summary
+  (inventory/summary.json); every accepted worker result is persisted at
+  tasks/{task_id}/result.json (all three task kinds), schema rejections
+  publish tasks/{task_id}/validation.json (DSR-018 validation log) and
+  trusted usage objects land at tasks/{task_id}/usage.json; recon
+  submissions additionally publish the guard baseline summary at
+  recon/recon-result.json; finalize publishes the deduplicated
+  representative candidate pool (candidates/final.json) and, per finding,
+  the full record plus its status-transition history
+  (findings/<finding_id>/{record,history}.json). All read points prefer the
+  §10.1 layout and fall back read-only to the legacy flat files (plan.json
+  at the run root); old dossiers are never migrated in place (DSR-072);
 - prepare detects JVM build evidence in the snapshot (SR-003 / SD-02) and
   threads the three-state platform result into both platform-conditional
   catalog call sites (recon enqueue and hunt packet rendering); without
@@ -246,6 +261,32 @@ JVM_BUILD_FILE_MARKERS = (
 JVM_BUILD_SUFFIX_MARKERS = (".sbt",)
 JVM_BUILD_PATH_PREFIX_MARKERS = (".mvn/",)
 JVM_CONDITIONAL_LANGUAGES = ("kotlin", "scala")
+# --- Design §10.1 dossier layout (path-B alignment) -------------------------
+# dossier_version marks the on-disk layout recorded in run.json so a future
+# layout change can be detected read-only (DSR-072: old layouts are read with
+# documented fallbacks, never migrated in place).
+DOSSIER_VERSION = "1.0"
+RUN_METADATA_ARTIFACT_KIND = "run_metadata"
+PLAN_ARTIFACT_KIND = "plan"
+INVENTORY_SUMMARY_ARTIFACT_KIND = "inventory_summary"
+RECON_SUMMARY_ARTIFACT_KIND = "recon_summary"
+WORKER_RESULT_ARTIFACT_KIND = "worker_result"
+USAGE_ARTIFACT_KIND = "usage"
+VALIDATION_LOG_ARTIFACT_KIND = "validation_log"
+CANDIDATE_POOL_ARTIFACT_KIND = "candidate_pool"
+FINDING_RECORD_ARTIFACT_KIND = "finding_record"
+FINDING_HISTORY_ARTIFACT_KIND = "finding_history"
+# Event types that record a finding's status transitions; they feed the
+# per-finding history.json in the dossier (§10.1 findings/<id>/). A finding
+# with none of these events gets an honest empty history list.
+FINDING_TRANSITION_EVENT_TYPES = (
+    "verified_findings_stored",
+    "second_opinion_enqueued",
+    "second_opinion_adjudicated",
+    "second_opinion_pending",
+    "second_opinion_target_missing",
+    "second_opinion_not_applicable",
+)
 
 
 def detect_jvm_build_evidence_files(paths: List[str]) -> List[str]:
@@ -564,8 +605,28 @@ class AuditAppService:
                 "default_component_files": default_component_files,
             },
         }
-        with open(run_path / "plan.json", "w", encoding="utf-8") as f:
-            json.dump(plan_summary, f, indent=2)
+        # Save the plan artifact at its §10.1 location (plan/plan.json), hashed
+        # into the artifact ledger. finalize reads it back with a read-only
+        # fallback to the legacy flat plan.json for old dossiers (DSR-072: old
+        # layouts are read, never migrated).
+        ArtifactManager(run_path, conn).publish_artifact(
+            run_id,
+            PLAN_ARTIFACT_KIND,
+            "plan/plan.json",
+            json.dumps(plan_summary, indent=2).encode("utf-8"),
+        )
+
+        # §10.1 inventory/summary.json: the reconciliation record as published
+        # data (included/excluded/unknown-language accounting, per-language and
+        # per-component counts, and the reconciled flag).
+        inventory_summary = dict(inventory_reconciliation)
+        inventory_summary["snapshot_id"] = snapshot_id
+        ArtifactManager(run_path, conn).publish_artifact(
+            run_id,
+            INVENTORY_SUMMARY_ARTIFACT_KIND,
+            "inventory/summary.json",
+            json.dumps(inventory_summary, indent=2, sort_keys=True).encode("utf-8"),
+        )
 
         # Evaluate G0 against the full manifest (gaps + source_control included)
         g0_res = GateEvaluator.evaluate_g0(manifest.to_dict(), plan_summary, 0)
@@ -679,6 +740,35 @@ class AuditAppService:
             },
         )
 
+        # §10.1 run.json: the immutable run metadata. It is written exactly
+        # once here and never rewritten by any later stage (finalize must not
+        # overwrite it); the prepare entry point rejects any run directory
+        # that already holds content, so the file cannot be silently replaced.
+        # skill_payload_sha256 is a deterministic digest over the skill asset
+        # tree (sorted relative paths, per-file content digests; generated
+        # __pycache__/.pyc entries excluded) so the exact audited skill payload
+        # stays verifiable for the lifetime of the dossier.
+        run_metadata = {
+            "schema_version": "1.0",
+            "dossier_version": DOSSIER_VERSION,
+            "run_id": run_id,
+            "target": config.get("target"),
+            "snapshot_id": snapshot_id,
+            "root_hash": manifest.root_hash,
+            "skill_version": self._read_skill_version(),
+            "skill_payload_sha256": self._compute_skill_payload_sha256(self.skill_dir),
+            "config": config,
+            "profile": profile,
+            "budgets": config.get("budgets", []),
+            "created_at": now,
+        }
+        ArtifactManager(run_path, conn).publish_artifact(
+            run_id,
+            RUN_METADATA_ARTIFACT_KIND,
+            "run.json",
+            json.dumps(run_metadata, indent=2, sort_keys=True, ensure_ascii=False).encode("utf-8"),
+        )
+
         return {
             "schema_version": "1.0",
             "run_id": run_id,
@@ -706,6 +796,59 @@ class AuditAppService:
             d.name for d in langs_dir.iterdir()
             if (d / "index.json").is_file()
         )
+
+    def _read_skill_version(self) -> str:
+        """The skill version string from the skill VERSION file."""
+        try:
+            return (self.skill_dir / "VERSION").read_text(encoding="utf-8").strip()
+        except OSError:
+            return "unknown"
+
+    @staticmethod
+    def _compute_skill_payload_sha256(skill_dir: str | Path) -> str:
+        """Deterministic digest over the skill asset tree (run.json metadata).
+
+        Every file under ``skill_dir`` is visited in sorted relative-path order
+        (UTF-8 byte order) and its content SHA-256 is folded into the digest
+        together with its path. Generated bytecode caches (``__pycache__``
+        directories, ``*.pyc``/``*.pyo`` files) are excluded so the digest
+        identifies the published asset payload, not the host's import cache.
+        """
+        root = Path(skill_dir)
+        relative_paths: List[str] = []
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = sorted(d for d in dirnames if d != "__pycache__")
+            for fname in filenames:
+                if fname.endswith((".pyc", ".pyo")):
+                    continue
+                relative_paths.append(
+                    (Path(dirpath) / fname).relative_to(root).as_posix()
+                )
+        hasher = hashlib.sha256()
+        for rel in sorted(relative_paths, key=lambda s: s.encode("utf-8")):
+            with open(root / rel, "rb") as f:
+                hasher.update(rel.encode("utf-8"))
+                hasher.update(b"\x00")
+                hasher.update(hashlib.sha256(f.read()).digest())
+        return hasher.hexdigest()
+
+    @staticmethod
+    def _load_plan(run_path: str | Path) -> Dict[str, Any]:
+        """Load the run plan, preferring the §10.1 location (DSR-072).
+
+        New dossiers carry the plan at ``plan/plan.json``; legacy dossiers kept
+        it flat at the run root. Both are read transparently — an old dossier
+        is never migrated in place (read-only tolerance for terminal runs).
+        """
+        primary = Path(run_path) / "plan" / "plan.json"
+        try:
+            with open(primary, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except FileNotFoundError:
+            pass
+        # Legacy flat layout fallback (read-only).
+        with open(Path(run_path) / "plan.json", "r", encoding="utf-8") as f:
+            return json.load(f)
 
     @staticmethod
     def _build_recon_unit(units: List[Dict[str, Any]], snapshot_id: str) -> Dict[str, Any]:
@@ -1181,10 +1324,17 @@ class AuditAppService:
         usage: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Submit completed worker result."""
-        # Validate worker_result schema
+        # Validate worker_result schema. A rejection is published as the
+        # task's validation log (tasks/{task_id}/validation.json, DSR-018)
+        # before the bounded format-correction retry path runs, so the refusal
+        # reason and the exact field paths stay auditable in the dossier.
         with open(self.schemas_dir / "worker_result.schema.json", "r", encoding="utf-8") as f:
             res_schema = json.load(f)
-        SchemaValidator(res_schema).validate_or_raise(worker_result)
+        try:
+            SchemaValidator(res_schema).validate_or_raise(worker_result)
+        except InvalidInputError as e:
+            self._publish_validation_log(run_dir, claim, e)
+            raise
 
         conn = self._open_run_db(run_dir)
         queue = TaskQueue(conn)
@@ -1224,11 +1374,75 @@ class AuditAppService:
 
         # Cross-domain wiring only runs once per attempt: idempotent replays of
         # the same submission return the original receipt and must not enqueue
-        # duplicate verify tasks or re-run connector budget accounting.
+        # duplicate verify tasks, re-run connector budget accounting, or
+        # re-publish the per-task dossier artifacts.
         if not receipt.get("replayed", False):
-            self._on_result_accepted(conn, Path(run_dir), claim, worker_result)
+            run_path = Path(run_dir)
+            art_mgr = ArtifactManager(run_path, conn)
+            # §10.1 tasks/<task-id>/: every accepted worker result is published
+            # at tasks/{task_id}/result.json for all three task kinds (hunt,
+            # recon, verify), and the trusted usage object lands at
+            # tasks/{task_id}/usage.json when the submission carried one.
+            # Both are hashed into the artifact ledger (traceability).
+            art_mgr.publish_artifact(
+                claim["run_id"],
+                WORKER_RESULT_ARTIFACT_KIND,
+                f"tasks/{claim['task_id']}/result.json",
+                json.dumps(worker_result, sort_keys=True, ensure_ascii=False).encode("utf-8"),
+            )
+            if usage is not None:
+                art_mgr.publish_artifact(
+                    claim["run_id"],
+                    USAGE_ARTIFACT_KIND,
+                    f"tasks/{claim['task_id']}/usage.json",
+                    json.dumps(usage, sort_keys=True, ensure_ascii=False).encode("utf-8"),
+                )
+            self._on_result_accepted(conn, run_path, claim, worker_result)
 
         return receipt
+
+    def _publish_validation_log(
+        self,
+        run_dir: str | Path,
+        claim: Dict[str, Any],
+        error: InvalidInputError,
+    ) -> None:
+        """Publish tasks/{task_id}/validation.json for a schema-rejected result.
+
+        The validation log records the rejection reason plus the exact field
+        paths (DSR-018 校验日志), so a bounded format-correction retry is
+        auditable from the dossier even though the malformed output itself is
+        never accepted (SR-025). If the log itself cannot be persisted, the
+        fact is raised as StorageError chained onto the original rejection —
+        the dispatch loop's failure handling is identical for both error
+        families, and the original reason is never lost.
+        """
+        details = getattr(error, "details", None) or {}
+        payload = json.dumps(
+            {
+                "schema_version": "1.0",
+                "task_id": claim.get("task_id", ""),
+                "attempt_id": claim.get("attempt_id", ""),
+                "rejected": True,
+                "reason": str(getattr(error, "message", error)),
+                "errors": details.get("errors", []),
+            },
+            sort_keys=True,
+            ensure_ascii=False,
+        ).encode("utf-8")
+        try:
+            conn = self._open_run_db(run_dir)
+            ArtifactManager(Path(run_dir), conn).publish_artifact(
+                claim["run_id"],
+                VALIDATION_LOG_ARTIFACT_KIND,
+                f"tasks/{claim['task_id']}/validation.json",
+                payload,
+            )
+        except AuditError as log_error:
+            raise StorageError(
+                f"Failed to publish validation log for task "
+                f"{claim.get('task_id', '')}: {log_error}"
+            ) from error
 
     # ------------------------------------------------------------------
     # ANA -> LED wiring: verify task enqueue, connector budget accounting,
@@ -1538,7 +1752,11 @@ class AuditAppService:
                 continue
             guards.append(GuardRecord.from_dict(rec).to_dict())
 
-        rel_path = f"tasks/{claim['task_id']}/result.json"
+        # §10.1: the guard baseline summary is published at recon/recon-result.json
+        # (the recon/ directory of the dossier). The raw recon worker result
+        # itself is persisted at tasks/{task_id}/result.json by submit(), which
+        # publishes that artifact uniformly for every task kind.
+        rel_path = "recon/recon-result.json"
         payload = json.dumps(
             {
                 "schema_version": "1.0",
@@ -1553,7 +1771,7 @@ class AuditAppService:
             ensure_ascii=False,
         ).encode("utf-8")
         ArtifactManager(run_path, conn).publish_artifact(
-            run_id, "guard_baseline", rel_path, payload
+            run_id, RECON_SUMMARY_ARTIFACT_KIND, rel_path, payload
         )
         store.append_event(
             run_id,
@@ -1871,6 +2089,23 @@ class AuditAppService:
             findings.append(finding)
         return findings
 
+    @staticmethod
+    def _missing_factor_reasons(rating: Dict[str, Any]) -> List[str]:
+        """Factor-reason keys absent from a finding rating (SR-008/SR-011).
+
+        The rating authority (RatingEngine/DSR-028) stores the observed factor
+        reasons under ``factor_reasons``; real-world worker payloads have also
+        carried them flat on the rating object. Both shapes are honored before
+        a confirmed finding is demoted — a legitimately rated finding must not
+        be demoted for reasons it actually carries.
+        """
+        factors = rating.get("factor_reasons")
+        factors = factors if isinstance(factors, dict) else {}
+        return [
+            k for k in ("impact_why", "exploitability_why")
+            if not str(factors.get(k) or rating.get(k) or "").strip()
+        ]
+
     def _store_verified_findings(
         self,
         conn: Any,
@@ -1917,14 +2152,16 @@ class AuditAppService:
             f["run_id"] = run_id
             if f.get("verdict") == "confirmed":
                 # SR-008/SR-011 (H′ demotion semantics on the service store
-                # path): a confirmed finding without rating factor reasons is
-                # demoted honestly to needs_validation -- severity cannot be
-                # claimed without factor evidence, but the verified evidence
-                # itself is preserved (DSR-010 anchors, remediation, arms).
+                # path): a confirmed finding requires rating factor reasons.
+                # rating.schema nests them under factor_reasons (RatingEngine
+                # output); a flat shape is tolerated defensively. Both shapes
+                # are read -- a nested reason must never be misread as
+                # missing (RUN-LESSONS real run-011 false-demotion fix).
                 rating = f.get("rating") or {}
+                nested = rating.get("factor_reasons") if isinstance(rating.get("factor_reasons"), dict) else {}
                 reasons_missing = [
                     k for k in ("impact_why", "exploitability_why")
-                    if not str(rating.get(k) or "").strip()
+                    if not str(nested.get(k) or rating.get(k) or "").strip()
                 ]
                 if reasons_missing:
                     f["verdict"] = "needs_validation"
@@ -1932,14 +2169,22 @@ class AuditAppService:
                     f.setdefault("blockers", []).extend(
                         f"missing rating factor reason: {k}" for k in reasons_missing
                     )
+                    if rating:
+                        f.setdefault("blockers", []).append(
+                            "neutral pending rating applied (worker supplied no "
+                            "usable rating for this verdict)"
+                        )
                     f["validation_plan"] = (
                         "re-rate with impact/exploitability factor reasons and "
                         "re-submit through an independent verification attempt"
                     )
-                    f["rating"] = {
-                        k: v for k, v in rating.items()
-                        if k in ("calculated_severity", "calculated_urgency", "validation_priority")
-                    }
+                    # Verifier._pending_rating: schema-valid pending rating
+                    # (observed numbers; neutral 3 only when truly absent,
+                    # disclosed via the blocker above).
+                    f["rating"] = Verifier._pending_rating(
+                        int(rating.get("impact") or 3),
+                        int(rating.get("exploitability") or 3),
+                    )
             if f.get("verdict") == "confirmed":
                 # DSR-062 is a fixed action for confirmed findings: no config
                 # switch. The snapshot is read lazily and at most once per
@@ -2147,6 +2392,163 @@ class AuditAppService:
                 },
             )
         return enqueued
+
+    # ------------------------------------------------------------------
+    # §10.1 dossier alignment: candidates/ and findings/<id>/ publication.
+    # ------------------------------------------------------------------
+    def _publish_dossier_records(
+        self,
+        art_mgr: ArtifactManager,
+        run_id: str,
+        findings: List[Dict[str, Any]],
+        events: List[Dict[str, Any]],
+    ) -> None:
+        """Publish the candidate pool and per-finding record/history artifacts.
+
+        - ``candidates/final.json``: the deduplicated representative candidate
+          pool — exactly the candidates verify tasks were built from — each
+          entry carrying its provenance and the dedup ledger records that
+          reference it (exact-duplicate merges and distinct-source
+          suggestions alike). An empty pool is published as an empty list:
+          absent candidates are stated, never implied.
+        - ``findings/<finding_id>/record.json``: the merged finding record
+          (the same records findings.json summarizes, in full).
+        - ``findings/<finding_id>/history.json``: the finding's recorded
+          status transitions (verified-findings storage, second-opinion
+          enqueue/adjudication, pending or missing-target markers) in ledger
+          order. A finding with no recorded transition carries an honest
+          empty history list.
+        """
+        candidates = self._collect_final_candidates(art_mgr.conn, run_id)
+        art_mgr.publish_artifact(
+            run_id,
+            CANDIDATE_POOL_ARTIFACT_KIND,
+            "candidates/final.json",
+            json.dumps(
+                {"schema_version": "1.0", "candidates": candidates},
+                indent=2, sort_keys=True, ensure_ascii=False,
+            ).encode("utf-8"),
+        )
+
+        history_events = [
+            e for e in events if e.get("event_type") in FINDING_TRANSITION_EVENT_TYPES
+        ]
+        used_dirs: Dict[str, str] = {}
+        for finding in findings:
+            finding_id = str(finding.get("finding_id") or "")
+            dir_name = self._safe_dossier_dir_name(finding_id, used_dirs)
+            art_mgr.publish_artifact(
+                run_id,
+                FINDING_RECORD_ARTIFACT_KIND,
+                f"findings/{dir_name}/record.json",
+                json.dumps(finding, indent=2, sort_keys=True, ensure_ascii=False).encode("utf-8"),
+            )
+            history = [
+                {
+                    "revision": e.get("revision"),
+                    "occurred_at": e.get("occurred_at"),
+                    "event_type": e.get("event_type"),
+                    "payload": e.get("payload") or {},
+                }
+                for e in history_events
+                if self._event_mentions_finding(e, finding_id)
+            ]
+            art_mgr.publish_artifact(
+                run_id,
+                FINDING_HISTORY_ARTIFACT_KIND,
+                f"findings/{dir_name}/history.json",
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "finding_id": finding_id,
+                        "history": history,
+                    },
+                    indent=2, sort_keys=True, ensure_ascii=False,
+                ).encode("utf-8"),
+            )
+
+    def _collect_final_candidates(self, conn: Any, run_id: str) -> List[Dict[str, Any]]:
+        """Reconstruct the deduplicated representative candidate pool.
+
+        The candidates are read from the verify tasks' persisted specs (the
+        deduplication wiring only ever enqueues verify work for
+        representatives, DSR-063); second-opinion specs carry a finding, not a
+        candidate, and are skipped. Each entry is annotated with the dedup
+        ledger records that reference it so provenance stays queryable from
+        the dossier without replaying the event store.
+        """
+        dedup_records: List[Dict[str, Any]] = []
+        for row in conn.execute(
+            """
+            SELECT event_type, payload_json FROM events
+            WHERE run_id = ? AND event_type IN ('candidate_deduplicated', 'dedup_suggested')
+            ORDER BY revision
+            """,
+            (run_id,),
+        ).fetchall():
+            try:
+                payload = json.loads(row["payload_json"])
+            except ValueError:
+                continue
+            if isinstance(payload, dict):
+                dedup_records.append(dict(payload, event_type=row["event_type"]))
+
+        pool: Dict[str, Dict[str, Any]] = {}
+        for row in conn.execute(
+            "SELECT spec_json FROM tasks WHERE run_id = ? AND kind = 'verify' ORDER BY task_id",
+            (run_id,),
+        ).fetchall():
+            try:
+                spec = json.loads(row["spec_json"])
+            except ValueError:
+                continue
+            if not isinstance(spec, dict) or spec.get("second_opinion"):
+                continue
+            spec_input = spec.get("input") if isinstance(spec.get("input"), dict) else {}
+            cand = spec_input.get("candidate")
+            if not isinstance(cand, dict) or not cand.get("candidate_id"):
+                continue
+            cand_id = str(cand["candidate_id"])
+            if cand_id in pool:
+                continue  # the same representative; verify specs are idempotent
+            entry = json.loads(json.dumps(cand, ensure_ascii=False))
+            entry["dedup_records"] = [
+                rec for rec in dedup_records
+                if cand_id in (rec.get("candidate_ids") or [])
+                or rec.get("representative_id") == cand_id
+                or rec.get("merged_candidate_id") == cand_id
+            ]
+            pool[cand_id] = entry
+        return [pool[cid] for cid in sorted(pool)]
+
+    @staticmethod
+    def _event_mentions_finding(event: Dict[str, Any], finding_id: str) -> bool:
+        """True when a ledger event records a transition of this finding."""
+        if not finding_id:
+            return False
+        payload = event.get("payload") or {}
+        if payload.get("finding_id") == finding_id:
+            return True
+        ids = payload.get("finding_ids")
+        return isinstance(ids, list) and finding_id in ids
+
+    @staticmethod
+    def _safe_dossier_dir_name(finding_id: str, used: Dict[str, str]) -> str:
+        """Map a finding id to a filesystem-safe dossier directory name.
+
+        Finding ids are worker- or program-supplied identifiers, never trusted
+        path data: characters outside ``[A-Za-z0-9._-]`` are replaced, the
+        name is length-capped, and a deterministic short-hash suffix resolves
+        collisions so two distinct finding ids can never silently share one
+        record directory.
+        """
+        base = re.sub(r"[^A-Za-z0-9._-]", "_", str(finding_id)).strip("._") or "finding"
+        base = base[:72]
+        if used.get(base, finding_id) != finding_id:
+            suffix = hashlib.sha256(finding_id.encode("utf-8")).hexdigest()[:8]
+            base = f"{base[:63]}-{suffix}"
+        used[base] = finding_id
+        return base
 
     def _load_run_findings(self, run_path: Path) -> Dict[str, Dict[str, Any]]:
         """Load stored findings (verified + adjudicated) keyed by finding_id."""
@@ -3046,11 +3448,13 @@ class AuditAppService:
             )
             raise
 
-        # Load snapshot manifest and plan
+        # Load snapshot manifest and plan. The plan is read from its §10.1
+        # location with a read-only fallback to the legacy flat plan.json, so
+        # a pre-§10.1 dossier can still be finalized/read (DSR-072) without
+        # any in-place migration.
         with open(run_path / "snapshot" / "manifest.json", "r", encoding="utf-8") as f:
             manifest_dict = json.load(f)
-        with open(run_path / "plan.json", "r", encoding="utf-8") as f:
-            plan_dict = json.load(f)
+        plan_dict = self._load_plan(run_path)
 
         # Merge caller-supplied findings with findings persisted by verify-task
         # submissions (ANA -> LED wiring). Verified findings are loaded first,
@@ -3083,9 +3487,10 @@ class AuditAppService:
             if f.get("verdict") != "confirmed":
                 continue
             rating = f.get("rating") or {}
+            nested = rating.get("factor_reasons") if isinstance(rating.get("factor_reasons"), dict) else {}
             missing = [
                 k for k in ("impact_why", "exploitability_why")
-                if not str(rating.get(k) or "").strip()
+                if not str(nested.get(k) or rating.get(k) or "").strip()
             ]
             if missing:
                 f["verdict"] = "needs_validation"
@@ -3097,10 +3502,10 @@ class AuditAppService:
                     "re-rate with impact/exploitability factor reasons and "
                     "re-submit through an independent verification attempt"
                 )
-                f["rating"] = {
-                    k: v for k, v in rating.items()
-                    if k in ("calculated_severity", "calculated_urgency", "validation_priority")
-                }
+                f["rating"] = Verifier._pending_rating(
+                    int(rating.get("impact") or 3),
+                    int(rating.get("exploitability") or 3),
+                )
 
         all_findings = list(merged_findings.values())
 
@@ -3171,6 +3576,14 @@ class AuditAppService:
         store = EventStore(conn)
         events = store.get_events(run_id)
         current_rev = conn.execute("SELECT revision FROM runs WHERE run_id = ?", (run_id,)).fetchone()["revision"]
+
+        # §10.1 dossier alignment: publish the merged candidate pool
+        # (candidates/final.json) and, per finding, the full record plus its
+        # status-transition history (findings/<finding_id>/{record,history}.json).
+        # These dossier artifacts carry no report generation id, so they do not
+        # interfere with the G4 generation reconciliation below; they are
+        # hashed into the artifact ledger like every published artifact.
+        self._publish_dossier_records(art_mgr, run_id, all_findings, events)
 
         # SR-020 / DSR-067: cost telemetry from real ledger data — stage task
         # counts, the executed report stage, usage_records aggregation and the

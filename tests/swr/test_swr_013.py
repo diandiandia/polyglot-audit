@@ -12,8 +12,9 @@
 
 Acceptance coverage
 -------------------
-1. 卷宗持久化: 每个领取的任务都有提示包工件 tasks/{id}/packet.json; recon
-   结果 tasks/{id}/result.json; 验证结果 findings/verified-<attempt>.json;
+1. 卷宗持久化: 每个领取的任务都有提示包工件 tasks/{id}/packet.json; 三类任务
+   (recon/hunt/verify) 各自发布 tasks/{id}/result.json 且内容与提交一致; recon
+   守卫基线汇总在 recon/recon-result.json; 验证结果 findings/verified-<attempt>.json;
    候选保存在 verify 任务 spec 中可查询。
 2. 正向追踪 (报告 → 记录): findings.json 中任一 confirmed finding 的
    provenance (candidates / hunt_tasks / verify_tasks / verify_attempt_id)
@@ -33,6 +34,7 @@ Acceptance coverage
 
 from __future__ import annotations
 
+import copy
 import json
 import shutil
 import sys
@@ -62,6 +64,7 @@ class SWR013Base(unittest.TestCase):
         self.app = AuditAppService(SKILL_DIR)
         self.run_dir = self.temp_dir / "run"
         self._run_id = None
+        self.submitted_results = {}
 
     def tearDown(self) -> None:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
@@ -128,13 +131,21 @@ class SWR013Base(unittest.TestCase):
             "overflow": [],
         }
 
-    def submit_all(self, claims, records_fn=None) -> None:
+    def submit_all(self, claims, records_fn=None, usage_fn=None) -> None:
+        """Start and submit every claim; a snapshot of each submitted payload
+        is recorded keyed by task id so the dossier artifacts can be asserted
+        against the exact worker results that were accepted (the service
+        enriches finding records in place during acceptance, so the snapshot
+        must be taken before submit)."""
         for claim in claims:
             self.app.start(self.run_dir, claim)
             records = records_fn(claim) if records_fn else []
+            result = self.worker_result(claim, records)
+            self.submitted_results[claim["task_id"]] = copy.deepcopy(result)
             self.app.submit(
-                self.run_dir, claim, self.worker_result(claim, records),
+                self.run_dir, claim, result,
                 f"digest-{claim['attempt_id']}",
+                usage=usage_fn(claim) if usage_fn else None,
             )
 
     def events(self, event_type: str) -> list:
@@ -249,7 +260,19 @@ class TestSWR013Traceability(SWR013Base):
             self.assertTrue(packet.exists(), f"missing prompt packet for {task_id}")
             payload = json.loads(packet.read_text(encoding="utf-8"))
             self.assertIn("packet_digest", payload)
-        # 2. Recon result artifact.
+        # 2. Per-task result artifacts (§10.1): result.json is published for
+        #    EVERY task kind — recon, hunt and verify — and its content is the
+        #    exact worker result that was submitted.
+        for task_id, submitted in self.submitted_results.items():
+            result_path = self.run_dir / "tasks" / task_id / "result.json"
+            self.assertTrue(result_path.exists(), f"missing result.json for {task_id}")
+            self.assertEqual(
+                json.loads(result_path.read_text(encoding="utf-8")),
+                submitted,
+                f"result.json for {task_id} must equal the submitted worker result",
+            )
+        # 3. Recon summary artifact: the guard baseline lands in the recon/
+        #    directory of the dossier.
         conn = get_db_connection(self.run_dir / "events.db")
         try:
             recon_tasks = [r["task_id"] for r in conn.execute(
@@ -258,16 +281,20 @@ class TestSWR013Traceability(SWR013Base):
             ).fetchall()]
         finally:
             conn.close()
-        for task_id in recon_tasks:
-            self.assertTrue((self.run_dir / "tasks" / task_id / "result.json").exists())
-        # 3. Verification artifact: one file per verify attempt.
+        self.assertTrue(recon_tasks)
+        recon_summary = json.loads(
+            (self.run_dir / "recon" / "recon-result.json").read_text(encoding="utf-8")
+        )
+        self.assertIn("guards", recon_summary)
+        self.assertEqual(recon_summary["task_id"], recon_tasks[0])
+        # 4. Verification artifact: one file per verify attempt.
         verified_files = list(self.run_dir.glob("findings/verified-*.json"))
         self.assertTrue(verified_files)
         self.assertTrue(
             any(v.name.endswith(f"{verify_claim['attempt_id']}.json") for v in verified_files),
             "verify attempt's findings artifact missing",
         )
-        # 4. Candidates remain queryable from the verify task spec.
+        # 5. Candidates remain queryable from the verify task spec.
         conn = get_db_connection(self.run_dir / "events.db")
         try:
             spec = json.loads(conn.execute(

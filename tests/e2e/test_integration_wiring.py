@@ -553,7 +553,7 @@ class TestIntegrationWiring(unittest.TestCase):
         prep = self._prepared(config)
         run_id, run_dir = prep["run_id"], Path(config["run_dir"])
 
-        plan = json.loads((run_dir / "plan.json").read_text(encoding="utf-8"))
+        plan = json.loads((run_dir / "plan" / "plan.json").read_text(encoding="utf-8"))
         dispositions = plan["dispositions"]
         self.assertGreaterEqual(dispositions.get("triage_only", 0), 1)
         self.assertGreaterEqual(dispositions.get("inventory_only", 0), 1)

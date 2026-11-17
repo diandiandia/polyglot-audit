@@ -82,9 +82,13 @@ class TestSWR016(unittest.TestCase):
             [], {}, {}, [], [], "gen-default-off", export_skill_review=False
         )
         rel_paths = [rel for _, rel, _, _ in payloads]
-        self.assertIn("report/SKILL-REVIEW.md", rel_paths)
+        self.assertIn("skill-review/SKILL-REVIEW.md", rel_paths)
         self.assertNotIn(
             "report/skill-review.json", rel_paths,
+            "the portable export must not be produced by default",
+        )
+        self.assertNotIn(
+            "skill-review/portable.json", rel_paths,
             "the portable export must not be produced by default",
         )
         # Same result when the flag is passed explicitly as False.

@@ -18,8 +18,11 @@ DSR-069 / DSR-070 / DSR-071 / SD-08 / SD-11 / SWR-010 / SWR-012 / SWR-014 / SWR-
   reasons.
 - Minimal i18n: zh/en label tables, ``en`` default, unknown language falls
   back to ``zh`` and the fallback is recorded (DSR-068 / SWR-012).
-- The portable skill-review JSON export is opt-in and strictly whitelist-only
-  (DSR-045 / SWR-016); the local SKILL-REVIEW.md is always written.
+- The portable skill-review JSON export (skill-review/portable.json) is
+  opt-in and strictly whitelist-only (DSR-045 / SWR-016); the local
+  skill-review/SKILL-REVIEW.md is always written. Design §10.1 keeps the
+  skill self-review in its own dossier directory — report/ holds only the
+  §9.3 report set.
 - Standard library only.
 """
 
@@ -109,9 +112,10 @@ class ReportGenerator:
     ) -> str:
         """Render all reports atomically and return generation ID.
 
-        DSR-045: ``skill-review.json`` (portable whitelist-only export) is only
-        written when ``export_skill_review`` is True; SKILL-REVIEW.md (local,
-        may reference the run dossier) is always written.
+        DSR-045: ``skill-review/portable.json`` (portable whitelist-only
+        export) is only written when ``export_skill_review`` is True;
+        ``skill-review/SKILL-REVIEW.md`` (local, may reference the run
+        dossier) is always written.
         DSR-070: when ``anomalies`` is not supplied but ``self_review_inputs``
         is, the SelfReviewCollector produces the anomaly list.
         """
@@ -185,18 +189,20 @@ class ReportGenerator:
         cost_md = self._render_cost_report(cost_metrics, generation_id)
         payloads.append(("report_cost", "report/COST.md", True, mask_secrets(cost_md).encode("utf-8")))
 
-        # 7. SKILL-REVIEW.md (always, local dossier-aware) and skill-review.json
-        #    (opt-in whitelist-only portable export, DSR-045/SWR-016).
+        # 7. SKILL-REVIEW.md (always, local dossier-aware) and portable.json
+        #    (opt-in whitelist-only portable export, DSR-045/SWR-016). Design
+        #    §10.1 puts the skill self-review in its own dossier directory
+        #    (skill-review/) — report/ holds only the report set of §9.3.
         review_md = self._render_skill_review_md(anomalies, generation_id)
-        payloads.append(("report_skill_review_md", "report/SKILL-REVIEW.md", True, mask_secrets(review_md).encode("utf-8")))
+        payloads.append(("skill_review_md", "skill-review/SKILL-REVIEW.md", True, mask_secrets(review_md).encode("utf-8")))
 
         if export_skill_review:
             review_json = self._build_portable_skill_review(anomalies, coverage_summary, cost_metrics, findings, generation_id)
             # DSR-069: JSON export is built from whitelisted scalars only, but
             # still pass through the masker for defense in depth.
             payloads.append((
-                "report_skill_review_json",
-                "report/skill-review.json",
+                "skill_review_json",
+                "skill-review/portable.json",
                 True,
                 mask_json_text(json.dumps(review_json, indent=2, ensure_ascii=False)).encode("utf-8"),
             ))

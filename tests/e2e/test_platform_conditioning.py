@@ -6,7 +6,7 @@ Cross-layer assertions:
   unknown expands NO Java base index and emits an explicit "platform unknown"
   disclosure line instead of a silent assumption.
 - prepare detects JVM build markers in the snapshot manifest (pom.xml,
-  build.gradle, .sbt, .mvn/) and records the evidence in plan.json.
+  build.gradle, .sbt, .mvn/) and records the evidence in plan/plan.json.
 - The hunt packet for a Kotlin unit carries the Java base index only when the
   target has JVM build evidence; without evidence the packet says the platform
   is unknown and omits the Java base lines.
@@ -154,7 +154,7 @@ class TestPlatformConditioning(unittest.TestCase):
         prep = self.prepare(target)
 
         # The plan records the honest unknown platform evidence.
-        plan = json.loads((self.run_dir / "plan.json").read_text(encoding="utf-8"))
+        plan = json.loads((self.run_dir / "plan" / "plan.json").read_text(encoding="utf-8"))
         self.assertIsNone(plan["platform_evidence"]["is_jvm"])
         self.assertEqual(plan["platform_evidence"]["build_marker_files"], [])
 
@@ -170,7 +170,7 @@ class TestPlatformConditioning(unittest.TestCase):
         target = self.write_kotlin_target(build_marker="build.gradle")
         self.prepare(target)
 
-        plan = json.loads((self.run_dir / "plan.json").read_text(encoding="utf-8"))
+        plan = json.loads((self.run_dir / "plan" / "plan.json").read_text(encoding="utf-8"))
         self.assertTrue(plan["platform_evidence"]["is_jvm"])
         self.assertEqual(plan["platform_evidence"]["build_marker_files"], ["build.gradle"])
 

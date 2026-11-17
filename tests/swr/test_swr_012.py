@@ -13,10 +13,11 @@
 
 Acceptance coverage
 -------------------
-1. 七件套 + SKILL-REVIEW: 正常完成的运行生成 REPORT.md / findings.json /
-   NEEDS-VALIDATION.md / COVERAGE.md / coverage.csv / AUDIT-TRAIL.md /
-   COST.md / SKILL-REVIEW.md, 全部登记在同一 generation 下, 报告与持久状态
-   对账 (终态 complete、任务计数、事件数)。
+1. 七件套 + SKILL-REVIEW: 正常完成的运行在 report/ 下生成 REPORT.md /
+   findings.json / NEEDS-VALIDATION.md / COVERAGE.md / coverage.csv /
+   AUDIT-TRAIL.md / COST.md, 并在独立目录 skill-review/ 下生成本地自审
+   (SKILL-REVIEW.md, 设计 §10.1), 全部登记在同一 generation 下, 报告与持久
+   状态对账 (终态 complete、任务计数、事件数)。
 2. 预算耗尽: enforced tasks 预算小于排队任务数时, 真实 claim 路径记
    budget_exhausted 事件; finalize 输出终态 incomplete (含 budget_exhausted
    理由) 且报告如实标注 incomplete, run_finalized 事件与报告一致。
@@ -49,8 +50,10 @@ SKILL_DIR = REPO_ROOT = Path(__file__).resolve().parents[2] / "skill"
 
 DANGER_SOURCE = "import os\n\n\ndef handler(user_input):\n    os.system(user_input)\n"
 
-# The seven deliverables plus the always-written local SKILL-REVIEW.md
-# (the portable skill-review.json stays opt-in and is asserted absent).
+# The seven report deliverables (design §9.3) plus the always-written local
+# self-review (design §10.1 keeps the skill self-review in its own
+# skill-review/ directory — report/ holds only the report set). The portable
+# export stays opt-in and is asserted absent.
 SEVEN_DELIVERABLES = (
     "report/REPORT.md",
     "report/findings.json",
@@ -59,8 +62,8 @@ SEVEN_DELIVERABLES = (
     "report/coverage.csv",
     "report/AUDIT-TRAIL.md",
     "report/COST.md",
-    "report/SKILL-REVIEW.md",
 )
+SELF_REVIEW_DELIVERABLE = "skill-review/SKILL-REVIEW.md"
 
 
 class SWR012Base(unittest.TestCase):
@@ -228,7 +231,7 @@ class SWR012Base(unittest.TestCase):
 
 
 class TestSWR012Complete(SWR012Base):
-    """正常完成的运行: 七件套 + SKILL-REVIEW 全部生成并与持久状态对账。"""
+    """正常完成的运行: report/ 七件套 + skill-review/ 本地自审全部生成并与持久状态对账。"""
 
     def test_complete_run_publishes_seven_deliverables_plus_skill_review(self):
         self.prepare_run()
@@ -242,13 +245,19 @@ class TestSWR012Complete(SWR012Base):
         self.assertEqual(set(fin["gates"].values()), {"pass"})
         self.assertEqual(self.run_state(), "complete")
 
-        # The seven deliverables + SKILL-REVIEW.md all exist and are non-empty.
-        for rel_path in SEVEN_DELIVERABLES:
+        # The seven report deliverables + the local self-review all exist and
+        # are non-empty.
+        for rel_path in SEVEN_DELIVERABLES + (SELF_REVIEW_DELIVERABLE,):
             p = self.run_dir / rel_path
             self.assertTrue(p.exists(), f"missing deliverable {rel_path}")
             self.assertGreater(p.stat().st_size, 0, f"empty deliverable {rel_path}")
+        # Design §10.1: the skill self-review lives in skill-review/; the
+        # report/ directory holds only the §9.3 report set.
+        self.assertFalse((self.run_dir / "report" / "SKILL-REVIEW.md").exists())
         # The portable export stays opt-in (DSR-045): not written by default.
-        self.assertFalse((self.run_dir / "report" / "skill-review.json").exists())
+        self.assertFalse((self.run_dir / "skill-review" / "portable.json").exists())
+        # run.json (immutable run metadata) is part of the dossier.
+        self.assertTrue((self.run_dir / "run.json").exists())
 
         # One generation id across the whole dossier; the report header and
         # the finalize result agree (报告与持久状态对账).

@@ -83,7 +83,7 @@ class TestPrepareComponentDetection(unittest.TestCase):
         self.assertEqual(by_component.get("default"), 1)  # loose.py
 
         # plan_summary records the detected component roots (DSR-055).
-        detection = json.loads((run_dir / "plan.json").read_text(encoding="utf-8"))
+        detection = json.loads((run_dir / "plan" / "plan.json").read_text(encoding="utf-8"))
         roots = {
             (r["root"], r["label"], r["manifest"])
             for r in detection["component_detection"]["roots"]
@@ -126,7 +126,7 @@ class TestPrepareComponentDetection(unittest.TestCase):
         by_component = prep["inventory_reconciliation"]["by_component"]
         self.assertEqual(set(by_component.keys()), {"default"})
         detection = json.loads(
-            (Path(config["run_dir"]) / "plan.json").read_text(encoding="utf-8")
+            (Path(config["run_dir"]) / "plan" / "plan.json").read_text(encoding="utf-8")
         )
         self.assertEqual(detection["component_detection"]["roots"], [])
         self.assertEqual(
