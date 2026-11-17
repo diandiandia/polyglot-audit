@@ -10,6 +10,15 @@ Implements DSR-067 / SD-07 / SR-020 / SWR-020:
   never defaulted to zero.
 - Retry counts can be supplied by the caller (host/WIRE wiring) via
   ``set_retries``; the internal ``record_task(is_retry=True)`` path is kept.
+- Task counts are reported in two explicit denominators (O-03, run lessons):
+  ``total_enqueued`` counts every task created for the run, while
+  ``total_executed`` counts only the tasks actually processed (settled done,
+  quarantined, or failed). The normalized rates (tasks/kLOC, tasks/finding)
+  use the EXECUTED count as their denominator and say so in their reason
+  strings, so a run that planned 4464 units but processed 7 can never dress
+  the plan up as executed work. When a caller never records executed counts
+  (legacy trackers), the rates fall back to the enqueued total and the
+  reason string states that fallback explicitly.
 - Standard library only.
 """
 
@@ -29,12 +38,28 @@ DEFAULT_CACHE_UNAVAILABLE_REASON = "Host CLI does not report cache hit counts"
 DEFAULT_PROTOCOL_OVERHEAD_UNAVAILABLE_REASON = "Host CLI does not report protocol overhead"
 DEFAULT_TOKEN_UNAVAILABLE_REASON = "Host CLI does not report verified token counts"
 
+# Denominator provenance labels for the normalized rates (O-03): the rates
+# are computed over EXECUTED tasks when the caller recorded them, and over
+# the enqueued total only as an explicit, documented legacy fallback.
+DENOMINATOR_EXECUTED = "executed"
+DENOMINATOR_ENQUEUED_FALLBACK = "enqueued_fallback"
+EXECUTED_DENOMINATOR_NOTE = "denominator: executed tasks (done/quarantined/failed)"
+ENQUEUED_FALLBACK_DENOMINATOR_NOTE = (
+    "denominator: enqueued tasks (executed counts were not recorded by this caller)"
+)
+
 
 class CostTracker:
     """Computes cost metrics and telemetry summaries."""
 
     def __init__(self) -> None:
         self.stage_tasks: Dict[str, int] = {"recon": 0, "hunt": 0, "verify": 0, "report": 0}
+        # O-03: executed tasks per stage (settled done / quarantined / failed
+        # work actually processed), recorded by the LED wiring. Empty until a
+        # caller records them; only then do the rates use the executed
+        # denominator.
+        self.stage_tasks_executed: Dict[str, int] = {}
+        self.executed_recorded: bool = False
         self.retries: int = 0
         # DSR-067: caller-supplied retry counter (host wiring); when set it
         # overrides the locally observed count.
@@ -52,10 +77,37 @@ class CostTracker:
         self.protocol_overhead_reason: Optional[str] = DEFAULT_PROTOCOL_OVERHEAD_UNAVAILABLE_REASON
 
     def record_task(self, kind: str, is_retry: bool = False) -> None:
+        """Record an ENQUEUED task (plan scope), not executed work (O-03)."""
         if kind in self.stage_tasks:
             self.stage_tasks[kind] += 1
         if is_retry:
             self.retries += 1
+
+    def record_executed_task(self, kind: str) -> None:
+        """Record one task that was actually processed (O-03).
+
+        Executed means the task reached a processed terminal state: settled
+        done, quarantined, or failed. Only these count toward the executed
+        denominator of the normalized rates; enqueued-but-never-dispatched
+        tasks stay visible in ``stage_tasks`` / ``total_enqueued`` only.
+        """
+        self.stage_tasks_executed[kind] = self.stage_tasks_executed.get(kind, 0) + 1
+        self.executed_recorded = True
+
+    def set_executed_tasks(self, counts: Dict[str, int]) -> None:
+        """Accept caller-supplied executed counts per stage (LED wiring point).
+
+        ``counts`` maps task kind -> number of tasks that reached a processed
+        terminal state (settled done / quarantined / failed). Calling this
+        with an empty dict is meaningful: it records that the caller tracked
+        executions and observed ZERO of them, so the rates use a real
+        executed denominator of 0 instead of the enqueued fallback.
+        """
+        for kind, count in (counts or {}).items():
+            count = int(count)
+            if count:
+                self.stage_tasks_executed[kind] = count
+        self.executed_recorded = True
 
     def set_retries(self, count: int, source: str = "host") -> None:
         """Accept a caller-supplied retry counter (WIRE wiring point)."""
@@ -93,8 +145,29 @@ class CostTracker:
         total_lines: int,
         confirmed_findings_count: int,
     ) -> Dict[str, Any]:
-        """Compute cost and efficiency indicators."""
-        total_tasks = sum(self.stage_tasks.values())
+        """Compute cost and efficiency indicators.
+
+        The normalized rates (tasks/kLOC, tasks/finding) divide by the
+        EXECUTED task count when executed counts were recorded (O-03), and by
+        the enqueued total only for legacy callers that never recorded them —
+        in that case the rate reason strings say the denominator is the
+        enqueued fallback, so a plan is never presented as executed work.
+        """
+        total_enqueued = sum(self.stage_tasks.values())
+        total_executed: Optional[int] = (
+            sum(self.stage_tasks_executed.values()) if self.executed_recorded else None
+        )
+
+        # Rate denominator resolution (O-03): executed when recorded, with an
+        # explicit documented fallback for legacy callers.
+        if total_executed is not None:
+            rate_denominator = total_executed
+            denominator_source = DENOMINATOR_EXECUTED
+            denominator_note = EXECUTED_DENOMINATOR_NOTE
+        else:
+            rate_denominator = total_enqueued
+            denominator_source = DENOMINATOR_ENQUEUED_FALLBACK
+            denominator_note = ENQUEUED_FALLBACK_DENOMINATOR_NOTE
 
         # DSR-067: retry counter resolution — caller-supplied value wins.
         if self.retries_override is not None:
@@ -109,18 +182,18 @@ class CostTracker:
         # fabricated 1.0 kLOC fallback.
         if total_lines and total_lines > 0:
             kloc = total_lines / 1000.0
-            tasks_per_kloc: Optional[float] = round(total_tasks / kloc, 2)
+            tasks_per_kloc: Optional[float] = round(rate_denominator / kloc, 2)
             tasks_per_kloc_status = "computed"
-            tasks_per_kloc_reason: Optional[str] = None
+            tasks_per_kloc_reason: Optional[str] = denominator_note
         else:
             tasks_per_kloc = None
             tasks_per_kloc_status = "non-computable"
             tasks_per_kloc_reason = "total_lines is 0 or missing; kLOC denominator does not exist"
 
         if confirmed_findings_count > 0:
-            tasks_per_finding: Optional[float] = round(total_tasks / confirmed_findings_count, 2)
+            tasks_per_finding: Optional[float] = round(rate_denominator / confirmed_findings_count, 2)
             tasks_per_finding_status = "computed"
-            tasks_per_finding_reason: Optional[str] = None
+            tasks_per_finding_reason: Optional[str] = denominator_note
         else:
             tasks_per_finding = None
             tasks_per_finding_status = "non-computable"
@@ -132,7 +205,11 @@ class CostTracker:
 
         return {
             "stage_tasks": self.stage_tasks,
-            "total_tasks": total_tasks,
+            "stage_tasks_executed": dict(self.stage_tasks_executed),
+            "total_tasks": total_enqueued,
+            "total_enqueued": total_enqueued,
+            "total_executed": total_executed,
+            "rates_denominator": denominator_source,
             "retries": retries,
             "retries_source": retries_source,
             "total_tokens": self.total_tokens,

@@ -206,6 +206,12 @@ ERROR_EVENT_TYPES = (
 )
 # Self-review flow accounting treats the report stage as executed work.
 REPORT_STAGE_TASKS = 1
+# O-03 (run lessons): the cost report separates the ENQUEUED plan scope from
+# the work actually processed. These are the processed terminal task states
+# (settled done, quarantined, failed) that form the executed denominator of
+# the normalized cost rates; enqueued-but-never-dispatched tasks stay out of
+# it and remain visible as the enqueued total.
+EXECUTED_TASK_STATES = ("done", "failed", "quarantined")
 # SR-012/SR-026/DSR-076: finalize enforces the plan-coverage invariant that
 # DDS-06's G1/G2 formulas miss (zero-dispatch blind spot): planned work that
 # was never dispatched, and recon/verify tasks that never reached a terminal
@@ -938,15 +944,40 @@ class AuditAppService:
         ranges: List[Dict[str, Any]] = []
         seen: set = set()
 
+        def _range_from_text(text: str, window: int) -> Optional[Dict[str, Any]]:
+            """Extract a path(:line) reference from free-form model text.
+
+            Real workers emit steps/endpoints as prose with embedded
+            ``path/to/file.ext:LINE`` references (RUN-LESSONS L-07/O-01 real
+            shapes). This is program-owned location extraction for packet
+            context supply -- not a verdict on the text's semantics.
+            """
+            m = re.search(r"([A-Za-z0-9_./\-]+\.[A-Za-z][A-Za-z0-9]{1,8})(?::(\d+))?", text or "")
+            if not m:
+                return None
+            path = m.group(1)
+            line = int(m.group(2) or 1)
+            return {"path": path, "line_start": max(1, line - window), "line_end": line + window}
+
         def _add_range(endpoint: Any, window: int = 5) -> None:
-            path = (endpoint or {}).get("path", "")
-            if not path:
+            rng = None
+            if isinstance(endpoint, dict):
+                path = endpoint.get("path") or ""
+                line = endpoint.get("line") or 1
+                if path:
+                    rng = {"path": path, "line_start": max(1, int(line) - window), "line_end": int(line) + window}
+                else:
+                    # Real shape: {"artifact": "path:3983-3989 schema ..."} without path/line
+                    rng = _range_from_text(str(endpoint.get("artifact") or endpoint.get("location") or ""), window)
+            elif isinstance(endpoint, str):
+                # Real shape: steps as prose lines with embedded path:line
+                rng = _range_from_text(endpoint, window)
+            if not rng:
                 return
-            line = (endpoint or {}).get("line") or 1
-            rng = (path, max(1, int(line) - window), int(line) + window)
-            if rng not in seen:
-                seen.add(rng)
-                ranges.append({"path": rng[0], "line_start": rng[1], "line_end": rng[2]})
+            key = (rng["path"], rng["line_start"], rng["line_end"])
+            if key not in seen:
+                seen.add(key)
+                ranges.append(rng)
 
         _add_range(target.get("source"))
         _add_range(target.get("sink"))
@@ -1116,6 +1147,23 @@ class AuditAppService:
         # Worker-reported overflow records are persisted as explicit events.
         overflow_type = "hunter_overflow" if kind == "hunt" else "analysis_gap"
         for ov in worker_result.get("overflow", []) or []:
+            # RUN-LESSONS O-01: real models may emit overflow entries as bare
+            # strings -- skip non-dict entries honestly (counted via the
+            # trailing diagnostics), never crash the accept path.
+            if not isinstance(ov, dict):
+                store.append_event(
+                    run_id,
+                    overflow_type,
+                    "worker",
+                    {
+                        "task_id": claim["task_id"],
+                        "attempt_id": claim["attempt_id"],
+                        "dimension": "unknown",
+                        "estimated_count": 0,
+                        "reason": f"non-dict overflow entry: {str(ov)[:120]}",
+                    },
+                )
+                continue
             store.append_event(
                 run_id,
                 overflow_type,
@@ -2130,6 +2178,16 @@ class AuditAppService:
     # ------------------------------------------------------------------
     # HST -> service wiring: AIMD-driven dispatch loop.
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def conn_query_count(run_dir: str | Path, sql: str, params: tuple = ()) -> int:
+        """One-shot read-only scalar query with a fresh connection."""
+        conn = get_db_connection(Path(run_dir) / "events.db")
+        try:
+            return conn.execute(sql, params).fetchone()[0]
+        finally:
+            conn.close()
+
     def run_dispatch_loop(
         self,
         run_id: str,
@@ -2166,9 +2224,14 @@ class AuditAppService:
         Return contract (unchanged for CLI consumers):
         - ``stop_reason``: ``"queue_drained"`` when the task queue is empty;
           ``"budget_exhausted"`` when dispatch stopped against remaining queued
-          tasks with a budget_exhausted ledger event; ``"paused_or_blocked"``
-          when the run is not active (stop sequence) or no cause is recorded.
-          ``None`` means the loop stopped on the caller-supplied task cap.
+          tasks with a budget_exhausted ledger event;
+          ``"verification_reserve_exhausted"`` when that event records the
+          hunt claims being refused by the verification reserve floor
+          (DSR-020) while non-hunt room remained (O-04: the budget-class
+          stop that a real run mislabeled as blocked);
+          ``"paused_or_blocked"`` when the run is not active (stop sequence)
+          or no cause is recorded. ``None`` means the loop stopped on the
+          caller-supplied task cap.
         - ``max_batches`` now caps TASK DISPATCH ROUNDS (one claimed task per
           round), not whole-batch claim rounds: once that many tasks have been
           claimed, no further tasks are claimed, in-flight tasks complete, and
@@ -2248,7 +2311,35 @@ class AuditAppService:
                     # section so the cap is exact under concurrency.
                     counters["dispatched"] += 1
             if not claims:
-                return ("empty", None)
+                # DA-06 dimension-aware stop: an empty claim usually means the
+                # hunt budget hit its verification-reserve floor. Verify and
+                # second-opinion tasks live behind that protected floor and
+                # MUST still be dispatched (DSR-066/DSR-020) -- otherwise a
+                # budget-first audit ends with every candidate unverified.
+                # Check first (cheap, no latency); sleep only when queued
+                # verification work actually exists.
+                for _ in range(2):
+                    pending_verify = self.conn_query_count(
+                        run_dir,
+                        "SELECT count(*) AS cnt FROM tasks WHERE run_id = ? "
+                        "AND kind IN ('verify') AND state = 'queued'",
+                        (run_id,),
+                    )
+                    if not pending_verify:
+                        return ("empty", None)
+                    sleep_fn(1.0)
+                    claims = self.next(
+                        run_id,
+                        run_dir,
+                        batch_size=1,
+                        lease_seconds=lease_seconds,
+                        worker_id="service_loop",
+                    )
+                    if claims:
+                        counters["dispatched"] += 1
+                        break
+                if not claims:
+                    return ("empty", None)
             claim = claims[0]
             with db_lock:
                 self.start(run_dir, claim)
@@ -2449,10 +2540,15 @@ class AuditAppService:
         }
 
     def _dispatch_stop_reason(self, run_id: str, run_dir: str | Path) -> str:
-        """Disambiguate an empty-claim stop honestly (three-state contract).
+        """Disambiguate an empty-claim stop honestly (state contract).
 
         - ``"paused_or_blocked"``: the run is not active (stop sequence) or no
           cause event is recorded;
+        - ``"verification_reserve_exhausted"``: queued tasks remain and a
+          budget_exhausted event shows a HUNT claim was refused by the
+          verification reserve floor (DSR-020) while non-hunt budget room
+          still existed — the dispatch stop was caused by the verify
+          protection, not by a fully spent budget (O-04, run lessons);
         - ``"budget_exhausted"``: queued tasks remain and a budget_exhausted
           event explains why they were not dispatched;
         - ``"queue_drained"``: the queue is empty.
@@ -2471,13 +2567,55 @@ class AuditAppService:
             if queued == 0:
                 return "queue_drained"
             budget_events = conn.execute(
-                "SELECT count(*) AS cnt FROM events "
+                "SELECT payload_json FROM events "
                 "WHERE run_id = ? AND event_type = 'budget_exhausted'",
                 (run_id,),
-            ).fetchone()["cnt"]
-            return "budget_exhausted" if budget_events else "paused_or_blocked"
+            ).fetchall()
+            if not budget_events:
+                return "paused_or_blocked"
+            if self._is_verification_reserve_stop(conn, run_id, budget_events):
+                return "verification_reserve_exhausted"
+            return "budget_exhausted"
         finally:
             conn.close()
+
+    @staticmethod
+    def _is_verification_reserve_stop(
+        conn: Any,
+        run_id: str,
+        budget_event_payloads: List[Any],
+    ) -> bool:
+        """True when the recorded claim refusals are the verify-floor case.
+
+        The claim path's BudgetExhaustedError event payload already carries
+        the dimension and the ledger's own refusal reason (O-04: consume it
+        instead of re-deriving). A hunt refusal whose reason names the
+        verify protection (``protected for verify``, BudgetLedger wording)
+        is the floor case — but only while the tasks dimension still had
+        room for a non-hunt claim; once available is 0 the stop is a plain
+        budget exhaustion, whatever the refused claim's kind was.
+        """
+        floor_refusal_seen = False
+        for row in budget_event_payloads:
+            try:
+                payload = json.loads(row["payload_json"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            reason = str(payload.get("reason", ""))
+            if "protected for verify" in reason:
+                floor_refusal_seen = True
+                break
+        if not floor_refusal_seen:
+            return False
+        dim_row = conn.execute(
+            "SELECT limit_val, settled, reserved FROM budget_dimensions "
+            "WHERE run_id = ? AND dimension = 'tasks'",
+            (run_id,),
+        ).fetchone()
+        if dim_row is None:
+            return False
+        available = dim_row["limit_val"] - (dim_row["settled"] + dim_row["reserved"])
+        return available > 0
 
     def status(self, run_id: str, run_dir: str | Path) -> Dict[str, Any]:
         """Retrieve current run status."""
@@ -2860,6 +2998,21 @@ class AuditAppService:
                 cost_tracker.record_task(r["kind"])
         for _ in range(REPORT_STAGE_TASKS):
             cost_tracker.record_task("report")
+        # O-03: the executed denominator comes from the ledger's processed
+        # terminal states (settled done / quarantined / failed) — never from
+        # the enqueued plan scope, which the two COST.md totals report
+        # separately. The synthesized report stage is the one stage finalize
+        # itself executes.
+        executed_counts = {
+            r["kind"]: r["cnt"]
+            for r in conn.execute(
+                f"SELECT kind, count(*) AS cnt FROM tasks WHERE run_id = ? "
+                f"AND state IN ({','.join('?' * len(EXECUTED_TASK_STATES))}) GROUP BY kind",
+                (run_id, *EXECUTED_TASK_STATES),
+            ).fetchall()
+        }
+        executed_counts["report"] = executed_counts.get("report", 0) + REPORT_STAGE_TASKS
+        cost_tracker.set_executed_tasks(executed_counts)
         self._apply_usage_records(conn, run_id, cost_tracker)
         cost_metrics = cost_tracker.compute_metrics(
             coverage_summary.get("total_inventoried_lines", 0),

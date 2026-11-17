@@ -248,7 +248,9 @@ class TestUsageExtraction(unittest.TestCase, RetryTestMixin):
         """P0 usage envelope: execute_worker returns (result, usage) with the
         usage dict bound to THIS execution's attempt (usage.schema semantics).
         The shared last_usage slot is gone: concurrent workers on one adapter
-        can no longer cross-attribute per-attempt usage."""
+        can no longer cross-attribute per-attempt usage. A host-NAMED usage
+        block is the host's own telemetry and maps to "exact" (O-02: real
+        host cost must be observable, never understated by a guess)."""
         payload = {"ok": True, "usage": {"input_tokens": 10, "output_tokens": 5}}
         binary = fake_hosts.create_fake_host(
             self.temp_dir, "claude", headless_stdout=json.dumps(payload)
@@ -260,7 +262,7 @@ class TestUsageExtraction(unittest.TestCase, RetryTestMixin):
             "schema_version": "1.0",
             "attempt_id": "att-1",
             "dimension": "tokens",
-            "availability": "estimated",
+            "availability": "exact",
             "value": 15,
             "unit": "tokens",
             "source": "ClaudeDriverAdapter",
@@ -304,6 +306,105 @@ class TestUsageExtraction(unittest.TestCase, RetryTestMixin):
         self.assertTrue(usage["reason"])
         self.assertNotIn("value", usage)
         self.assertEqual(usage["attempt_id"], "att-3")
+
+    # ------------------------------------------------- O-02 real-host usage
+    def test_usage_found_in_nested_meta_envelope(self):
+        """O-02: hosts that nest usage under a meta/telemetry envelope are
+        observable. The block sits anywhere in the JSON output; a host-named
+        container maps to exact with the declared value."""
+        payload = {
+            "ok": True,
+            "result": {"records": []},
+            "meta": {
+                "session": "s-1",
+                "usage": {"input_tokens": 120, "output_tokens": 80},
+            },
+        }
+        binary = fake_hosts.create_fake_host(
+            self.temp_dir, "claude", headless_stdout=json.dumps(payload)
+        )
+        adapter = self.make_claude(binary)
+        _result, usage = adapter.execute_worker("prompt", "t1", attempt_id="att-meta")
+        self.assertEqual(usage["availability"], "exact")
+        self.assertEqual(usage["value"], 200)
+        self.assertEqual(usage["attempt_id"], "att-meta")
+
+    def test_usage_found_by_shape_only_maps_to_estimated(self):
+        """O-02: an object that merely carries token-counter fields (no
+        usage-like container name) is an INFERRED block — mapped
+        conservatively to estimated, never promoted to exact."""
+        payload = {
+            "ok": True,
+            "metrics": {"model": "synthetic", "prompt_tokens": 90, "completion_tokens": 30},
+        }
+        binary = fake_hosts.create_fake_host(
+            self.temp_dir, "claude", headless_stdout=json.dumps(payload)
+        )
+        adapter = self.make_claude(binary)
+        _result, usage = adapter.execute_worker("prompt", "t1", attempt_id="att-shape")
+        self.assertEqual(usage["availability"], "estimated")
+        self.assertEqual(usage["value"], 120)
+
+    def test_usage_aliases_are_case_insensitive_and_camel_case(self):
+        """O-02: the alias table matches case-insensitively, including
+        camelCase host spellings like ``inputTokens`` / ``totalTokens``."""
+        self.assertEqual(
+            extract_usage({"ok": True, "Usage": {"InputTokens": 7, "OutputTokens": 3}}),
+            {"InputTokens": 7, "OutputTokens": 3},
+        )
+        payload = {"ok": True, "usage": {"inputTokens": 7, "outputTokens": 3}}
+        binary = fake_hosts.create_fake_host(
+            self.temp_dir, "claude", headless_stdout=json.dumps(payload)
+        )
+        adapter = self.make_claude(binary)
+        _result, usage = adapter.execute_worker("prompt", "t1", attempt_id="att-camel")
+        self.assertEqual(usage["availability"], "exact")
+        self.assertEqual(usage["value"], 10)
+
+    def test_usage_declared_total_wins_over_part_sums(self):
+        """O-02: when the host declares a grand total it is authoritative —
+        input + output + total must not be summed into a double count."""
+        payload = {
+            "ok": True,
+            "usage": {"input_tokens": 12, "output_tokens": 8, "total_tokens": 20},
+        }
+        binary = fake_hosts.create_fake_host(
+            self.temp_dir, "claude", headless_stdout=json.dumps(payload)
+        )
+        adapter = self.make_claude(binary)
+        _result, usage = adapter.execute_worker("prompt", "t1", attempt_id="att-total")
+        self.assertEqual(usage["value"], 20)
+
+    def test_usage_unrelated_numbers_do_not_inflate_token_count(self):
+        """O-02: only recognized token-counter fields contribute; unrelated
+        numeric envelope fields (turns, durations, ids) never inflate the
+        token count and no number is ever invented."""
+        payload = {
+            "ok": True,
+            "usage": {"input_tokens": 10, "num_turns": 4, "duration_ms": 1500},
+        }
+        binary = fake_hosts.create_fake_host(
+            self.temp_dir, "claude", headless_stdout=json.dumps(payload)
+        )
+        adapter = self.make_claude(binary)
+        _result, usage = adapter.execute_worker("prompt", "t1", attempt_id="att-noise")
+        self.assertEqual(usage["value"], 10)
+
+    def test_usage_host_declared_unavailable_is_honored(self):
+        """O-02: a host that declares its own usage block unavailable keeps
+        the honest unavailable record even when the block carries numbers."""
+        payload = {
+            "ok": True,
+            "usage": {"input_tokens": 10, "availability": "unavailable"},
+        }
+        binary = fake_hosts.create_fake_host(
+            self.temp_dir, "claude", headless_stdout=json.dumps(payload)
+        )
+        adapter = self.make_claude(binary)
+        _result, usage = adapter.execute_worker("prompt", "t1", attempt_id="att-unavail")
+        self.assertEqual(usage["availability"], "unavailable")
+        self.assertTrue(usage["reason"])
+        self.assertNotIn("value", usage)
 
     def test_usage_none_when_absent(self):
         """DSR-029: missing usage is reported as None, never invented."""

@@ -630,16 +630,47 @@ class ReportGenerator:
         tasks_per_kloc = cost_metrics.get("tasks_per_kloc")
         if tasks_per_kloc is None:
             tasks_per_kloc = f"{non_computable} ({cost_metrics.get('tasks_per_kloc_reason', 'denominator unavailable')})"
+        elif cost_metrics.get("tasks_per_kloc_reason"):
+            # O-03: every rate line states its denominator (executed tasks,
+            # or the documented legacy enqueued fallback) so the report's
+            # numbers stay recomputable by the reader.
+            tasks_per_kloc = f"{tasks_per_kloc} ({cost_metrics['tasks_per_kloc_reason']})"
+
+        # O-03: the enqueued plan scope and the work actually processed are
+        # two different numbers and are rendered as two separate labelled
+        # lines — a run that planned 4464 units but processed 7 must not be
+        # able to present the plan as executed work.
+        total_enqueued = cost_metrics.get(
+            "total_enqueued", cost_metrics.get("total_tasks", 0)
+        )
+        total_executed = cost_metrics.get("total_executed")
+        if total_executed is None:
+            executed_line = (
+                f"{total_enqueued} ({t('executed_not_recorded')})"
+            )
+        else:
+            executed_line = str(total_executed)
+
+        tasks_per_finding = cost_metrics.get("tasks_per_finding")
+        if tasks_per_finding is None:
+            tasks_per_finding = (
+                f"{non_computable} ({cost_metrics.get('tasks_per_finding_reason', 'denominator unavailable')})"
+            )
+        elif cost_metrics.get("tasks_per_finding_reason"):
+            tasks_per_finding = (
+                f"{tasks_per_finding} ({cost_metrics['tasks_per_finding_reason']})"
+            )
 
         lines = [
             t("cost_title"),
             "",
             f"- **{t('run_id')}**: `{self.run_id}`",
             f"- **{t('generation')}**: `{generation_id}`",
-            f"- **{t('total_tasks')}**: {cost_metrics.get('total_tasks', 0)}",
+            f"- **{t('total_tasks')}**: {total_enqueued}",
+            f"- **{t('total_tasks_executed')}**: {executed_line}",
             f"- **{t('retries')}**: {cost_metrics.get('retries', 0)}",
             f"- **{t('tasks_per_kloc')}**: {tasks_per_kloc}",
-            f"- **{t('tasks_per_finding')}**: {cost_metrics.get('tasks_per_finding')}",
+            f"- **{t('tasks_per_finding')}**: {tasks_per_finding}",
             f"- **{t('token_status')}**: {cost_metrics.get('token_availability')}",
         ]
         if cost_metrics.get("unavailable_reason"):
@@ -712,7 +743,9 @@ class ReportGenerator:
                 "total_lines_audited": coverage_summary.get("total_inventoried_lines", 0),
                 "total_confirmed_findings": len([f for f in findings if f.get("verdict") == "confirmed"]),
                 "total_needs_validation": len([f for f in findings if f.get("verdict") == "needs_validation"]),
-                "total_tasks_executed": cost_metrics.get("total_tasks", 0),
+                "total_tasks_executed": cost_metrics.get(
+                    "total_executed", cost_metrics.get("total_tasks", 0)
+                ),
                 "retries": cost_metrics.get("retries", 0),
             },
             "anomaly_categories": [a.get("category", "GENERAL") for a in anomalies],

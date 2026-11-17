@@ -66,6 +66,18 @@
 | 回填状态 | 已回填主文档：IFC-04（无头 worker 流契约句，[DA-05] 标注）。 |
 | 待设计审查确认 | ① stdout/stderr 是否也需要明文契约（当前实现两侧均为 PIPE 捕获，未见分歧，暂不入条款）；② 超时取消时的流关闭顺序（killpg 与管道 EOF 的竞态）是否需要 DDS-06 增补。 |
 
+### DA-06 DSR-066/DSR-020 定义了验证预算保留，但未定义停止序列的任务维度感知语义
+
+| 项 | 内容 |
+|---|---|
+| 设计出处 | DSR-066（"验证预算保留、候选优先顺序和停止序列；hunt 不得占用保留"）、DSR-020（"验证预留单独保护"）、SD §5.2。 |
+| 缺口描述 | 设计规定了 hunt 不得消费验证保留，但未明文规定驱动循环在 hunt 预算耗尽后的行为：实测（ZCode run-008）driver 在 hunt 预算耗尽（BudgetExhausted）时全局停止派发，验证保留底座中的验证任务从未被领取——"单独保护"保护了额度却没有让验证任务消费它。max_tasks 会话上限也未区分维度（hunt+verify 共用同一计数）。 |
+| 影响 | 有界审计（budget 优先用于 hunt）必然以"验证任务全部未执行"收场，所有候选只能进 unverified/NEEDS-VALIDATION——与 SR-008"独立验证"的核心承诺矛盾。 |
+| 补救决策 | ① run_dispatch_loop 的停止序列改维度感知：hunt 领取被 BudgetExhausted 阻断后，仍继续领取 verify/second-opinion 任务（消费验证保留底座），直至验证预算也耗尽或队列清空；② stop_reason 细分 budget_exhausted（hunt 侧）/verification_complete 或 verification_reserve_exhausted；③ max_tasks 计数仅约束 hunt 派发，验证任务不受其限制（验证是 SR-008 的必要闭环）。 |
+| 代码位置 | `skill/scripts/auditkit/app/service.py` run_dispatch_loop（维度感知 claim 与停止判定）；`audit.py` run 子命令透传。 |
+| 回填状态 | 待回填主文档（DDS-03 §3.2 / DDS-06 停止序列段）。 |
+| 待设计审查确认 | ① 验证保留底座耗尽后是否允许验证任务降级使用剩余 hunt 额度（当前决策：不允许，如实 incomplete）；② max_tasks 是否需要对 verify 单独设置上限。 |
+
 ## 与并行工作流的接口确认（本文件随实现更新）
 
 | 接口 | 变更 | 消费方 |

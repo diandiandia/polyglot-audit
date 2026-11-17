@@ -8,7 +8,12 @@ Implements DSR-027 / DSR-061 / DSR-062 / SD-05 / SR-008 / SR-009 / DSR-028:
 - Rating factor reasons are mandatory: a confirmed claim without a non-empty
   impact_why / exploitability_why is demoted to needs_validation with the
   gap recorded as a blocker — canned factor reasons are never fabricated
-  (SWR-011 / DSR-028: 缺失因子或理由拒绝定级).
+  (SWR-011 / DSR-028: 缺失因子或理由拒绝定级). No path here fabricates
+  observed justification of any kind: ratings carry only recorded factor
+  reasons (RatingEngine rejects the empty ones), and the second-opinion
+  adjudication record carries only observed evidence — its former canned
+  primary-evidence rationale (the last canned fallback, O-09) states the
+  honest absence instead.
 """
 
 # 需求追踪 (Requirement Traceability)
@@ -596,13 +601,21 @@ class Verifier:
             "path": (finding.get("sink") or {}).get("path", ""),
             "line": (finding.get("sink") or {}).get("line"),
         }
-        primary_evidence = (
-            finding.get("counter_evidence")
-            or {
-                "rationale": "Primary verifier trace from source to sink",
-                "anchors": finding.get("steps", []),
-            }
-        )
+        # SWR-011 / O-09: the primary side of the adjudication record carries
+        # OBSERVED evidence only. The former fallback fabricated a canned
+        # rationale ("a trace from source to sink") even for findings that
+        # recorded no trace at all; the honest record states what was (not)
+        # recorded and anchors only the steps that actually exist.
+        recorded_steps = finding.get("steps") or []
+        primary_evidence = finding.get("counter_evidence") or {
+            "rationale": (
+                "primary evidence rationale was not recorded on the finding; "
+                "the anchors below are the trace steps it did record"
+                if recorded_steps
+                else "no primary evidence was recorded on the finding"
+            ),
+            "anchors": recorded_steps,
+        }
 
         first_verdict = finding["verdict"]
         if first_verdict == second_opinion_verdict:

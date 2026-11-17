@@ -538,5 +538,51 @@ class TestSWR020(unittest.TestCase):
         self.assertIn("unavailable (Host CLI does not report cache hit counts)", cost_md)
 
 
+    # --------------------------------------------- O-03 分母口径（入队 vs 执行）
+    def test_cost_md_enqueued_and_executed_reconcile_with_ledger(self):
+        """COST.md 必须把入队总数与实际执行数分列为两行（O-03 运行教训：
+        曾把 4464 个入队任务全部标成"总执行任务数"）。执行数可从账本独立
+        复算 = done+quarantined+failed 任务数 + 1 个 finalize 报告阶段任务；
+        归一化比率（Tasks/kLOC）的分母必须用执行口径并在原因串注明。"""
+        self._prepare(with_tokens_budget=False)
+        # Claim only TWO of the three plan tasks and process exactly those:
+        # the unclaimed hunt stays queued (and lease-free), so the run
+        # finalizes with dispatched-work < plan scope on purpose.
+        claims = self.app.next(self.run_id, self.run_dir, batch_size=2)
+        self.assertEqual(len(claims), 2)
+        self._submit(claims[0], usage=self._usage(claims[0]["attempt_id"], "exact", 100))
+        self._submit(claims[1], usage=None)
+
+        fin = self.app.finalize(self.run_id, self.run_dir, findings=[])
+        self.assertEqual(fin["final_state"], "incomplete")
+        cost_md = (self.run_dir / "report" / "COST.md").read_text(encoding="utf-8")
+
+        # Ledger recomputation: enqueued = all task rows + the report stage;
+        # executed = processed terminal states + the report stage.
+        conn = get_db_connection(self.run_dir / "events.db")
+        try:
+            enqueued_tasks = conn.execute(
+                "SELECT count(*) c FROM tasks WHERE run_id = ?", (self.run_id,)
+            ).fetchone()["c"]
+            executed_tasks = conn.execute(
+                "SELECT count(*) c FROM tasks WHERE run_id = ? "
+                "AND state IN ('done', 'failed', 'quarantined')",
+                (self.run_id,),
+            ).fetchone()["c"]
+        finally:
+            conn.close()
+        total_enqueued = enqueued_tasks + 1   # + the synthesized report stage
+        total_executed = executed_tasks + 1
+        self.assertNotEqual(total_enqueued, total_executed)
+
+        self.assertIn(f"**Total Enqueued Tasks**: {total_enqueued}", cost_md)
+        self.assertIn(f"**Total Executed Tasks**: {total_executed}", cost_md)
+        # The old mislabel must not come back: the executed line carries the
+        # executed count only.
+        self.assertNotIn(f"**Total Executed Tasks**: {total_enqueued}", cost_md)
+        # The rate denominator is stated in the report itself.
+        self.assertIn("denominator: executed tasks", cost_md)
+
+
 if __name__ == "__main__":
     unittest.main()

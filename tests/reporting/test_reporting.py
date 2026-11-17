@@ -84,6 +84,9 @@ def sample_cost_metrics():
     return {
         "stage_tasks": {"hunt": 2, "verify": 1, "report": 1},
         "total_tasks": 4,
+        "total_enqueued": 4,
+        "total_executed": 3,
+        "rates_denominator": "executed",
         "retries": 0,
         "tasks_per_kloc": 40.0,
         "tasks_per_finding": 4.0,
@@ -259,6 +262,35 @@ class TestReporting(ReportingTestBase):
             self.assertIn(anchor, trail, f"provenance anchor {anchor} missing from AUDIT-TRAIL")
         self.assertIn("F-001", trail)
 
+    # ------------------------------------------------ O-03 cost denominators
+    def test_cost_md_reports_enqueued_and_executed_as_two_lines(self):
+        """O-03 (run lessons): COST.md labels the enqueued plan scope and the
+        actually-executed count on two separate lines — a run that planned
+        4464 units but processed 7 can never dress the plan up as executed
+        work, and each number stays independently recomputable."""
+        cost = dict(sample_cost_metrics())
+        cost["total_enqueued"] = 12
+        cost["total_tasks"] = 12
+        cost["total_executed"] = 4
+        self.generate(cost=cost)
+        cost_md = self.read("COST.md")
+        self.assertIn("**Total Enqueued Tasks**: 12", cost_md)
+        self.assertIn("**Total Executed Tasks**: 4", cost_md)
+        self.assertNotIn("**Total Executed Tasks**: 12", cost_md)
+        self.assertNotIn("**Total Enqueued Tasks**: 4", cost_md)
+
+    def test_cost_md_notes_unrecorded_executed_count(self):
+        """A cost dict without executed counts renders the enqueued total on
+        the executed line WITH the explicit not-recorded note — never as a
+        silently promoted plan number."""
+        cost = dict(sample_cost_metrics())
+        cost.pop("total_executed")
+        cost.pop("total_enqueued")
+        self.generate(cost=cost)
+        cost_md = self.read("COST.md")
+        self.assertIn("**Total Executed Tasks**: 4 (executed count not recorded", cost_md)
+        self.assertIn("**Total Enqueued Tasks**: 4", cost_md)
+
     # ------------------------------------------------- DSR-068 / SWR-012 i18n
     def test_language_en_default_headings(self):
         self.generate()  # default language is en
@@ -405,7 +437,7 @@ class TestReporting(ReportingTestBase):
 
 
 class TestCostMetrics(unittest.TestCase):
-    """DSR-067 / SWR-020."""
+    """DSR-067 / SWR-020 / O-03 (enqueued vs executed denominators)."""
 
     def test_zero_kloc_denominator_is_non_computable(self):
         tracker = CostTracker()
@@ -425,8 +457,65 @@ class TestCostMetrics(unittest.TestCase):
         metrics = tracker.compute_metrics(2000, 1)
         self.assertEqual(metrics["tasks_per_kloc"], 1.5)
         self.assertEqual(metrics["tasks_per_kloc_status"], "computed")
-        self.assertIsNone(metrics["tasks_per_kloc_reason"])
         self.assertEqual(metrics["tasks_per_finding"], 3.0)
+        # O-03: this legacy tracker never recorded executed counts, so the
+        # rates fall back to the enqueued total and SAY SO instead of
+        # presenting the plan scope as executed work.
+        self.assertEqual(metrics["rates_denominator"], "enqueued_fallback")
+        self.assertIn("enqueued", metrics["tasks_per_kloc_reason"])
+        self.assertIn("executed counts were not recorded", metrics["tasks_per_finding_reason"])
+
+    def test_enqueued_and_executed_totals_are_reported_separately(self):
+        """O-03 (run lessons): a run that enqueued far more work than it
+        processed must report BOTH totals, and the normalized rates divide
+        by the EXECUTED count with the denominator stated in the reason."""
+        tracker = CostTracker()
+        for _ in range(10):
+            tracker.record_task("hunt")   # enqueued plan scope
+        tracker.record_task("recon")
+        for _ in range(3):
+            tracker.record_executed_task("hunt")  # work actually processed
+        tracker.record_executed_task("recon")
+        metrics = tracker.compute_metrics(2000, 1)
+
+        self.assertEqual(metrics["total_enqueued"], 11)
+        self.assertEqual(metrics["total_executed"], 4)
+        self.assertNotEqual(metrics["total_enqueued"], metrics["total_executed"])
+        self.assertEqual(metrics["rates_denominator"], "executed")
+        # 4 executed tasks over 2 kLOC; the enqueued 11 must NOT leak into
+        # the rate denominator.
+        self.assertEqual(metrics["tasks_per_kloc"], 2.0)
+        self.assertEqual(metrics["tasks_per_finding"], 4.0)
+        self.assertIn("executed tasks", metrics["tasks_per_kloc_reason"])
+        self.assertIn("executed tasks", metrics["tasks_per_finding_reason"])
+        self.assertEqual(metrics["stage_tasks_executed"], {"hunt": 3, "recon": 1})
+
+    def test_recorded_zero_executed_uses_a_real_zero_denominator(self):
+        """A caller that tracked executions and observed ZERO of them gets a
+        computed rate over a real executed denominator of 0 — not the
+        enqueued fallback, and not a fabricated positive number."""
+        tracker = CostTracker()
+        tracker.record_task("hunt")
+        tracker.record_task("hunt")
+        tracker.set_executed_tasks({})
+        metrics = tracker.compute_metrics(1000, 1)
+        self.assertEqual(metrics["total_enqueued"], 2)
+        self.assertEqual(metrics["total_executed"], 0)
+        self.assertEqual(metrics["rates_denominator"], "executed")
+        self.assertEqual(metrics["tasks_per_kloc"], 0.0)
+        self.assertIn("executed tasks", metrics["tasks_per_kloc_reason"])
+
+    def test_set_executed_tasks_accepts_ledger_counts(self):
+        """The LED wiring point records executed counts per stage directly."""
+        tracker = CostTracker()
+        tracker.record_task("hunt")
+        tracker.record_task("verify")
+        tracker.record_task("report")
+        tracker.set_executed_tasks({"hunt": 1, "verify": 1, "report": 1})
+        metrics = tracker.compute_metrics(1000, 1)
+        self.assertEqual(metrics["total_executed"], 3)
+        self.assertEqual(metrics["rates_denominator"], "executed")
+        self.assertEqual(metrics["tasks_per_kloc"], 3.0)
 
     def test_cache_and_protocol_overhead_unavailable_by_default(self):
         metrics = CostTracker().compute_metrics(1000, 1)

@@ -26,6 +26,7 @@ Covered here:
   keeps a rating with no fabricated factor_reasons.
 """
 
+import json
 import unittest
 
 from auditkit.analysis.rating import RatingEngine
@@ -444,6 +445,76 @@ class TestSWR011(unittest.TestCase):
                 "exploitability_why": "authenticated session required",
             },
         )
+
+
+    # -- no canned justification anywhere in the verifier (O-09) --------------
+    def test_second_opinion_record_carries_no_canned_primary_evidence(self):
+        """O-09 residual tightening: the second-opinion adjudication record
+        used to fabricate a canned primary rationale ("a trace from source to
+        sink") even for findings that recorded no evidence at all. The record
+        now states the honest absence and anchors only steps that exist — the
+        adjudication must never manufacture observed justification, exactly
+        like the factor-reason demotion above."""
+        verifier = Verifier()
+        candidate = {
+            "candidate_id": "cand-r-20",
+            "issue": "py-01",
+            "source": {"path": "app/a.py", "line": 1, "kind": "http", "lang": "python"},
+            "sink": {"path": "app/b.py", "line": 2, "kind": "rce"},
+            "provenance": {"hunt_tasks": ["t1"]},
+            "steps": [
+                {"path": "app/a.py", "line": 1, "role": "source"},
+                {"path": "app/b.py", "line": 2, "role": "sink"},
+            ],
+        }
+        # A pending item without factor reasons stays unfabricated too.
+        pending_like = verifier.create_finding_from_candidate(
+            candidate, "needs_validation", "vt-r20p",
+            impact=3, exploitability=2,
+            blockers=["runtime deployment unknown"],
+            validation_plan="probe the deployment",
+        )
+        traced = verifier.create_finding_from_candidate(
+            candidate, "confirmed", "vt-r21",
+            impact=4, exploitability=4,
+            impact_why="observed arbitrary object restoration",
+            exploitability_why="observed unauthenticated input path",
+        )
+        self.assertEqual(traced["verdict"], "confirmed")
+
+        # A finding WITH a recorded trace anchors exactly those steps.
+        conflict = verifier.adjudicate_second_opinion(
+            traced, "rejected", "sanitizer observed on the path",
+            second_opinion_anchor={"path": "app/b.py", "line": 2},
+        )
+        self.assertEqual(conflict["second_opinion"]["resolution"], "conflict_demoted")
+        conflict_evidence = conflict["second_opinion"]["primary"]["evidence"]
+        self.assertEqual(conflict_evidence["anchors"], candidate["steps"])
+
+        # A High/Critical finding whose record carries no evidence at all
+        # (stored findings can lose their trace) gets the honest absence
+        # record, never the fabricated "trace from source to sink" sentence.
+        evidenceless = json.loads(json.dumps(traced, ensure_ascii=False))
+        evidenceless.pop("steps")
+        corroboration = verifier.adjudicate_second_opinion(
+            evidenceless, "confirmed", "independently reproduced the trace",
+        )
+        primary_evidence = corroboration["second_opinion"]["primary"]["evidence"]
+        self.assertEqual(primary_evidence["anchors"], [])
+        self.assertIn("no primary evidence was recorded", primary_evidence["rationale"])
+
+        self.assertNotIn(
+            "Primary verifier trace from source to sink",
+            json.dumps([conflict, corroboration], ensure_ascii=False),
+            "the canned primary-evidence sentence must be gone from the record",
+        )
+
+        # The historical canned factor-reason strings never appear in any
+        # finding the verifier can build, with or without factor reasons.
+        for finding in (pending_like, traced, conflict, corroboration):
+            dumped = json.dumps(finding, ensure_ascii=False)
+            self.assertNotIn("Demonstrated sensitive sink reachability", dumped)
+            self.assertNotIn("Attacker input unchecked", dumped)
 
 
 if __name__ == "__main__":

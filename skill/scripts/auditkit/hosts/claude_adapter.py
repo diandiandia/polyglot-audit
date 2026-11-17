@@ -36,6 +36,7 @@ from typing import Any, Dict, Optional, Tuple
 from auditkit.contracts.errors import HostFailureError, InvalidInputError
 from auditkit.hosts.errors import TerminationUncertainError
 from auditkit.hosts.retry import (
+    build_usage_envelope,
     classify_exit_failure,
     compute_backoff_delay,
     extract_usage,
@@ -53,36 +54,18 @@ def _usage_from_block(
     SAME parsed payload that produced the returned worker_result and is
     returned together with it — it is never parked on shared adapter state,
     so concurrent workers on one adapter cannot cross-attribute per-attempt
-    usage. Mapping follows SWR-020 / DSR-033: availability is "exact" only
-    when the host declared it, numeric values without a declaration map to
-    "estimated", and a block without any numeric value maps to an explicit
-    "unavailable" record with a reason. The host is never inventable data:
-    a payload without any usage block yields None. ``attempt_id`` is stamped
+    usage. Mapping follows SWR-020 / DSR-033 with the generalized real-host
+    search (O-02): the usage block is located anywhere in the CLI's JSON
+    output (top-level, meta/telemetry envelope, or another nested object)
+    against a case-insensitive alias table of common token-counter field
+    names; a host-named block maps to "exact", a shape-only match to
+    "estimated", a block without usable numbers to an explicit
+    "unavailable" with a reason. The host is never inventable data: a
+    payload without any usage block yields None. ``attempt_id`` is stamped
     from the claim this execution served (the service backfills its own
     authoritative claim attempt_id when unknown here).
     """
-    block = extract_usage(parsed)
-    if not isinstance(block, dict):
-        return None
-    usage: Dict[str, Any] = {
-        "schema_version": "1.0",
-        "dimension": "tokens",
-        "unit": "tokens",
-        "source": source,
-    }
-    if attempt_id:
-        usage["attempt_id"] = attempt_id
-    declared = block.get("availability")
-    numerics = [
-        v for v in block.values() if isinstance(v, int) and not isinstance(v, bool)
-    ]
-    if not numerics:
-        usage["availability"] = "unavailable"
-        usage["reason"] = "host usage block contained no numeric values"
-        return usage
-    usage["availability"] = declared if declared in ("exact", "estimated") else "estimated"
-    usage["value"] = sum(numerics)
-    return usage
+    return build_usage_envelope(parsed, attempt_id, source)
 
 
 class ClaudeDriverAdapter:

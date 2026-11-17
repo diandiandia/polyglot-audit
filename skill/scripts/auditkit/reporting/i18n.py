@@ -116,7 +116,11 @@ LABELS: Dict[str, Dict[str, str]] = {
         "prov_hunt": "Hunt Tasks",
         "prov_verify": "Verify Tasks",
         "cost_title": "# Cost & Telemetry Report",
-        "total_tasks": "Total Executed Tasks",
+        "total_tasks": "Total Enqueued Tasks",
+        "total_tasks_executed": "Total Executed Tasks",
+        "executed_not_recorded": (
+            "executed count not recorded by this caller; the enqueued total is shown instead"
+        ),
         "retries": "Retries",
         "tasks_per_kloc": "Tasks/kLOC",
         "tasks_per_finding": "Tasks per Confirmed Finding",
@@ -211,7 +215,11 @@ LABELS: Dict[str, Dict[str, str]] = {
         "prov_hunt": "Hunt 任务",
         "prov_verify": "Verify 任务",
         "cost_title": "# 资源消耗与成本报告 (Cost & Telemetry Report)",
-        "total_tasks": "总执行任务数",
+        "total_tasks": "总入队任务数 (Total Enqueued Tasks)",
+        "total_tasks_executed": "总执行任务数 (Total Executed Tasks)",
+        "executed_not_recorded": (
+            "执行数未被调用方记录，此处暂显示入队总数"
+        ),
         "retries": "重试次数 (Retries)",
         "tasks_per_kloc": "每千行任务数 (Tasks/kLOC)",
         "tasks_per_finding": "每确认发现任务数",
