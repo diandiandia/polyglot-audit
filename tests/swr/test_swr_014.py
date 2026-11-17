@@ -142,7 +142,7 @@ class TestSWR014GeneratedPerRun(SWR014FinalizeBase):
         fin = self.app.finalize(self.run_id, self.run_dir, findings=[])
         self.assertEqual(fin["final_state"], "complete")
 
-        review_path = self.run_dir / "report" / "SKILL-REVIEW.md"
+        review_path = self.run_dir / "skill-review" / "SKILL-REVIEW.md"
         self.assertTrue(review_path.exists(), "complete run must produce SKILL-REVIEW.md")
         review = review_path.read_text(encoding="utf-8")
         self.assertIn("# Skill Self-Review", review)
@@ -175,7 +175,7 @@ class TestSWR014GeneratedPerRun(SWR014FinalizeBase):
         fin = self.app.finalize(self.run_id, self.run_dir, findings=[])
         self.assertEqual(fin["final_state"], "incomplete")
 
-        review_path = self.run_dir / "report" / "SKILL-REVIEW.md"
+        review_path = self.run_dir / "skill-review" / "SKILL-REVIEW.md"
         self.assertTrue(review_path.exists(), "incomplete run must also produce SKILL-REVIEW.md")
         review = review_path.read_text(encoding="utf-8")
         self.assertIn(self.run_id, review)
@@ -314,14 +314,14 @@ class TestSWR014WriteFailure(unittest.TestCase):
         self.assertIn("report/", message, "error must name the failing report artifact")
         self.assertIn("simulated artifacts write failure", message)
         # Nothing was published: no SKILL-REVIEW.md, no staged leftovers.
-        self.assertFalse((self.temp_dir / "report" / "SKILL-REVIEW.md").exists())
+        self.assertFalse((self.temp_dir / "skill-review" / "SKILL-REVIEW.md").exists())
 
     def test_self_review_without_any_input_is_not_rendered_as_all_clear(self):
         """SWR-014 无数据不得当零: rendering a self-review with neither
         statistics nor an explicit anomaly list produces unknown anomalies,
         not an empty 'no anomalies' report."""
         self.generator.generate_all([], {}, {}, events=[])  # no inputs at all
-        review = (self.temp_dir / "report" / "SKILL-REVIEW.md").read_text(encoding="utf-8")
+        review = (self.temp_dir / "skill-review" / "SKILL-REVIEW.md").read_text(encoding="utf-8")
         self.assertNotIn("No significant process or contract anomalies detected", review)
         for category in CATEGORIES:
             self.assertIn(f"[{category}]", review, f"missing unknown anomaly for {category}")
@@ -342,7 +342,7 @@ class TestSWR014FinalizeWriteFailure(SWR014FinalizeBase):
         self.assertIn("report", str(ctx.exception))
         # The run never claims a terminal complete state and no review exists.
         self.assertNotEqual(self.run_state(), "complete")
-        self.assertFalse((self.run_dir / "report" / "SKILL-REVIEW.md").exists())
+        self.assertFalse((self.run_dir / "skill-review" / "SKILL-REVIEW.md").exists())
 
 
 if __name__ == "__main__":

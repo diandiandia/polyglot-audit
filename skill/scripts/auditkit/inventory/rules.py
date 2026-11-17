@@ -110,6 +110,10 @@ class ExclusionRules:
         user_excludes: Optional[List[str]] = None,
         include_tests: bool = False,
     ) -> None:
+        """Store user overrides and the test-inclusion switch.
+
+        Requirements: SWR-004(用户覆盖与开关) / DSR-054 (support).
+        """
         self.user_includes = user_includes or []
         self.user_excludes = user_excludes or []
         self.include_tests = include_tests
@@ -118,6 +122,8 @@ class ExclusionRules:
         """Determine if a file should be excluded and provide the reason.
 
         Returns: (is_excluded, reason)
+
+        Requirements: SWR-004(纳入/排除带原因) / DSR-054(默认排除规则).
         """
         # 1. User include override takes precedence
         for pattern in self.user_includes:
@@ -171,6 +177,8 @@ def classify_exclusion_reason(reason: str) -> str:
 
     Categories: directory_rule / generated / test / binary / archive /
     user_rule / symlink / other.
+
+    Requirements: SWR-004(排除原因归类) / DSR-054(分类清点结果).
     """
     reason_lower = (reason or "").lower()
     if "archive extension" in reason_lower:
@@ -203,6 +211,8 @@ def inclusion_summary(manifest: Any) -> Dict[str, int]:
     binary / archive / user_rule / symlink / other.
 
     Never counts excluded files as security-reviewed coverage.
+
+    Requirements: SWR-004(排除不计安全覆盖) / DSR-054(分类汇总对账).
     """
     summary: Dict[str, int] = {
         "included": 0,

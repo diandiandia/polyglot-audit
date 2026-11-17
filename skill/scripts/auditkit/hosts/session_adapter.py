@@ -53,6 +53,7 @@ class InSessionAdapter:
         been measured -> the adapter starts in the bounded sequential fallback
         mode and the delegation probe stays UNKNOWN (DSR-004/030: unmeasured
         capabilities are never assumed). True/False record a measured result.
+        Requirements: SWR-022(模式披露) / DSR-030(未测降级), DSR-004(委派未知)
         """
         self.service = service
         self.run_dir = run_dir
@@ -68,12 +69,12 @@ class InSessionAdapter:
 
     @property
     def mode(self) -> str:
-        """Current execution mode: "subagent" or "sequential_fallback"."""
+        """Current execution mode: "subagent" or "sequential_fallback". Requirements: SWR-022(support) / DSR-030(模式读取)"""
         return self._mode
 
     @property
     def supports_subagents(self) -> Optional[bool]:
-        """Measured delegation capability: True / False / None (unmeasured)."""
+        """Measured delegation capability: True / False / None (unmeasured). Requirements: SWR-022(support) / DSR-004(委派状态)"""
         return self._supports_subagents
 
     def probe_delegation(
@@ -87,6 +88,7 @@ class InSessionAdapter:
         callback; otherwise returns UNKNOWN with the probe plan described
         (conservative default). When the trial confirms delegation, the mode
         switches to "subagent".
+        Requirements: SWR-022(委派探测) / DSR-004(实测切换), DSR-030(如实降级)
         """
         feature = probe_subagent_delegation(delegate_fn, probe_level=probe_level)
         if (
@@ -102,13 +104,13 @@ class InSessionAdapter:
         return feature
 
     def next_task(self, run_id: str, batch_size: int = 1) -> List[Dict[str, Any]]:
-        """Fetch next batch of claims (with published prompt packets)."""
+        """Fetch next batch of claims (with published prompt packets). Requirements: SWR-022(共用领取) / DSR-030(next流程)"""
         return self.service.next(
             run_id, self.run_dir, batch_size=batch_size, worker_id="in_session"
         )
 
     def start_task(self, claim: Dict[str, Any]) -> Dict[str, Any]:
-        """Mark claimed attempt as active."""
+        """Mark claimed attempt as active. Requirements: SWR-022(共用开始) / DSR-030(start流程)"""
         return self.service.start(self.run_dir, claim)
 
     def submit_task(
@@ -118,7 +120,7 @@ class InSessionAdapter:
         result_digest: str,
         usage: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Submit completed task result."""
+        """Submit completed task result. Requirements: SWR-022(共用提交) / DSR-030(submit流程), DSR-075(令牌校验)"""
         return self.service.submit(
             self.run_dir,
             claim,

@@ -27,6 +27,10 @@ class BudgetLedger:
     """Manages multi-dimensional budgets and atomic reservations."""
 
     def __init__(self, conn: sqlite3.Connection) -> None:
+        """Bind the ledger connection for budget accounting.
+
+        Requirements: SWR-019(support) / DSR-020(账本装配)
+        """
         self.conn = conn
 
     def set_budget(
@@ -37,7 +41,7 @@ class BudgetLedger:
         unit: str,
         mode: str = "enforced",
     ) -> None:
-        """Initialize or update a budget dimension."""
+        """Initialize or update a budget dimension. Requirements: SWR-019(分维模式) / DSR-020(预算设定)"""
         self.conn.execute(
             """
             INSERT INTO budget_dimensions (run_id, dimension, mode, limit_val, settled, reserved, unit)
@@ -66,6 +70,7 @@ class BudgetLedger:
         reservers competing for the last unit cannot both succeed. Raises
         BudgetExhaustedError if an enforced limit would be breached. Enforces
         verification budget protection if is_hunt_task is True.
+        Requirements: SWR-019(原子预留) / DSR-020(并发唯一), DSR-066(验证保护)
         """
         own_tx = not self.conn.in_transaction
         if own_tx:
@@ -88,7 +93,7 @@ class BudgetLedger:
         is_hunt_task: bool,
         verify_reserve_ratio: float,
     ) -> None:
-        """Reservation body executed inside the caller's transaction."""
+        """Reservation body executed inside the caller's transaction. Requirements: SWR-019(support) / DSR-020(预留体), DSR-066(验证保留)"""
         row = self.conn.execute(
             "SELECT mode, limit_val, settled, reserved FROM budget_dimensions WHERE run_id = ? AND dimension = ?",
             (run_id, dimension),
@@ -159,6 +164,7 @@ class BudgetLedger:
         dispatch attempt row (e.g. connector evaluation budgets); without it,
         the run is resolved through the attempt -> task join, and reservations
         without a matching attempt row are left untouched.
+        Requirements: SWR-019(释放回池) / DSR-019(恢复释放), DSR-020(预留释放), DSR-065(重试释放)
         """
         own_tx = not self.conn.in_transaction
         if own_tx:
@@ -174,7 +180,7 @@ class BudgetLedger:
         return released
 
     def _apply_release(self, attempt_id: str, run_id: Optional[str] = None) -> int:
-        """Release body executed inside the caller's transaction."""
+        """Release body executed inside the caller's transaction. Requirements: SWR-019(support) / DSR-020(释放体)"""
         res_rows = self.conn.execute(
             "SELECT dimension, reserved_val FROM reservations WHERE attempt_id = ? AND state = 'reserved'",
             (attempt_id,),
@@ -226,6 +232,7 @@ class BudgetLedger:
         ``run_id``: when given, the settlement is attributed to this run
         directly (used for in-process reservations such as connector evaluation
         budgets whose key is not a dispatch attempt row).
+        Requirements: SWR-019(事务结算), SWR-020 / DSR-020(结算原子), DSR-033(未知保留)
         """
         own_tx = not self.conn.in_transaction
         if own_tx:
@@ -246,7 +253,7 @@ class BudgetLedger:
         actual_used: Optional[int],
         run_id: Optional[str] = None,
     ) -> None:
-        """Settlement body executed inside the caller's transaction."""
+        """Settlement body executed inside the caller's transaction. Requirements: SWR-019(support) / DSR-020(结算体), DSR-033(未知保留)"""
         # Find run_id (caller-supplied value wins; otherwise resolve through
         # the attempt -> task join).
         if run_id is None:
@@ -334,6 +341,7 @@ class BudgetLedger:
         settlement books the dimension), None otherwise. source is the source
         of the most recent usage record, or None when data is missing; missing
         values stay null and are never defaulted to zero.
+        Requirements: SWR-019(预算汇总), SWR-020 / DSR-033(可用性溯源)
         """
         rows = self.conn.execute(
             "SELECT dimension, mode, limit_val, settled, reserved, unit FROM budget_dimensions WHERE run_id = ?",

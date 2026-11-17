@@ -44,7 +44,7 @@ class UsageRecord:
     schema_version: str = "1.0"
 
     def to_storage_tuple(self, run_id: str, recorded_at: str) -> tuple:
-        """Return the tuple used to persist this record into usage_records."""
+        """Return the tuple used to persist this record into usage_records. Requirements: SWR-020(support) / DSR-033(落库元组)"""
         return (
             self.attempt_id,
             run_id,
@@ -59,7 +59,7 @@ class UsageRecord:
         )
 
     def to_dict(self) -> Usage:
-        """Return the plain-dict usage representation (usage.schema.json)."""
+        """Return the plain-dict usage representation (usage.schema.json). Requirements: SWR-020(support) / DSR-033(字典表示)"""
         d: Usage = {
             "schema_version": self.schema_version,
             "attempt_id": self.attempt_id,
@@ -80,6 +80,7 @@ def parse_usage(data: Any) -> UsageRecord:
 
     Raises UnsupportedSchemaError for unknown schema versions and
     InvalidInputError for missing/unknown fields or invalid values.
+    Requirements: SWR-020(用量校验) / DSR-033(缺失为null)
     """
     if not isinstance(data, dict):
         raise InvalidInputError("usage must be an object")
@@ -152,7 +153,7 @@ def parse_usage(data: Any) -> UsageRecord:
 
 
 def store_usage(conn: sqlite3.Connection, run_id: str, record: UsageRecord, recorded_at: str) -> None:
-    """Persist a validated usage record into the usage_records table (DSR-033)."""
+    """Persist a validated usage record into the usage_records table (DSR-033). Requirements: SWR-020(support) / DSR-033(用量落库)"""
     conn.execute(
         """
         INSERT INTO usage_records (attempt_id, run_id, dimension, availability, value, unit, source, reason, schema_version, recorded_at)
@@ -171,7 +172,7 @@ def store_usage(conn: sqlite3.Connection, run_id: str, record: UsageRecord, reco
 
 
 def get_attempt_usage(conn: sqlite3.Connection, attempt_id: str) -> Dict[str, UsageRecord]:
-    """Return stored usage records for an attempt, keyed by dimension."""
+    """Return stored usage records for an attempt, keyed by dimension. Requirements: SWR-020(support) / DSR-033(按维读取)"""
     rows = conn.execute(
         "SELECT attempt_id, dimension, availability, value, unit, source, reason, schema_version "
         "FROM usage_records WHERE attempt_id = ?",

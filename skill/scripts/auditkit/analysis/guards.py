@@ -22,7 +22,10 @@ from auditkit.contracts.errors import InvalidInputError
 
 
 class GuardRecord:
-    """Represents an environment defense or input sanitizer."""
+    """Represents an environment defense or input sanitizer.
+
+    Requirements: SWR-006(守卫三态保留) / DSR-024(条件化记录)
+    """
 
     def __init__(
         self,
@@ -33,6 +36,10 @@ class GuardRecord:
         applicability: str = "",
         exceptions: Optional[List[str]] = None,
     ) -> None:
+        """Store guard fields verbatim; status must stay three-state.
+
+        Requirements: SWR-006(observed/not_found/unknown) / DSR-024(support)
+        """
         self.guard_id = guard_id
         self.status = status
         self.mechanism = mechanism
@@ -41,6 +48,10 @@ class GuardRecord:
         self.exceptions = exceptions or []
 
     def to_dict(self) -> Dict[str, Any]:
+        """Serialize the guard record without dropping status or exceptions.
+
+        Requirements: SWR-006(support) / DSR-024(support)
+        """
         return {
             "schema_version": "1.0",
             "guard_id": self.guard_id,
@@ -53,6 +64,10 @@ class GuardRecord:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> GuardRecord:
+        """Rebuild a guard record from its serialized form.
+
+        Requirements: SWR-006(support) / DSR-024(support)
+        """
         return cls(
             guard_id=data["guard_id"],
             status=data["status"],
@@ -64,19 +79,37 @@ class GuardRecord:
 
 
 class GuardManager:
-    """Manages collection of guards in a run."""
+    """Manages collection of guards in a run.
+
+    Requirements: SWR-006(守卫基线) / DSR-024(收集与呈现)
+    """
 
     def __init__(self) -> None:
+        """Hold guards by id; no exemption state is derived here.
+
+        Requirements: SWR-006(support) / DSR-024(support)
+        """
         self.guards: Dict[str, GuardRecord] = {}
 
     def add_guard(self, guard: GuardRecord) -> None:
+        """Register a guard record; registration grants no exemption by itself.
+
+        Requirements: SWR-006(注册不即豁免) / DSR-024(support)
+        """
         self.guards[guard.guard_id] = guard
 
     def get_summary(self) -> List[Dict[str, Any]]:
+        """Return all guard records serialized for downstream consumers.
+
+        Requirements: SWR-006(support) / DSR-024(support)
+        """
         return [g.to_dict() for g in self.guards.values()]
 
     def render_prompt_summary(self, max_tokens: int = 300) -> str:
-        """Render concise guard summary for prompt packet."""
+        """Render concise guard summary for prompt packet.
+
+        Requirements: SWR-006(守卫摘要进提示包) / DSR-024(support)
+        """
         if not self.guards:
             return "No environment guards established yet."
 
@@ -94,7 +127,10 @@ VALID_GUARD_STATUSES = ("observed", "not_found", "unknown")
 
 
 def _candidate_paths(candidate: Dict[str, Any]) -> List[str]:
-    """Collect every path anchored by a candidate (source, sink, and steps)."""
+    """Collect every path anchored by a candidate (source, sink, and steps).
+
+    Requirements: SWR-006(路径适用性,support) / DSR-024(support)
+    """
     paths: List[str] = []
     for endpoint in (candidate.get("source") or {}, candidate.get("sink") or {}):
         path = endpoint.get("path", "")
@@ -112,6 +148,8 @@ def _covers_path(pattern: str, paths: List[str]) -> Optional[str]:
 
     Empty patterns never match: an empty applicability/exception entry must not
     be treated as a blanket (global) match.
+
+    Requirements: SWR-006(空模式非全局) / DSR-024(support)
     """
     if not pattern:
         return None
@@ -122,7 +160,10 @@ def _covers_path(pattern: str, paths: List[str]) -> Optional[str]:
 
 
 def _normalize_guard_record(record: Any) -> GuardRecord:
-    """Accept GuardRecord instances or their dict serialization."""
+    """Accept GuardRecord instances or their dict serialization.
+
+    Requirements: SWR-006(记录归一,support) / DSR-024(support)
+    """
     if isinstance(record, GuardRecord):
         return record
     if isinstance(record, dict):
@@ -154,6 +195,8 @@ def evaluate_guards(candidate: Dict[str, Any], guard_records: List[Any]) -> Dict
         "schema_version", "exempt", "status" ("exempt" | "not_exempt" | "unknown"),
         "reasons": [...], "evidence": [...], "evaluated_guards": [...],
     }
+
+    Requirements: SWR-006(三态不自动豁免) / DSR-024(三场景不全局生效)
     """
     if not isinstance(candidate, dict):
         raise InvalidInputError("candidate must be a dict")

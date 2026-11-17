@@ -583,6 +583,17 @@ class AuditAppService:
             "hunt_units": len(analyze_units),
             "dispositions": dispositions,
             "profile": profile,
+            # §10.1 plan/: the budget allocation the queue is planned against
+            # (dispatch priority ordering: recon > second opinion > verify >
+            # T1 hunts > remaining hunts).
+            "budgets": config.get("budgets", []),
+            "queue_priority": {
+                "recon": RECON_TASK_PRIORITY,
+                "second_opinion": SECOND_OPINION_TASK_PRIORITY,
+                "verify": VERIFY_TASK_PRIORITY,
+                "hunt_t1": 20,
+                "hunt_remaining": 10,
+            },
             "units": units,
             "source_control": manifest.source_control,
             "snapshot_gaps": snapshot_gaps,
@@ -2088,23 +2099,6 @@ class AuditAppService:
                 finding["finding_id"] = f"F-VERIFY-{claim_hint}-{n}"
             findings.append(finding)
         return findings
-
-    @staticmethod
-    def _missing_factor_reasons(rating: Dict[str, Any]) -> List[str]:
-        """Factor-reason keys absent from a finding rating (SR-008/SR-011).
-
-        The rating authority (RatingEngine/DSR-028) stores the observed factor
-        reasons under ``factor_reasons``; real-world worker payloads have also
-        carried them flat on the rating object. Both shapes are honored before
-        a confirmed finding is demoted — a legitimately rated finding must not
-        be demoted for reasons it actually carries.
-        """
-        factors = rating.get("factor_reasons")
-        factors = factors if isinstance(factors, dict) else {}
-        return [
-            k for k in ("impact_why", "exploitability_why")
-            if not str(factors.get(k) or rating.get(k) or "").strip()
-        ]
 
     def _store_verified_findings(
         self,

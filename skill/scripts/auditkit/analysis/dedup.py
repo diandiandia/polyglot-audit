@@ -30,6 +30,8 @@ def compute_fingerprint(candidate: Dict[str, Any]) -> str:
 
     Excludes line numbers so minor formatting changes don't fracture identity.
     Includes source kind, sink path, sink symbol, issue.
+
+    Requirements: SWR-007(稳定指纹,support) / DSR-063(support)
     """
     issue = candidate.get("issue", "")
     source = candidate.get("source", {})
@@ -45,7 +47,10 @@ def compute_fingerprint(candidate: Dict[str, Any]) -> str:
 
 
 class CandidateDeduplicator:
-    """Clusters and provides reversible deduplication suggestions."""
+    """Clusters and provides reversible deduplication suggestions.
+
+    Requirements: SWR-007(建议不自动合并) / DSR-063(合并可回溯)
+    """
 
     def propose_deduplication(
         self,
@@ -59,6 +64,8 @@ class CandidateDeduplicator:
         original duplicate candidate so a mistaken merge stays reversible.
 
         Returns: list of suggestions with status "proposed"
+
+        Requirements: SWR-007(仅建议不执行) / DSR-063(异源同sink不合并)
         """
         seen_keys: Dict[str, Dict[str, Any]] = {}
         suggestions: List[Dict[str, Any]] = []
@@ -102,6 +109,8 @@ class CandidateDeduplicator:
         confirmed.
 
         Returns: merge record with status "confirmed"
+
+        Requirements: SWR-007(确认后合并,留原记录) / DSR-063(误合并可回溯)
         """
         if not isinstance(suggestion, dict):
             raise InvalidInputError("suggestion must be a dict")
@@ -139,6 +148,8 @@ class CandidateDeduplicator:
         """Group candidates by fingerprint while keeping distinct sources unmerged.
 
         Returns: (deduplicated_representatives, merge_history)
+
+        Requirements: SWR-007(同源分组,异源保留) / DSR-063(来源可回溯,support)
         """
         seen_keys: Dict[str, Dict[str, Any]] = {}
         duplicates: List[Dict[str, Any]] = []

@@ -27,6 +27,8 @@ def compute_root_hash(files: List[Dict[str, Any]]) -> str:
     Entries sorted by path UTF-8 bytes.
     Each entry encoded as:
       {len(path)}:{path}:{len(file_type)}:{file_type}:{bytes}:{sha256}\n
+
+    Requirements: SWR-017(内容寻址根哈希) / DSR-012(内容摘要清单).
     """
     sorted_files = sorted(files, key=lambda f: f["path"].encode("utf-8"))
     hasher = hashlib.sha256()
@@ -56,6 +58,10 @@ class SnapshotManifest:
         source_control: Optional[Dict[str, Any]] = None,
         drift_detected: bool = False,
     ) -> None:
+        """Freeze manifest fields; gaps/source_control/drift stay as given.
+
+        Requirements: SWR-017(清单如实记录) / DSR-012(Git状态), DSR-013(gaps缺口).
+        """
         self.snapshot_id = snapshot_id
         self.files = files
         self.excluded = excluded
@@ -74,6 +80,10 @@ class SnapshotManifest:
         self.root_hash = root_hash or compute_root_hash(self.files)
 
     def to_dict(self) -> Dict[str, Any]:
+        """Serialize the manifest to a schema-versioned plain dict.
+
+        Requirements: SWR-017(清单序列化) / DSR-012 (support).
+        """
         return {
             "schema_version": "1.0",
             "snapshot_id": self.snapshot_id,
@@ -88,12 +98,20 @@ class SnapshotManifest:
         }
 
     def save_json(self, output_path: str) -> None:
+        """Persist the manifest as JSON inside the snapshot directory.
+
+        Requirements: SWR-017(清单持久化) / DSR-012 (support).
+        """
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)
             f.write("\n")
 
     @classmethod
     def load_json(cls, input_path: str) -> SnapshotManifest:
+        """Rebuild a manifest from its persisted JSON form.
+
+        Requirements: SWR-017(清单回读复现) / DSR-012 (support).
+        """
         with open(input_path, "r", encoding="utf-8") as f:
             data = json.load(f)
         return cls(

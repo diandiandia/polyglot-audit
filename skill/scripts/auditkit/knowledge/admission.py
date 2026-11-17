@@ -31,7 +31,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 
 class CardAdmissionChecker:
-    """Validates language cards against quality standards."""
+    """Validates language cards against quality standards.
+
+    Requirements: SWR-002(卡片质量), SWR-016(受控导入) / DSR-077(准入检查), DSR-071(导入白名单)
+    """
 
     REQUIRED_CARD_FIELDS = [
         "id",
@@ -50,7 +53,10 @@ class CardAdmissionChecker:
     ]
 
     def validate_card(self, card: Dict[str, Any]) -> Tuple[bool, List[str]]:
-        """Verify that a card meets all positive admission criteria."""
+        """Verify that a card meets all positive admission criteria.
+
+        Requirements: SWR-002(公开来源+合成正反例) / DSR-077(正向准入检查)
+        """
         errors: List[str] = []
 
         for field in self.REQUIRED_CARD_FIELDS:
@@ -101,7 +107,10 @@ class CardAdmissionChecker:
         is_blocking_exception: bool = False,
         blocking_rationale: str = "",
     ) -> Tuple[bool, str]:
-        """Verify admission for a skill knowledge upgrade."""
+        """Verify admission for a skill knowledge upgrade.
+
+        Requirements: SWR-028(两次独立运行或例外) / DSR-045(独立运行计数,例外须留理由)
+        """
         if is_blocking_exception:
             if not blocking_rationale:
                 return False, "Blocking bug exception requires explicit rationale"
@@ -158,6 +167,8 @@ class CardAdmissionChecker:
         Returns an admission record dict; it never raises on policy rejection
         (rejections carry machine-readable reasons). Structural violations of
         the whitelist raise InvalidInputError, mirroring the export side.
+
+        Requirements: SWR-016(默认拒绝,有限字段), SWR-028(准入证据) / DSR-071(白名单受控导入)
         """
         import hashlib
         from datetime import datetime, timezone
@@ -203,6 +214,10 @@ class CardAdmissionChecker:
 
         # 2) free-text / path / identifier guard over every string value
         def _scan_strings(node: Any) -> None:
+            """Flag over-long or path-like strings for policy rejection.
+
+            Requirements: SWR-016(自由文本/路径拒绝,support) / DSR-071(support)
+            """
             if isinstance(node, str):
                 if len(node) > self.PORTABLE_REVIEW_MAX_STRING_LENGTH:
                     reasons.append(f"string value exceeds {self.PORTABLE_REVIEW_MAX_STRING_LENGTH} chars (free text)")

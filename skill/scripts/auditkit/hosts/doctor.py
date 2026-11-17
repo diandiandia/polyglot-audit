@@ -63,6 +63,7 @@ class Doctor:
         mcp_server_cmd, when provided, triggers a real stdio MCP handshake
         probe. Without evidence, sequential fallback and MCP transport stay
         UNKNOWN with their probe plan described.
+        Requirements: SWR-023(能力报告), SWR-024 / DSR-001(环境枚举), DSR-002(无头探测)
         """
         if probe_cli and probe_level == PROBE_LEVEL_CONSERVATIVE:
             probe_level = PROBE_LEVEL_HEADLESS
@@ -135,7 +136,7 @@ class Doctor:
         adapter_name: str,
         probe_level: str,
     ) -> Capability:
-        """Probe one host CLI independently and build its capability report."""
+        """Probe one host CLI independently and build its capability report. Requirements: SWR-023(support) / DSR-001(版本诚实), DSR-003(独立探测)"""
         report = probe_host_capabilities(binary_name, binary_name, probe_level=probe_level)
         features = dict(report["features"])
 
@@ -204,7 +205,7 @@ class Doctor:
         return Capability(adapter_name, adapter_version, features)
 
     def _sequential_fallback_feature(self, session_mode: Optional[str]) -> Dict[str, Any]:
-        """DSR-030: report sequential fallback according to the real mode."""
+        """DSR-030: report sequential fallback according to the real mode. Requirements: SWR-022(support) / DSR-030(模式如实)"""
         if session_mode == SESSION_MODE_SEQUENTIAL_FALLBACK:
             return make_feature(
                 FeatureState.ENFORCED,
@@ -227,7 +228,7 @@ class Doctor:
         )
 
     def _mcp_transport_feature(self, mcp_server_cmd: Optional[List[str]]) -> Dict[str, Any]:
-        """DSR-004: MCP stdio transport is ENFORCED only after a real handshake."""
+        """DSR-004: MCP stdio transport is ENFORCED only after a real handshake. Requirements: SWR-023(support) / DSR-004(握手实证)"""
         if mcp_server_cmd:
             return probe_mcp_stdio_handshake(mcp_server_cmd)
         return make_feature(

@@ -32,7 +32,10 @@ URGENCY_ORDER = ["P3", "P2", "P1", "P0"]
 
 
 def calculate_severity(impact: int, exploitability: int) -> str:
-    """Calculate severity from impact (1-4) and exploitability (1-4)."""
+    """Calculate severity from impact (1-4) and exploitability (1-4).
+
+    Requirements: SWR-011(16组合矩阵) / DSR-028(穷举矩阵一致)
+    """
     if impact == 4:
         if exploitability == 4:
             return "Critical"
@@ -61,7 +64,10 @@ def calculate_severity(impact: int, exploitability: int) -> str:
 
 
 def calculate_urgency(severity: str, exploitability: int) -> str:
-    """Calculate urgency P0-P3 from severity and exploitability."""
+    """Calculate urgency P0-P3 from severity and exploitability.
+
+    Requirements: SWR-011(紧迫度映射) / DSR-028(调整后紧迫度重算)
+    """
     if severity == "Critical" or (severity == "High" and exploitability == 4):
         return "P0"
     if severity == "High" or (severity == "Medium" and exploitability == 4):
@@ -72,7 +78,10 @@ def calculate_urgency(severity: str, exploitability: int) -> str:
 
 
 def calculate_validation_priority(impact: int, exploitability: int) -> str:
-    """Map impact and exploitability to validation priority V1-V3 for needs_validation."""
+    """Map impact and exploitability to validation priority V1-V3 for needs_validation.
+
+    Requirements: SWR-011(未决仅验证优先级) / DSR-028(待验证无修复紧迫度)
+    """
     sev = calculate_severity(impact, exploitability)
     if sev in ("Critical", "High"):
         return "V1"
@@ -83,13 +92,20 @@ def calculate_validation_priority(impact: int, exploitability: int) -> str:
 
 
 class SemanticValidator:
-    """Validates domain semantics of audit objects."""
+    """Validates domain semantics of audit objects.
+
+    Requirements: SWR-009(E1/E2条件), SWR-011(定级校验), SWR-025(跨run拒绝) / DSR-010(语义规则)
+    """
 
     def __init__(
         self,
         manifest: Optional[Dict[str, Any]] = None,
         current_run_id: Optional[str] = None,
     ) -> None:
+        """Index the snapshot manifest and bind the current run id.
+
+        Requirements: SWR-025(support) / DSR-010(support)
+        """
         self.manifest = manifest
         self.current_run_id = current_run_id
         self._manifest_files: Dict[str, Dict[str, Any]] = {}
@@ -103,6 +119,8 @@ class SemanticValidator:
         Every run_id referenced anywhere inside the object (top level, provenance,
         nested records) must equal the current run id; references to any other
         run are rejected with their field path.
+
+        Requirements: SWR-025(跨run引用拒绝) / DSR-010(定位字段路径)
         """
         target_run = current_run_id if current_run_id is not None else self.current_run_id
         if target_run is None:
@@ -122,7 +140,10 @@ class SemanticValidator:
                 self.validate_run_references(item, target_run, f"{path}/{idx}")
 
     def validate_anchor(self, anchor: Dict[str, Any], path_prefix: str = "anchor") -> None:
-        """Validate an anchor's line bounds and existence in manifest."""
+        """Validate an anchor's line bounds and existence in manifest.
+
+        Requirements: SWR-025(锚点范围与摘要) / DSR-010(行超界拒绝)
+        """
         line_start = anchor.get("line_start", 0)
         line_end = anchor.get("line_end", 0)
         file_path = anchor.get("path", "")
@@ -155,7 +176,10 @@ class SemanticValidator:
                 )
 
     def validate_rating(self, rating: Dict[str, Any], is_confirmed: bool) -> None:
-        """Validate rating calculation, bounds, and adjustment."""
+        """Validate rating calculation, bounds, and adjustment.
+
+        Requirements: SWR-011(因子边界与矩阵一致,未决无紧迫度) / DSR-028(±1档校验,紧迫度重算)
+        """
         impact = rating.get("impact")
         exploitability = rating.get("exploitability")
         if not isinstance(impact, int) or impact < 1 or impact > 4:
@@ -245,6 +269,8 @@ class SemanticValidator:
 
         When a current run id is known, any cross-run reference inside the
         finding is rejected (DSR-010).
+
+        Requirements: SWR-008(四态处置条件), SWR-009(禁E3,E2逐跳) / DSR-010(条件verdict), DSR-027(裁决校验)
         """
         # Cross-run reference check (DSR-010)
         self.validate_run_references(finding, path="finding")

@@ -28,7 +28,10 @@ from typing import Any, Dict, Optional
 
 
 class AuditError(Exception):
-    """Base class for all domain errors in auditkit."""
+    """Base class for all domain errors in auditkit.
+
+    Requirements: SWR-025(错误可定位,不静默修复) / DSR-006(错误码), DSR-074(退出码)
+    """
 
     def __init__(
         self,
@@ -38,6 +41,10 @@ class AuditError(Exception):
         retryable: bool = False,
         details: Optional[Dict[str, Any]] = None,
     ) -> None:
+        """Store code/message/retryable/details for contract serialization.
+
+        Requirements: SWR-025(错误对象,support) / DSR-006(support)
+        """
         super().__init__(f"[{code}] {message}")
         self.code = code
         self.message = message
@@ -45,7 +52,10 @@ class AuditError(Exception):
         self.details = details or {}
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert error to contract error representation (IFC-02)."""
+        """Convert error to contract error representation (IFC-02).
+
+        Requirements: SWR-025(错误信封可定位) / DSR-006(support)
+        """
         return {
             "code": self.code,
             "message": self.message,
@@ -55,6 +65,10 @@ class AuditError(Exception):
 
     @property
     def exit_code(self) -> int:
+        """Map this error's code to its contract CLI exit code (IFC-03).
+
+        Requirements: SWR-025(退出码映射) / DSR-074(退出码契约)
+        """
         return ERROR_CODE_TO_EXIT_CODE.get(self.code, 1)
 
 
@@ -86,80 +100,176 @@ ERROR_CODE_TO_EXIT_CODE: Dict[str, int] = {
 
 
 class InvalidInputError(AuditError):
+    """Invalid input detected; exit code 2.
+
+    Requirements: SWR-025(无效输入退出2) / DSR-006(错误码), DSR-074(退出码)
+    """
+
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+        """Map to INVALID_INPUT / exit 2. Requirements: SWR-025 / DSR-006(错误码映射,support)"""
         super().__init__("INVALID_INPUT", message, retryable=False, details=details)
 
 
 class UnsupportedSchemaError(AuditError):
+    """Unsupported schema keyword or version; exit code 2.
+
+    Requirements: SWR-025(未支持schema退出2) / DSR-007(未支持即拒绝), DSR-074(退出码)
+    """
+
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+        """Map to UNSUPPORTED_SCHEMA / exit 2. Requirements: SWR-025 / DSR-007(错误码映射,support)"""
         super().__init__("UNSUPPORTED_SCHEMA", message, retryable=False, details=details)
 
 
 class PathUnsafeError(AuditError):
+    """Unsafe target/path access; exit code 2.
+
+    Requirements: SWR-025(路径不安全退出2) / DSR-006(错误码), DSR-074(退出码)
+    """
+
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+        """Map to PATH_UNSAFE / exit 2. Requirements: SWR-025 / DSR-006(错误码映射,support)"""
         super().__init__("PATH_UNSAFE", message, retryable=False, details=details)
 
 
 class LimitExceededError(AuditError):
+    """Configured limit exceeded; exit code 2.
+
+    Requirements: SWR-025(超限退出2) / DSR-006(错误码), DSR-074(退出码)
+    """
+
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+        """Map to LIMIT_EXCEEDED / exit 2. Requirements: SWR-025 / DSR-006(错误码映射,support)"""
         super().__init__("LIMIT_EXCEEDED", message, retryable=False, details=details)
 
 
 class InvalidStateError(AuditError):
+    """Invalid state transition or precondition; exit code 3.
+
+    Requirements: SWR-025(状态冲突退出3) / DSR-006(错误码), DSR-074(退出码)
+    """
+
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+        """Map to INVALID_STATE / exit 3. Requirements: SWR-025 / DSR-006(错误码映射,support)"""
         super().__init__("INVALID_STATE", message, retryable=False, details=details)
 
 
 class StaleAttemptError(AuditError):
+    """Expired or superseded attempt (stale claim/generation); exit code 3.
+
+    Requirements: SWR-025(过期attempt退出3) / DSR-006(错误码), DSR-074(退出码)
+    """
+
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+        """Map to STALE_ATTEMPT / exit 3. Requirements: SWR-025 / DSR-006(错误码映射,support)"""
         super().__init__("STALE_ATTEMPT", message, retryable=False, details=details)
 
 
 class IdempotencyConflictError(AuditError):
+    """Conflicting duplicate submission for the same key; exit code 3.
+
+    Requirements: SWR-025(幂等冲突退出3) / DSR-006(错误码), DSR-074(退出码)
+    """
+
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+        """Map to IDEMPOTENCY_CONFLICT / exit 3. Requirements: SWR-025 / DSR-006(错误码映射,support)"""
         super().__init__("IDEMPOTENCY_CONFLICT", message, retryable=False, details=details)
 
 
 class BudgetExhaustedError(AuditError):
+    """Budget reserve/settlement exhausted; exit code 4.
+
+    Requirements: SWR-025(预算耗尽退出4) / DSR-006(错误码), DSR-074(退出码)
+    """
+
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+        """Map to BUDGET_EXHAUSTED / exit 4. Requirements: SWR-025 / DSR-006(错误码映射,support)"""
         super().__init__("BUDGET_EXHAUSTED", message, retryable=False, details=details)
 
 
 class CapabilityUnavailableError(AuditError):
+    """Required host capability missing or unproven; exit code 4.
+
+    Requirements: SWR-025(能力缺失退出4) / DSR-006(错误码), DSR-074(退出码)
+    """
+
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+        """Map to CAPABILITY_UNAVAILABLE / exit 4. Requirements: SWR-025 / DSR-006(错误码映射,support)"""
         super().__init__("CAPABILITY_UNAVAILABLE", message, retryable=False, details=details)
 
 
 class SafetyApprovalRequiredError(AuditError):
+    """Unapproved safety-relevant action requested; exit code 4.
+
+    Requirements: SWR-025(需安全批准退出4) / DSR-006(错误码), DSR-074(退出码)
+    """
+
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+        """Map to SAFETY_APPROVAL_REQUIRED / exit 4. Requirements: SWR-025 / DSR-006(错误码映射,support)"""
         super().__init__("SAFETY_APPROVAL_REQUIRED", message, retryable=False, details=details)
 
 
 class UsageUnknownError(AuditError):
+    """Usage data unavailable or not constrainable; exit code 4.
+
+    Requirements: SWR-025(用量未知退出4) / DSR-006(错误码), DSR-074(退出码)
+    """
+
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+        """Map to USAGE_UNKNOWN / exit 4. Requirements: SWR-025 / DSR-006(错误码映射,support)"""
         super().__init__("USAGE_UNKNOWN", message, retryable=False, details=details)
 
 
 class HostFailureError(AuditError):
+    """Host adapter or process failure; exit code 5.
+
+    Requirements: SWR-025(宿主失败退出5) / DSR-006(错误码), DSR-074(退出码)
+    """
+
     def __init__(self, message: str, retryable: bool = True, details: Optional[Dict[str, Any]] = None) -> None:
+        """Map to HOST_FAILURE / exit 5. Requirements: SWR-025 / DSR-006(错误码映射,support)"""
         super().__init__("HOST_FAILURE", message, retryable=retryable, details=details)
 
 
 class StorageError(AuditError):
+    """Persistence or storage failure; exit code 6.
+
+    Requirements: SWR-025(存储失败退出6) / DSR-006(错误码), DSR-074(退出码)
+    """
+
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+        """Map to STORAGE_ERROR / exit 6. Requirements: SWR-025 / DSR-006(错误码映射,support)"""
         super().__init__("STORAGE_ERROR", message, retryable=False, details=details)
 
 
 class CorruptRunError(AuditError):
+    """Referenced run state/artifact is corrupt or missing; exit code 6.
+
+    Requirements: SWR-025(run损坏退出6) / DSR-006(错误码), DSR-074(退出码)
+    """
+
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+        """Map to CORRUPT_RUN / exit 6. Requirements: SWR-025 / DSR-006(错误码映射,support)"""
         super().__init__("CORRUPT_RUN", message, retryable=False, details=details)
 
 
 class SnapshotInconsistentError(AuditError):
+    """Snapshot drift or inconsistency detected; exit code 6.
+
+    Requirements: SWR-025(快照不一致退出6) / DSR-006(错误码), DSR-074(退出码)
+    """
+
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+        """Map to SNAPSHOT_INCONSISTENT / exit 6. Requirements: SWR-025 / DSR-006(错误码映射,support)"""
         super().__init__("SNAPSHOT_INCONSISTENT", message, retryable=False, details=details)
 
 
 class GateFailedError(AuditError):
+    """A programmatic gate check failed; exit code 7.
+
+    Requirements: SWR-025(门禁失败退出7) / DSR-006(错误码), DSR-074(退出码)
+    """
+
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+        """Map to GATE_FAILED / exit 7. Requirements: SWR-025 / DSR-006(错误码映射,support)"""
         super().__init__("GATE_FAILED", message, retryable=False, details=details)

@@ -55,14 +55,25 @@ SUPPORTED_KEYWORDS: Set[str] = {
 
 
 class SchemaValidationError:
-    """Represents a schema validation failure at a specific path."""
+    """Represents a schema validation failure at a specific path.
+
+    Requirements: SWR-025(错误带字段路径) / DSR-009(定位到字段)
+    """
 
     def __init__(self, path: str, message: str, keyword: Optional[str] = None) -> None:
+        """Record the failing instance path, message and keyword.
+
+        Requirements: SWR-025(support) / DSR-009(support)
+        """
         self.path = path or "#"
         self.message = message
         self.keyword = keyword
 
     def to_dict(self) -> Dict[str, Any]:
+        """Serialize the failure with its path and keyword.
+
+        Requirements: SWR-025(support) / DSR-009(support)
+        """
         return {
             "path": self.path,
             "message": self.message,
@@ -70,13 +81,24 @@ class SchemaValidationError:
         }
 
     def __str__(self) -> str:
+        """Render "path: message" for logs and CLI error output.
+
+        Requirements: SWR-025(support) / DSR-009(support)
+        """
         return f"{self.path}: {self.message}"
 
 
 class SchemaValidator:
-    """Subset JSON Schema validator."""
+    """Subset JSON Schema validator.
+
+    Requirements: SWR-025(标准库子集校验) / DSR-007(子集设计), DSR-009(实现), DSR-073(嵌套上限)
+    """
 
     def __init__(self, schema: Dict[str, Any], root_schema: Optional[Dict[str, Any]] = None) -> None:
+        """Compile the schema and fail closed on unsupported keywords.
+
+        Requirements: SWR-025(编译期拒绝未知关键字) / DSR-007(support)
+        """
         if not isinstance(schema, dict):
             raise UnsupportedSchemaError("Schema must be a JSON object")
         self.schema = schema
@@ -84,6 +106,10 @@ class SchemaValidator:
         self._validate_schema_syntax(self.schema, "#")
 
     def _validate_schema_syntax(self, sub_schema: Any, path: str) -> None:
+        """Reject any keyword outside the supported subset, recursively.
+
+        Requirements: SWR-025(未知关键字报错,support) / DSR-007(support)
+        """
         if not isinstance(sub_schema, dict):
             return
         for key, val in sub_schema.items():
@@ -105,6 +131,10 @@ class SchemaValidator:
                     self._validate_schema_syntax(def_schema, f"{path}/$defs/{def_name}")
 
     def _resolve_ref(self, ref: str) -> Dict[str, Any]:
+        """Resolve local '#/...' references only; remote refs are rejected.
+
+        Requirements: SWR-025(仅本地引用,support) / DSR-009(support)
+        """
         if not ref.startswith("#/"):
             raise UnsupportedSchemaError(f"Only local references starting with '#/' are supported, got: {ref}")
         parts = ref[2:].split("/")
@@ -118,13 +148,19 @@ class SchemaValidator:
         return curr
 
     def validate(self, instance: Any) -> List[SchemaValidationError]:
-        """Validate instance and return list of validation errors (empty if valid)."""
+        """Validate instance and return list of validation errors (empty if valid).
+
+        Requirements: SWR-025(类型/边界/额外属性反例) / DSR-009(正反例校验), DSR-073(条件字段)
+        """
         errors: List[SchemaValidationError] = []
         self._validate_node(instance, self.schema, "#", errors, depth=0)
         return errors
 
     def validate_or_raise(self, instance: Any) -> None:
-        """Validate instance and raise InvalidInputError if invalid."""
+        """Validate instance and raise InvalidInputError if invalid.
+
+        Requirements: SWR-025(失败可定位不静默) / DSR-009(support)
+        """
         errors = self.validate(instance)
         if errors:
             first = errors[0]
@@ -141,6 +177,10 @@ class SchemaValidator:
         errors: List[SchemaValidationError],
         depth: int,
     ) -> None:
+        """Apply keyword checks to one node, recording errors at exact paths.
+
+        Requirements: SWR-025(逐节点校验记录,support) / DSR-009(support)
+        """
         if depth > 100:
             errors.append(SchemaValidationError(path, "Maximum schema evaluation depth exceeded", "depth"))
             return
@@ -335,6 +375,10 @@ class SchemaValidator:
                 )
 
     def _check_type(self, instance: Any, expected: str) -> bool:
+        """Strict type check: booleans never count as integers or numbers.
+
+        Requirements: SWR-025(布尔非整数) / DSR-009(严格类型)
+        """
         if expected == "string":
             return isinstance(instance, str)
         elif expected == "integer":
@@ -353,6 +397,10 @@ class SchemaValidator:
         return False
 
     def _type_name(self, instance: Any) -> str:
+        """Return the JSON type name used in error messages (bool before int).
+
+        Requirements: SWR-025(support) / DSR-009(support)
+        """
         if instance is None:
             return "null"
         if isinstance(instance, bool):

@@ -37,7 +37,7 @@ STATE_EVENT_TYPES = {
 
 
 def utc_now_iso() -> str:
-    """Return current UTC timestamp in ISO 8601 format."""
+    """Return current UTC timestamp in ISO 8601 format. Requirements: SWR-018(support) / DSR-016(UTC时间戳)"""
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
@@ -45,6 +45,10 @@ class EventStore:
     """Manages append-only events for runs."""
 
     def __init__(self, conn: sqlite3.Connection) -> None:
+        """Bind the store to a ledger connection.
+
+        Requirements: SWR-018(support) / DSR-016(连接绑定)
+        """
         self.conn = conn
 
     def append_event(
@@ -60,6 +64,7 @@ class EventStore:
         Must be called within an active transaction or with BEGIN IMMEDIATE.
         Unknown payload versions are rejected with UnsupportedSchemaError (DSR-016).
         Returns the new revision number.
+        Requirements: SWR-018(原子追加) / DSR-016(修订推进), DSR-017(claim支撑)
         """
         if payload_version not in SUPPORTED_EVENT_PAYLOAD_VERSIONS:
             raise UnsupportedSchemaError(
@@ -116,7 +121,7 @@ class EventStore:
         return new_rev
 
     def get_events(self, run_id: str, from_rev: int = 1) -> List[Dict[str, Any]]:
-        """Retrieve events ordered by revision."""
+        """Retrieve events ordered by revision. Requirements: SWR-018(support) / DSR-016(事件读取)"""
         cursor = self.conn.execute(
             """
             SELECT event_id, run_id, revision, event_type, occurred_at, actor, payload_version, payload_json
@@ -147,6 +152,7 @@ class EventStore:
         projection counts enqueued/claimed/submitted work, derives the run state
         from lifecycle events, and compares the highest replayed revision against
         the persisted runs.revision to detect ledger inconsistency.
+        Requirements: SWR-018(重放投影) / DSR-016(投影一致)
         """
         projection: Dict[str, Any] = {
             "run_id": run_id,

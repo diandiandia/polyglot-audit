@@ -4,8 +4,10 @@ Covers:
 - DSR-014: inventory reconciliation counts (included / excluded /
   unknown_language / by_language / by_component) over a mixed fixture, with
   the three-way sum invariant known + excluded + unknown == total.
-- DSR-054: inclusion summary aggregated by exclusion category
-  (directory_rule / generated / test / binary / unknown_extension / archive).
+- DSR-054: inclusion summary bucketed into included / unknown_extension
+  (inventoried but unknown language) plus exclusion categories
+  (directory_rule / generated / test / binary / archive / user_rule /
+  symlink / other).
 """
 
 import shutil

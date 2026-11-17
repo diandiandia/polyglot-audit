@@ -71,6 +71,7 @@ def resolve_probe_timeout(host: str, timeout: Optional[int] = None) -> int:
     An explicit ``timeout`` argument wins; otherwise the per-host default
     applies (claude 30s, codex 90s — real reasoning-model round trips are
     slower); unknown hosts fall back to the conservative 30s.
+    Requirements: SWR-023(support) / DSR-002(分宿主超时)
     """
     if timeout is not None:
         if int(timeout) <= 0:
@@ -98,6 +99,7 @@ def _headless_args(host: str, prompt: str) -> List[str]:
 
     Unknown hosts fall back to the `--print <prompt>` shape; the prompt is
     always carried into the command exactly once.
+    Requirements: SWR-023(support) / DSR-002(无头参数), DSR-003(codex形状)
     """
     builder = _HEADLESS_PROMPTS.get(host)
     if builder is None:
@@ -127,6 +129,7 @@ def make_feature(
 
     Every capability report entry records the exact command / method used and
     either positive evidence or the reason it stayed unknown/not enforced.
+    Requirements: SWR-023(support) / DSR-001(方法字段)
     """
     feature: Dict[str, Any] = {"state": state, "method": method}
     if evidence is not None:
@@ -142,6 +145,7 @@ def probe_stdlib_modules(modules: Optional[List[str]] = None) -> Dict[str, Any]:
     Attempts to import each core stdlib module and records the module list as
     evidence. All modules importable -> ENFORCED; any failure -> UNKNOWN with
     the failing module and error text.
+    Requirements: SWR-024(离线标准库) / DSR-001(导入探测)
     """
     mods = list(modules or DEFAULT_STDLIB_PROBE_MODULES)
     failures: List[str] = []
@@ -170,6 +174,7 @@ def probe_cli_version(binary_path: str, timeout: int = 10) -> Dict[str, Any]:
     evidence. Any failure (missing binary, timeout, non-zero exit, empty
     output) -> UNKNOWN carrying the probe error message as reason. Failures
     are never silently swallowed.
+    Requirements: SWR-023(版本探测) / DSR-001(诚实记录)
     """
     cmd = [binary_path, "--version"]
     try:
@@ -219,6 +224,7 @@ def probe_headless_invocation(
     A non-zero exit, timeout, or empty output leaves headless_cli UNKNOWN with
     the probe error as reason — it is never promoted to ENFORCED on a mere
     `--version` success.
+    Requirements: SWR-023(无头实测) / DSR-002(单次调用), DSR-003(独立实测)
     """
     effective_timeout = resolve_probe_timeout(host, timeout)
     args = _headless_args(host, prompt)
@@ -276,6 +282,7 @@ def probe_execution_counterexample(
     - Marker created -> the host executed side effects -> NOT_ENFORCED.
     - No marker -> cannot distinguish sandbox from refusal -> UNKNOWN.
     Only executed when the caller explicitly requests the aggressive level.
+    Requirements: SWR-015(写探针) / DSR-002(执行反例), DSR-003(独立)
     """
     method = (
         f"headless counterexample: ask host to write marker file in {workdir} "
@@ -324,6 +331,7 @@ def probe_network_counterexample(
     host to connect to it. An observed connection proves the host can use the
     network (NOT_ENFORCED); silence leaves the isolation state UNKNOWN.
     Returns a callable-style record; only executed at aggressive level.
+    Requirements: SWR-015(网络探针) / DSR-002(回环反例)
     """
     method = "loopback socket counterexample: host asked to connect to 127.0.0.1 listener"
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -374,6 +382,7 @@ def probe_subagent_delegation(
     and assert the result non-empty. Development-time default never executes:
     without delegate_fn, or below the aggressive level, the state stays
     UNKNOWN with the probe plan as reason.
+    Requirements: SWR-022(support) / DSR-004(委派实测)
     """
     method = "minimal in-session sub-agent delegation trial (aggressive level only)"
     if probe_level != PROBE_LEVEL_AGGRESSIVE or delegate_fn is None:
@@ -416,6 +425,7 @@ def probe_single_call_budget(
     Plan (aggressive): issue one call via call_fn and inspect the returned
     usage block. Without measured usage evidence the state stays UNKNOWN —
     token/cost hard limits are never claimed without proof.
+    Requirements: SWR-023(support) / DSR-005(限额观测)
     """
     method = "single-call budget probe: issue one call and observe returned usage"
     if probe_level != PROBE_LEVEL_AGGRESSIVE or call_fn is None:
@@ -460,6 +470,7 @@ def probe_timeout_cancellation(
     process tree is terminated. Default keeps the state UNKNOWN because
     killing worker processes speculatively is not acceptable at conservative
     levels.
+    Requirements: SWR-023(support) / DSR-005(超时取消)
     """
     method = "timeout/cancellation probe: exceed timeout and verify process-tree kill"
     if probe_level != PROBE_LEVEL_AGGRESSIVE or call_fn is None:
@@ -494,6 +505,7 @@ def probe_mcp_stdio_handshake(server_cmd: List[str], timeout: int = 15) -> Dict[
     requires a parseable response with matching id before reporting ENFORCED.
     Any spawn/protocol failure leaves the transport UNKNOWN with the probe
     error as reason — "server exists" is never treated as "transport works".
+    Requirements: SWR-023(support) / DSR-004(MCP握手)
     """
     request = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
     method_str = "stdio JSON-RPC initialize handshake with: " + " ".join(server_cmd)
@@ -570,6 +582,7 @@ def probe_host_capabilities(
     value overrides the default for every probe that accepts one.
 
     Returns a dict: {"binary", "probe_level", "features"}.
+    Requirements: SWR-023(分级探测) / DSR-001(能力报告), DSR-002(无头), DSR-003(独立)
     """
     if probe_level not in VALID_PROBE_LEVELS:
         raise ValueError(f"invalid probe_level: {probe_level!r}")

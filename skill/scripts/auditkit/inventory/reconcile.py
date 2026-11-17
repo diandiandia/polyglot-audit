@@ -39,6 +39,8 @@ def reconcile(manifest: Any, discovered_total: Optional[int] = None, strict: boo
     Returns a dict with ``included``, ``known_language``, ``unknown_language``,
     ``excluded``, ``total_files``, ``by_language``, ``by_component``,
     ``included_plus_excluded_plus_unknown`` and ``reconciled``.
+
+    Requirements: SWR-004(分母三路对账) / DSR-014(对账不变量).
     """
     files = list(getattr(manifest, "files", []) or [])
     excluded = list(getattr(manifest, "excluded", []) or [])

@@ -57,6 +57,10 @@ DISPATCHED_TASK_STATES = ("claimed", "running", "done", "failed", "quarantined")
 
 
 def sha256_text(text: str) -> str:
+    """SHA-256 hex digest of UTF-8 text.
+
+    Requirements: SWR-018(support) / DSR-017(摘要)
+    """
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
@@ -64,6 +68,10 @@ class TaskQueue:
     """Manages transactional task scheduling and execution attempts."""
 
     def __init__(self, conn: sqlite3.Connection) -> None:
+        """Assemble event store and budget ledger for dispatch.
+
+        Requirements: SWR-018(support) / DSR-017(队列装配)
+        """
         self.conn = conn
         self.event_store = EventStore(conn)
         self.budget_ledger = BudgetLedger(conn)
@@ -80,6 +88,7 @@ class TaskQueue:
 
         Same task_key + same spec returns existing task_id.
         Same task_key + different spec raises IdempotencyConflictError.
+        Requirements: SWR-018(确定性入队) / DSR-017(幂等入队)
         """
         spec_str = json.dumps(spec, sort_keys=True, ensure_ascii=False)
         spec_digest = sha256_text(spec_str)
@@ -115,7 +124,7 @@ class TaskQueue:
         return task_id
 
     def _check_dispatch_allowed(self, run_id: str) -> None:
-        """Enforce the stop sequence: tasks are only dispatched while run is active (DSR-066)."""
+        """Enforce the stop sequence: tasks are only dispatched while run is active (DSR-066). Requirements: SWR-018(support) / DSR-066(停止序列)"""
         row = self.conn.execute("SELECT state FROM runs WHERE run_id = ?", (run_id,)).fetchone()
         if not row:
             raise InvalidInputError(f"Run '{run_id}' not found")
@@ -139,6 +148,7 @@ class TaskQueue:
         same task twice nor race for the last budget unit. Tasks are selected by
         descending priority (higher numeric priority dispatched first), then by
         task_id for determinism.
+        Requirements: SWR-018(原子领取), SWR-019 / DSR-017(单次领取), DSR-020(预留同事务), DSR-066(维度保护)
         """
         self._check_dispatch_allowed(run_id)
         # DSR-072: fail closed on unsupported persisted formats before dispatch.
@@ -248,6 +258,7 @@ class TaskQueue:
         submissions with the old token are rejected (DSR-019 semantics).
 
         Returns {"action": "released", ...}.
+        Requirements: SWR-018(领取释放) / DSR-019(失效重排)
         """
         self._verify_attempt_token(task_id, attempt_id, generation, claim_token)
 
@@ -295,6 +306,7 @@ class TaskQueue:
         generation+1 (so late submissions are rejected as stale), and its budget
         reservation is released back to the available pool. Returns the list of
         reclamation records.
+        Requirements: SWR-018(租约回收) / DSR-019(过期失效)
         """
         now_iso = utc_now_iso()
         reclaimed: List[Dict[str, Any]] = []
@@ -357,7 +369,7 @@ class TaskQueue:
         generation: int,
         claim_token: str,
     ) -> Dict[str, Any]:
-        """Mark attempt as running."""
+        """Mark attempt as running. Requirements: SWR-018(状态推进) / DSR-017(开始执行)"""
         att = self._verify_attempt_token(task_id, attempt_id, generation, claim_token)
 
         if att["status"] in ("running", "done"):
@@ -394,6 +406,7 @@ class TaskQueue:
         The trusted usage object (exact / estimated / unavailable) is validated,
         persisted, and used for settlement: unknown usage keeps the reserved
         amount consumed rather than silently settling a fixed "1 task".
+        Requirements: SWR-018(幂等提交), SWR-019, SWR-020 / DSR-018(原子回执), DSR-033(用量结算)
         """
         att = self._verify_attempt_token(task_id, attempt_id, generation, claim_token, allow_finished=True)
 
@@ -516,6 +529,7 @@ class TaskQueue:
           normalized into a successful result.
 
         Returns {"action": "requeued", ...} or {"action": "quarantined", ...}.
+        Requirements: SWR-018(有界重试) / DSR-065(隔离缺口)
         """
         self._verify_attempt_token(task_id, attempt_id, generation, claim_token)
 
@@ -612,6 +626,7 @@ class TaskQueue:
         outstanding until the termination state is resolved out of band.
 
         Returns {"action": "retained", ...}.
+        Requirements: SWR-018(隔离保留), SWR-019 / DSR-064(预算保留)
         """
         self._verify_attempt_token(task_id, attempt_id, generation, claim_token)
 
@@ -657,6 +672,10 @@ class TaskQueue:
         claim_token: str,
         allow_finished: bool = False,
     ) -> sqlite3.Row:
+        """Validate token, generation and liveness; reject stale.
+
+        Requirements: SWR-018(support) / DSR-017(令牌校验), DSR-018(迟到拒绝)
+        """
         row = self.conn.execute(
             """
             SELECT a.attempt_id, a.task_id, a.generation, a.status, a.token_digest, a.expires_at, a.result_digest, a.receipt_ref,

@@ -22,6 +22,7 @@
 | `Anchor` | snapshot_id、path、line_start、line_end、file_sha256、symbol? | 快照与摘要须一致；只能证实位置存在，不能证明语义。 |
 | `Unit` | unit_id、snapshot_id、component、language、ranges、risk_factors | ranges 为 Anchor 的行范围集合；风险分数和规则版本可重算；拆分/重叠不重复覆盖计数。 |
 | `TaskSpec` | schema_version、task_kind；其余字段按 `oneOf` 三分支（hunt/recon/verify，`task_kind` const 判别） | hunt 携带 `snapshot_id` 与 `unit`；recon 另带 `role`、语言索引与 `knowledge_hints`；verify 携带 `verify_task_id`、`candidate_id`、`output_contract`、`requires_new_attempt`，引用待验证对象（`input.candidate`）并受 attempt 闸门字段约束，second-opinion 字段并入 verify 分支；packet 绑定当前快照与契约。**[DA-04]**（旧形状 task_id/kind/unit_ids/packet_digest/priority/limits 为早期草案：实现按任务角色分化，schema 已反写为唯一契约来源并经 DESIGN_ALIGNMENT_NOTES DA-04 对齐，旧形状必须被所有分支拒绝。） |
+| `LessonDoc` | `report/lessons.md`（由 `docs/LESSONS-TEMPLATE.md` 模板驱动归档，允许人工续写） | 运行教训：本次运行暴露的 skill 缺陷、开放问题与升级准入追踪。属运行卷宗：可含自由文本与目标信息（SR-031），**不进可移植导出**、不回写 skill 资产；处理时执行模板内置防污染红线（SR-016/DSR-082）。**[SR-031]** |
 | `Claim` | run_id、task_id、attempt_id、generation、claim_token、expires_at、packet_ref | token 仅返回执行者，不进入持久明文日志；worker 不得将 packet_ref 当任意文件写入口。 |
 | `WorkerResult` | task_id、attempt_id、kind、coverage、records、overflow | 与 claim 和任务 kind 对应；records 中允许的类型由 kind 决定；超出时分页或显式 overflow（范围与数量下界）而不是静默裁剪。 |
 | `Guard` | guard_id、status、mechanism、anchors、applicability、exceptions | status 为 observed/not_found/unknown；observed 要有锚点，unknown 要有原因；模型声明不自动构成实际保护。 |

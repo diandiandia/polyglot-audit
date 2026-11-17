@@ -258,13 +258,16 @@ class TestSection101Layout(DossierLayoutBase):
         self.assertTrue(inventory["reconciled"])
         self.assertEqual(inventory["snapshot_id"], meta["snapshot_id"])
 
-        # 4. plan/plan.json — units, dispositions, budget-relevant plan data.
+        # 4. plan/plan.json — units, dispositions, queue priority, budget
+        #    allocation, platform evidence and component detection.
         plan = json.loads(
             (self.run_dir / "plan" / "plan.json").read_text(encoding="utf-8")
         )
-        for field in ("units", "dispositions", "profile", "platform_evidence",
+        for field in ("units", "dispositions", "profile", "budgets",
+                      "queue_priority", "platform_evidence",
                       "component_detection", "inventory_reconciliation"):
             self.assertIn(field, plan)
+        self.assertEqual(plan["budgets"], meta["budgets"])
         self.assertFalse((self.run_dir / "plan.json").exists(),
                          "the flat legacy plan.json must not be written anymore")
 

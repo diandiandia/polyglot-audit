@@ -64,6 +64,7 @@ def _usage_from_block(
     payload without any usage block yields None. ``attempt_id`` is stamped
     from the claim this execution served (the service backfills its own
     authoritative claim attempt_id when unknown here).
+    Requirements: SWR-020(用量映射) / DSR-033(逐次归属)
     """
     return build_usage_envelope(parsed, attempt_id, source)
 
@@ -80,6 +81,10 @@ class ClaudeDriverAdapter:
         backoff_base: float = 0.5,
         backoff_max: float = 30.0,
     ) -> None:
+        """Configure timeouts, retries, breaker, and backoff.
+
+        Requirements: SWR-023(support) / DSR-064(熔断退避)
+        """
         self.claude_binary = claude_binary
         self.timeout_seconds = timeout_seconds
         self.max_consecutive_failures = max_consecutive_failures
@@ -116,6 +121,7 @@ class ClaudeDriverAdapter:
 
         ``attempt_id``, when supplied (the claim this call executes), is
         stamped into the returned usage dict.
+        Requirements: SWR-023(无头执行) / DSR-029(退出分类), DSR-064(退避熔断), DSR-033(逐次用量)
         """
         if self.consecutive_failures >= self.max_consecutive_failures:
             raise HostFailureError(
@@ -146,7 +152,7 @@ class ClaudeDriverAdapter:
         attempt_id: Optional[str],
         effective_timeout: int,
     ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
-        """Run one Claude headless invocation and classify its outcome."""
+        """Run one Claude headless invocation and classify its outcome. Requirements: SWR-023(support) / DSR-029(单次分类), DSR-064(超时终止)"""
         cmd = [self.claude_binary, "--print", prompt]
 
         proc = None
@@ -229,11 +235,11 @@ class ClaudeDriverAdapter:
             raise
 
     def extract_usage(self, result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Extract the usage block from a structured worker result (or None)."""
+        """Extract the usage block from a structured worker result (or None). Requirements: SWR-020(support) / DSR-033(用量提取)"""
         return extract_usage(result)
 
     def _kill_process_group(self, proc: subprocess.Popen) -> bool:
-        """Kill entire process group; return True only if termination confirmed."""
+        """Kill entire process group; return True only if termination confirmed. Requirements: SWR-023(support) / DSR-064(进程组终止)"""
         try:
             if hasattr(os, "killpg") and hasattr(os, "getpgid"):
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)

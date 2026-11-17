@@ -161,6 +161,7 @@ def get_db_connection(db_path: str | Path) -> sqlite3.Connection:
     connection from several threads is serialized by SQLite itself; write
     transactions stay serialized via BEGIN IMMEDIATE (and the dispatch loop's
     own in-process lock). Cross-process safety is unchanged.
+    Requirements: SWR-018(support) / DSR-016(WAL事务底座)
     """
     conn = sqlite3.connect(str(db_path), timeout=5.0, isolation_level=None, check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -172,7 +173,7 @@ def get_db_connection(db_path: str | Path) -> sqlite3.Connection:
 
 
 def init_database(db_path: str | Path) -> None:
-    """Initialize SQLite database with core tables."""
+    """Initialize SQLite database with core tables. Requirements: SWR-018(建表), SWR-027 / DSR-016(run事件表)"""
     conn = get_db_connection(db_path)
     try:
         conn.executescript(SCHEMA_SQL)
@@ -181,7 +182,7 @@ def init_database(db_path: str | Path) -> None:
 
 
 def _check_semver_major(version: str, expected_major: str, label: str) -> None:
-    """Validate that a dotted version string has the expected major segment."""
+    """Validate that a dotted version string has the expected major segment. Requirements: SWR-027 / DSR-072(主版本校验)"""
     major = version.split(".", 1)[0]
     if major != expected_major:
         raise UnsupportedSchemaError(
@@ -198,6 +199,7 @@ def check_version_compatibility(conn: sqlite3.Connection, run_id: Optional[str] 
     unsupported old or future formats. No migration is ever attempted and no record
     is modified. Returns the version info of the (single) inspected run, or None
     when the database contains no matching run.
+    Requirements: SWR-027(版本拒绝) / DSR-072(只读兼容)
     """
     if run_id is not None:
         rows = conn.execute(

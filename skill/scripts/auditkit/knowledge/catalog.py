@@ -32,9 +32,16 @@ from auditkit.inventory.languages import get_base_languages
 
 
 class KnowledgeCatalog:
-    """Loads and serves language vulnerability cards and indices."""
+    """Loads and serves language vulnerability cards and indices.
+
+    Requirements: SWR-002(卡片目录), SWR-003(平台条件) / DSR-038(索引与模板)
+    """
 
     def __init__(self, knowledge_root: str | Path) -> None:
+        """Resolve the knowledge root; reads skill assets only, no run state.
+
+        Requirements: SWR-002(support) / DSR-038(support)
+        """
         self.knowledge_root = Path(os.path.realpath(os.path.abspath(knowledge_root)))
         self.languages_dir = self.knowledge_root / "languages"
         self._cards_cache: Dict[str, Dict[str, Any]] = {}
@@ -42,7 +49,10 @@ class KnowledgeCatalog:
         self._signals_cache: Dict[str, List[Dict[str, Any]]] = {}
 
     def get_language_index(self, lang: str) -> List[Dict[str, Any]]:
-        """Return 10-item index for a language."""
+        """Return 10-item index for a language.
+
+        Requirements: SWR-002(每语言10条目索引) / DSR-038(support)
+        """
         if lang in self._indices_cache:
             return self._indices_cache[lang]
 
@@ -69,6 +79,8 @@ class KnowledgeCatalog:
           the omission is disclosed instead of silently assumed.
         For languages without a platform-conditional base (TypeScript, C++, ...)
         the flag has no effect.
+
+        Requirements: SWR-003(平台未知不假设,披露缺口) / DSR-038(TS加JS,Kotlin/Scala条件)
         """
         primary_items = self.get_language_index(lang)
         primary_lines = [
@@ -95,7 +107,10 @@ class KnowledgeCatalog:
         return primary_lines, base_lines
 
     def get_card(self, card_id: str) -> Optional[Dict[str, Any]]:
-        """Load card by ID (e.g. py-01, c-03)."""
+        """Load card by ID (e.g. py-01, c-03).
+
+        Requirements: SWR-002(按ID取卡,support) / DSR-038(support)
+        """
         if card_id in self._cards_cache:
             return self._cards_cache[card_id]
 
@@ -109,7 +124,10 @@ class KnowledgeCatalog:
         return None
 
     def get_all_cards_for_language(self, lang: str) -> List[Dict[str, Any]]:
-        """Load all 10 cards for a language."""
+        """Load all 10 cards for a language.
+
+        Requirements: SWR-002(每语言10卡) / DSR-038(support)
+        """
         cards = []
         lang_dir = self.languages_dir / lang
         if not lang_dir.exists():
@@ -124,7 +142,10 @@ class KnowledgeCatalog:
         return cards
 
     def get_signals_for_language(self, lang: str) -> List[Dict[str, Any]]:
-        """Return regex signal rules defined for language."""
+        """Return regex signal rules defined for language.
+
+        Requirements: SWR-002(关联扫描信号) / DSR-038(support)
+        """
         if lang in self._signals_cache:
             return self._signals_cache[lang]
 

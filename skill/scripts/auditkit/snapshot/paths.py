@@ -31,6 +31,8 @@ def validate_canonical_relpath(relpath: str) -> str:
     - No empty segments, no '.' or '..'
     - No leading or trailing '/'
     - No null bytes or backslashes
+
+    Requirements: SWR-015(路径穿越拒绝) / DSR-011(规范相对路径规则).
     """
     if not relpath or not isinstance(relpath, str):
         raise PathUnsafeError("Path must be a non-empty string")
@@ -53,6 +55,8 @@ def validate_three_roots(target: str, skill_dir: str, run_dir: str) -> Tuple[Pat
     """Validate that target, skill_dir, and run_dir are separate and non-overlapping.
 
     Raises PathUnsafeError if any overlap exists or if paths are invalid.
+
+    Requirements: SWR-015(三根分离含嵌套拒绝) / DSR-011(realpath 别名符号链接).
     """
     target_path = Path(os.path.realpath(os.path.abspath(target)))
     skill_path = Path(os.path.realpath(os.path.abspath(skill_dir)))
@@ -95,7 +99,10 @@ def validate_three_roots(target: str, skill_dir: str, run_dir: str) -> Tuple[Pat
 
 
 def check_symlink_safety(target_root: Path, file_path: Path) -> bool:
-    """Verify that a path does not escape target_root via symlinks."""
+    """Verify that a path does not escape target_root via symlinks.
+
+    Requirements: SWR-015(符号链接逃逸拒绝) / DSR-011(链接安全访问).
+    """
     try:
         resolved = file_path.resolve(strict=False)
         resolved.relative_to(target_root.resolve())

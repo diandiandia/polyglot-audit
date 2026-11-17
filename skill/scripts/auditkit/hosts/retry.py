@@ -49,6 +49,7 @@ def compute_backoff_delay(attempt: int, base: float = 0.5, max_delay: float = 30
 
     attempt is 1-based (first retry uses base * 2**0). The result is capped at
     max_delay. Pure function: no I/O, no clock, no state.
+    Requirements: SWR-019(有限退避) / DSR-064(限流退避)
     """
     if attempt < 1:
         attempt = 1
@@ -63,6 +64,7 @@ def classify_exit_failure(stderr: str, return_code: int) -> Tuple[str, bool]:
 
     Categories follow DSR-029: rate_limit and timeout are retryable,
     auth_error is not, other is not retryable by default.
+    Requirements: SWR-023(support) / DSR-029(退出分类), DSR-064(类别互异)
     """
     lowered = (stderr or "").lower()
     if any(p in lowered for p in _RATE_LIMIT_PATTERNS):
@@ -115,6 +117,7 @@ def _as_number(value: Any) -> Optional[int]:
     bools are excluded (True is not a count); integral floats are accepted
     because some hosts serialize counts as ``123.0``. Everything else is not
     a usable count and is never coerced into one (no invented numbers).
+    Requirements: SWR-020(support) / DSR-033(不造假数)
     """
     if isinstance(value, bool):
         return None
@@ -126,7 +129,7 @@ def _as_number(value: Any) -> Optional[int]:
 
 
 def _is_usage_shaped(obj: Any) -> bool:
-    """True when the dict carries at least one numeric token-counter field."""
+    """True when the dict carries at least one numeric token-counter field. Requirements: SWR-020(support) / DSR-033(形状识别)"""
     if not isinstance(obj, dict):
         return False
     for key, value in obj.items():
@@ -142,6 +145,7 @@ def _token_numerics(block: Dict[str, Any]) -> Tuple[int, Optional[int]]:
     such as ``num_turns`` must not inflate the token count); ``declared_total``
     is set when the host supplies a total field, in which case it wins over
     the summed parts.
+    Requirements: SWR-020(support) / DSR-033(计数汇总)
     """
     parts: List[int] = []
     declared_total: Optional[int] = None
@@ -178,6 +182,7 @@ def locate_usage_block(result: Any) -> Optional[Tuple[Dict[str, Any], str]]:
     usage-shaped objects in the same order. ``None`` when no part of the
     payload carries usage data: absence is reported as absence, never
     invented (SR-020 / design principle 8).
+    Requirements: SWR-020(用量定位) / DSR-033(缺则None)
     """
     if not isinstance(result, dict):
         return None
@@ -220,6 +225,7 @@ def extract_usage(result: Any) -> Optional[Dict[str, Any]]:
     Returns the usage dict when present (located anywhere in the payload,
     see locate_usage_block), otherwise None (LED domain treats this as
     USAGE_UNKNOWN and must not invent token counts).
+    Requirements: SWR-020(support) / DSR-033(块提取)
     """
     found = locate_usage_block(result)
     return found[0] if found else None
@@ -248,6 +254,7 @@ def build_usage_envelope(
     usage block yields None; ``attempt_id`` is stamped from the claim this
     execution served (the service backfills its own authoritative claim
     attempt_id when unknown here).
+    Requirements: SWR-020(可用性阶梯) / DSR-033(exact映射)
     """
     found = locate_usage_block(parsed)
     if found is None:

@@ -29,7 +29,10 @@ TRIAGE_DISPOSITIONS = ("candidate_created", "dismissed", "pending")
 
 
 def _signal_key(hit: Dict[str, Any]) -> str:
-    """Stable key used to look up a caller-supplied disposition for a hit."""
+    """Stable key used to look up a caller-supplied disposition for a hit.
+
+    Requirements: SWR-007(support) / DSR-060(信号键,support)
+    """
     signal_id = hit.get("signal_id")
     if signal_id:
         return str(signal_id)
@@ -37,9 +40,16 @@ def _signal_key(hit: Dict[str, Any]) -> str:
 
 
 class StrongSignalTriage:
-    """Produces sparse triage dispositions for strong signal hits."""
+    """Produces sparse triage dispositions for strong signal hits.
+
+    Requirements: SWR-007(强信号分诊) / DSR-060(稀疏记录+溢出)
+    """
 
     def __init__(self, max_records: int = 50) -> None:
+        """Validate the single-output capacity bound (>= 1).
+
+        Requirements: SWR-007(容量上限,support) / DSR-060(support)
+        """
         if max_records < 1:
             raise InvalidInputError(f"max_records must be >= 1, got {max_records}")
         self.max_records = max_records
@@ -57,6 +67,8 @@ class StrongSignalTriage:
         dismissed; anything else stays ``pending``.
 
         Returns: {"schema_version", "records", "overflow", "stats"}
+
+        Requirements: SWR-007(稀疏记录,显式溢出) / DSR-060(容量溢出可计数)
         """
         records: List[Dict[str, Any]] = []
         overflow: List[Dict[str, Any]] = []
@@ -110,7 +122,10 @@ class StrongSignalTriage:
         }
 
     def set_disposition(self, record: Dict[str, Any], disposition: str) -> Dict[str, Any]:
-        """Move a triage record to candidate_created / dismissed / pending."""
+        """Move a triage record to candidate_created / dismissed / pending.
+
+        Requirements: SWR-007(三态处置状态机) / DSR-060(重处置回未审)
+        """
         if disposition not in TRIAGE_DISPOSITIONS:
             raise InvalidInputError(
                 f"Invalid disposition '{disposition}'; expected one of {TRIAGE_DISPOSITIONS}"
@@ -127,6 +142,8 @@ class StrongSignalTriage:
         A record whose disposition is still ``pending`` — i.e. the strong
         signal was never dispositioned — can never be marked reviewed; doing
         so raises InvalidInputError.
+
+        Requirements: SWR-007(未处置不得记已审) / DSR-060(pending门禁)
         """
         if record.get("disposition") == "pending":
             raise InvalidInputError(
@@ -149,6 +166,8 @@ class StrongSignalTriage:
         ``reviewed`` counts only records whose disposition is decided
         (candidate_created / dismissed); pending records are excluded because
         an undispositioned strong signal can never count as reviewed.
+
+        Requirements: SWR-007(未处置不计已审) / DSR-060(统计口径)
         """
         stats: Dict[str, Any] = {
             "candidate_created": 0,
@@ -177,5 +196,7 @@ def triage_strong_signals(
     """Module-level convenience wrapper around StrongSignalTriage.triage_signals.
 
     Returns: {"schema_version", "records", "overflow", "stats"}
+
+    Requirements: SWR-007(support) / DSR-060(便捷封装,support)
     """
     return StrongSignalTriage(max_records=max_records).triage_signals(hits, dispositions)

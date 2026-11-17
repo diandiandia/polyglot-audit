@@ -30,7 +30,10 @@ from auditkit.contracts.semantic_validator import (
 
 
 class RatingEngine:
-    """Computes and adjusts security finding ratings."""
+    """Computes and adjusts security finding ratings.
+
+    Requirements: SWR-011(定级唯一权威) / DSR-028(矩阵与调整)
+    """
 
     @staticmethod
     def compute_rating(
@@ -40,7 +43,10 @@ class RatingEngine:
         exploitability_why: str,
         adjustment: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Compute rating dictionary adhering strictly to IFC-02 / DSR-028."""
+        """Compute rating dictionary adhering strictly to IFC-02 / DSR-028.
+
+        Requirements: SWR-011(缺理由拒级,受控调整) / DSR-028(穷举矩阵,两端越界,紧迫度重算)
+        """
         if not (1 <= impact <= 4):
             raise InvalidInputError(f"Impact must be in 1..4, got {impact}")
         if not (1 <= exploitability <= 4):

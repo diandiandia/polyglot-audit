@@ -58,6 +58,8 @@ def derive_languages(candidate: Dict[str, Any]) -> List[str]:
     ``source.lang`` wins; otherwise the language is detected from the source
     and sink path extensions so cross-language chains list both sides. When
     nothing is observable the honest value is ``"unknown"``.
+
+    Requirements: SWR-010(发现语言字段,support) / DSR-027(support)
     """
     source = candidate.get("source") or {}
     sink = candidate.get("sink") or {}
@@ -96,6 +98,8 @@ def bounded_variant_search(
         "searched_files": int, "total_files": int,
         "truncated": bool, "reason": str, "unsearched_files": [...],
     }
+
+    Requirements: SWR-008(变体需独立验证), SWR-010(support) / DSR-062(上限与未搜记录)
     """
     if not isinstance(snapshot_files, dict):
         raise InvalidInputError("snapshot_files must be a dict of path -> content")
@@ -175,7 +179,10 @@ def bounded_variant_search(
 
 
 class Verifier:
-    """Evaluates candidates independently and produces verified Findings."""
+    """Evaluates candidates independently and produces verified Findings.
+
+    Requirements: SWR-008(独立验证四态), SWR-009(E2条件) / DSR-027(裁决), DSR-061(第二意见), DSR-062(变体搜索)
+    """
 
     def __init__(
         self,
@@ -189,6 +196,8 @@ class Verifier:
         ``confirmed`` finding. It defaults to False only so legacy in-process
         callers keep working; the production pipeline constructs the Verifier
         with the gate enabled (``AuditAppService._enqueue_verify_tasks``).
+
+        Requirements: SWR-009(E2新attempt门) / DSR-027(support)
         """
         self.validator = semantic_validator or SemanticValidator()
         self.enforce_attempt_gate = enforce_attempt_gate
@@ -202,6 +211,8 @@ class Verifier:
         its output contract, and requires a
         fresh ``verify_attempt_id`` distinct from the hunt attempt for an E2
         verdict.
+
+        Requirements: SWR-008(独立验证任务) / DSR-027(verify规格,新attempt)
         """
         if not isinstance(candidate, dict):
             raise InvalidInputError("candidate must be a dict")
@@ -264,6 +275,8 @@ class Verifier:
         ("Demonstrated sensitive sink reachability" /
         "Attacker input unchecked") fabricated the observed justification for
         a severity and were removed.
+
+        Requirements: SWR-008(四态处置), SWR-009(E2新attempt,逐跳证据), SWR-011(缺理由降级) / DSR-027(裁决), DSR-028(因子理由必填)
         """
         finding_id = f"F-{uuid.uuid4().hex[:6].upper()}"
         cand_id = candidate.get("candidate_id", "")
@@ -483,6 +496,8 @@ class Verifier:
         Carries no ``factor_reasons`` (none were observed) and no repair
         urgency (SR-011: pending findings carry the validation priority).
         Satisfies SemanticValidator.validate_rating(is_confirmed=False).
+
+        Requirements: SWR-011(未决无修复紧迫度) / DSR-028(仅验证优先级)
         """
         return {
             "schema_version": "1.0",
@@ -512,6 +527,8 @@ class Verifier:
         the concrete gap recorded verbatim in ``blockers`` and an auditable
         ``demoted_from`` marker. The validation plan states exactly what must
         be observed before the claim can be re-confirmed.
+
+        Requirements: SWR-008(缺证据不确认), SWR-011(缺理由转待验证) / DSR-027(缺事实转needs_validation)
         """
         finding["verdict"] = "needs_validation"
         finding["evidence_level"] = "E1"
@@ -588,6 +605,8 @@ class Verifier:
 
         ``second_opinion_anchor`` optionally records where the secondary
         evidence was observed (e.g. {"path": ..., "line": ...}).
+
+        Requirements: SWR-008(冲突保守降级) / DSR-061(双方证据保留)
         """
         rating = finding.get("rating") or {}
         severity = rating.get("final_severity") or rating.get("calculated_severity")

@@ -60,7 +60,7 @@ LEGACY_TOOL_METHODS = ("next", "submit", "status", "read_artifact")
 
 
 def read_skill_version() -> str:
-    """Return the skill version from skill/VERSION ('unknown' when unreadable)."""
+    """Return the skill version from skill/VERSION ('unknown' when unreadable). Requirements: SWR-027(support) / DSR-072(版本披露), DSR-031(serverInfo)"""
     try:
         version_file = Path(__file__).resolve().parents[3] / "VERSION"
         text = version_file.read_text(encoding="utf-8").strip()
@@ -70,7 +70,7 @@ def read_skill_version() -> str:
 
 
 def _object_schema(properties: Dict[str, Any], required: list) -> Dict[str, Any]:
-    """Build a concise JSON-Schema object schema for one MCP tool."""
+    """Build a concise JSON-Schema object schema for one MCP tool. Requirements: SWR-022(support) / DSR-031(工具schema)"""
     return {"type": "object", "properties": properties, "required": required}
 
 
@@ -147,6 +147,10 @@ class MCPMethodNotFoundError(Exception):
     JSONRPC_CODE = -32601
 
     def __init__(self, method: object) -> None:
+        """Record the offending JSON-RPC method.
+
+        Requirements: SWR-022(support) / DSR-031(协议错误)
+        """
         super().__init__(f"Method not found: {method}")
         self.method = method
 
@@ -155,6 +159,10 @@ class MCPServer:
     """Stdio JSON-RPC transport exposing the 4 audit tools via AuditAppService."""
 
     def __init__(self, run_dir: str | Path, service: AuditAppService) -> None:
+        """Bind the run directory and the application service.
+
+        Requirements: SWR-022(support) / DSR-031(服务装配)
+        """
         self.run_dir = Path(run_dir)
         self.service = service
 
@@ -172,6 +180,7 @@ class MCPServer:
         execution failure is a tool result in MCP semantics, never a stdio
         loop crash); legacy direct tool calls keep propagating AuditError to
         the transport loop's historic -32000 mapping.
+        Requirements: SWR-022(MCP传输) / DSR-031(标准握手), DSR-075(工具路由)
         """
         if not isinstance(method, str):
             raise MCPMethodNotFoundError(method)
@@ -219,7 +228,7 @@ class MCPServer:
 
     def _handle_tools_call(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Unpack params.name + params.arguments, route to handle_call, and
-        wrap the outcome as an MCP tool result {content, isError}."""
+        wrap the outcome as an MCP tool result {content, isError}. Requirements: SWR-022(support) / DSR-031(工具结果), DSR-075(错误包装)"""
         name = params.get("name")
         arguments = params.get("arguments")
         if not isinstance(arguments, dict):
@@ -247,7 +256,7 @@ class MCPServer:
         }
 
     def handle_call(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Dispatch tool call through the application service."""
+        """Dispatch tool call through the application service. Requirements: SWR-022(共用服务) / DSR-031(四工具), DSR-075(路径约束)"""
         if tool_name == "next":
             run_id = arguments.get("run_id", "")
             batch = int(arguments.get("batch_size", 1))
@@ -322,11 +331,15 @@ class McpRunAdapter:
     """
 
     def __init__(self, run_dir: str | Path, service: AuditAppService, run_id: str) -> None:
+        """Bind the adapter to a single run.
+
+        Requirements: SWR-015(support) / DSR-075(run绑定)
+        """
         self.server = MCPServer(run_dir, service)
         self.run_id = run_id
 
     def _require_run(self, run_id: str) -> None:
-        """Reject calls whose run_id does not match the bound run."""
+        """Reject calls whose run_id does not match the bound run. Requirements: SWR-015(support) / DSR-075(跨run拒绝)"""
         if run_id != self.run_id:
             raise RunMismatchError(
                 f"run_id '{run_id}' does not match the adapter-bound run '{self.run_id}'",
@@ -334,7 +347,7 @@ class McpRunAdapter:
             )
 
     def next(self, run_id: str, batch_size: int = 1) -> Dict[str, Any]:
-        """Claim tasks, strictly within the bound run."""
+        """Claim tasks, strictly within the bound run. Requirements: SWR-022(MCP领取) / DSR-031(run绑定)"""
         self._require_run(run_id)
         return self.server.handle_call("next", {"run_id": run_id, "batch_size": batch_size})
 
@@ -347,7 +360,7 @@ class McpRunAdapter:
         claim_token: str,
         result: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Submit a result; cross-run submissions are rejected."""
+        """Submit a result; cross-run submissions are rejected. Requirements: SWR-022(MCP提交) / DSR-031(负载限制), DSR-075(跨run拒绝)"""
         self._require_run(run_id)
         return self.server.handle_call(
             "submit",
@@ -362,12 +375,12 @@ class McpRunAdapter:
         )
 
     def status(self, run_id: str) -> Dict[str, Any]:
-        """Read run state, strictly for the bound run."""
+        """Read run state, strictly for the bound run. Requirements: SWR-022(MCP状态) / DSR-031(绑定读取)"""
         self._require_run(run_id)
         return self.server.handle_call("status", {"run_id": run_id})
 
     def read_artifact(self, run_id: str, relative_path: str) -> Dict[str, Any]:
-        """Read a published artifact, strictly for the bound run."""
+        """Read a published artifact, strictly for the bound run. Requirements: SWR-015(路径安全) / DSR-075(工件约束)"""
         self._require_run(run_id)
         return self.server.handle_call(
             "read_artifact", {"run_id": run_id, "relative_path": relative_path}

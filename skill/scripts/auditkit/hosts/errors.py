@@ -31,6 +31,10 @@ class RunMismatchError(InvalidInputError):
     """Raised when a caller supplies a run_id different from the bound run."""
 
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+        """Reject a foreign run identifier.
+
+        Requirements: SWR-015(support) / DSR-075(跨run拒绝)
+        """
         super().__init__(message, details=details)
 
 
@@ -46,5 +50,9 @@ class TerminationUncertainError(HostFailureError):
         message: str,
         details: Optional[Dict[str, Any]] = None,
     ) -> None:
+        """Flag that the attempt budget must stay reserved.
+
+        Requirements: SWR-019(预算保留) / DSR-064(终止未确)
+        """
         super().__init__(message, retryable=True, details=details)
         self.retains_budget = True

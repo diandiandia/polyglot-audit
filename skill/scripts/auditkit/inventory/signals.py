@@ -63,6 +63,8 @@ def compile_signals(raw_signals: List[Tuple[str, str, int, str]]) -> List[Tuple[
 
     Invalid regexes are skipped rather than aborting the scan; deterministic
     input order yields deterministic rule order.
+
+    Requirements: SWR-004(信号规则确定编译) / DSR-057 (support).
     """
     rules: List[Tuple[str, str, int, Any]] = []
     for sig_id, kind, strength, pattern_str in raw_signals:
@@ -82,6 +84,8 @@ def load_language_signals(knowledge_dir: str | os.PathLike, language: str) -> Li
     ``strength`` (default 3) are optional. Returns an empty list when the
     file does not exist; raises InvalidInputError on unreadable or malformed
     JSON so the failure is visible instead of silently dropping signals.
+
+    Requirements: SWR-004(按语言可配置信号) / DSR-057(加载失败可见).
     """
     if not language or language == "unknown":
         return []
@@ -126,6 +130,8 @@ class SignalScanner:
           from ``knowledge/languages/<lang>/signals.json`` and merged into the
           rules used for files of that language (DSR-057). Load failures are
           counted in ``language_load_errors``.
+
+        Requirements: SWR-004(信号扫描配置) / DSR-057 (support).
         """
         self.knowledge_dir = knowledge_dir
         self.rules = compile_signals(custom_signals or COMMON_SIGNALS)
@@ -134,7 +140,10 @@ class SignalScanner:
         self.language_hit_cap_counts: Dict[str, int] = {}
 
     def _rules_for_language(self, language: Optional[str]) -> List[Tuple[str, str, int, Any]]:
-        """Return common rules merged with the language-specific rules."""
+        """Return common rules merged with the language-specific rules.
+
+        Requirements: SWR-004(语言规则合并) / DSR-057 (support).
+        """
         if not language or language == "unknown" or self.knowledge_dir is None:
             return self.rules
         if language not in self.language_rules:
@@ -161,6 +170,8 @@ class SignalScanner:
         ``language_hit_cap_counts`` for the file's language.
 
         Returns: (hits, overflow_record_if_any)
+
+        Requirements: SWR-004(信号排序与上限) / DSR-015(行升序强度降序), DSR-057(命中上限计数).
         """
         rules = self._rules_for_language(language)
         hits: List[Dict[str, Any]] = []
@@ -215,6 +226,8 @@ def scan_snapshot_files(
     - ``gaps``: [{path, reason, detail}, ...] read-failure gap records
     - ``overflows`` / ``overflow_count``: hit-cap overflow records
     - ``scan_error_count``: number of files that could not be read
+
+    Requirements: SWR-004(扫描失败计数与缺口) / DSR-057(失败不静默), DSR-013(读失败缺口).
     """
     file_signals: Dict[str, List[Dict[str, Any]]] = {}
     gaps: List[Dict[str, Any]] = []

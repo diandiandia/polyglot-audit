@@ -78,6 +78,20 @@
 | 回填状态 | 待回填主文档（DDS-03 §3.2 / DDS-06 停止序列段）。 |
 | 待设计审查确认 | ① 验证保留底座耗尽后是否允许验证任务降级使用剩余 hunt 额度（当前决策：不允许，如实 incomplete）；② max_tasks 是否需要对 verify 单独设置上限。 |
 
+## 2026-11-17 run 卷宗目录形态对齐（路径 B）
+
+### DA-07 实现采用扁平文件形态承载 §10.1 同源信息，且真实运行暴露 per-task 结果未落盘缺口
+
+| 项 | 内容 |
+|---|---|
+| 设计出处 | SYSTEM_DESIGN.md §10.1（run 目录十条目）、§9.3（报告集）、§10.2/10.3（证据链与审计轨迹）、§11.4（自审可移植边界）；DSR-072（版本兼容检查只覆盖 DB 格式，未覆盖目录形态）。 |
+| 缺口描述 | 实现原以扁平文件承载与 §10.1 同源的信息：无 run.json（运行元数据只散落在 config.json 与 DB runs 行）、计划写在 run 根（plan.json 而非 plan/plan.json）、无 inventory/summary.json、无 recon/ 与 candidates/ 目录、自审混在 report/ 里（report/SKILL-REVIEW.md 与 report/skill-review.json）。功能等价但形态不一致——卷宗消费者无法按 §10.1 形态导航。真实运行（真实目标项目，名称不记录；真实运行 run-001~011）进一步暴露真缺口：① tasks/<task-id>/ 只有提示包与 recon 的守卫基线汇总，hunt/verify 的 worker 结果从未按任务落盘（结果只活在账本投影与 findings/verified-*.json 聚合文件里，任务级"提示包+结果+校验日志+用量同目录"的追溯不成立）；② schema 拒绝的校验日志（DSR-018）无落盘形态；③ 用量对象未按任务落盘。 |
+| 影响 | §10.1 的目录契约对宿主/审计者不可导航；任务级证据链断裂（提交内容与账本投影之间无逐任务工件可对账）；旧卷宗（§10.1 之前的布局）的读取路径未定义，存在被误迁移的风险。 |
+| 补救决策 | 按路径 B 对齐 §10.1 全部十条目，不引入新依赖：① prepare 发布 run.json（不可变元数据：target、snapshot_id、root_hash、skill_version、skill_payload_sha256——对 skill 资产树计算确定性摘要、dossier_version="1.0"、整份冻结 config、profile、budgets、created_at；写入后任何阶段不得改写，prepare 入口拒绝非空 run 目录保证不可覆盖）、plan/plan.json、inventory/summary.json；② submit 对三类任务统一发布 tasks/<id>/result.json（内容=提交的 worker 结果）与 tasks/<id>/usage.json（有用量时），schema 拒绝发布 tasks/<id>/validation.json（拒绝原因+字段路径），recon 另发布 recon/recon-result.json（守卫基线汇总）；③ finalize 发布 candidates/final.json（去重后代表候选池，含 provenance/dedup 账本引用）与逐条 findings/<finding_id>/record.json + history.json（状态变迁历史自事件账本提取，无事件则空数组如实）；④ 自审移出 report/：skill-review/SKILL-REVIEW.md 常驻、可移植导出为 skill-review/portable.json（语义不变：默认关、白名单校验），report/ 只保留 §9.3 七件套（findings.json 与 findings/<id>/ 双形态并存）；⑤ 读取回退（DSR-072 只读容错）：plan 读取点优先 plan/plan.json、回退旧 plan.json；对旧卷宗禁止任何写迁移。 |
+| 代码位置 | `skill/scripts/auditkit/app/service.py`（prepare 的 run.json/plan/plan.json/inventory 发布、submit 的 result/usage/validation 发布、_on_recon_result 的 recon/recon-result.json、finalize 的 _publish_dossier_records、_load_plan 回退、_compute_skill_payload_sha256）；`skill/scripts/auditkit/reporting/generator.py`（自审输出目录 skill-review/）。测试：`tests/e2e/test_dossier_layout.py`（新增，§10.1 十条目 + report/ 无自审 + run.json 不可变 + 校验日志 + 旧布局只读回退）、`tests/swr/test_swr_012.py`、`tests/swr/test_swr_013.py`、`tests/reporting/`、`tests/e2e/test_pipeline_closure.py`。 |
+| 回填状态 | 待回填主文档：SD §10.1 增补 run.json 字段清单与 dossier_version 语义；§9.3 报告集表格移出 SKILL-REVIEW.md（与 §10.1 的自相矛盾需设计裁决）；§11.4 可移植部分文件名（设计写 skill-review.json，实现为 skill-review/portable.json）。 |
+| 待设计审查确认 | ① 形态差异是否需要版本化（dossier_version）处理更老的布局：当前 run.json 记录 dossier_version="1.0" 只标识新布局，旧扁平布局无版本标记、依赖读取点回退（plan.json 回退已实现）——是否需要给旧布局定义显式版本值或提供一次性受控迁移工具；② report/ 与 skill-review/ 的边界：§9.3 把 SKILL-REVIEW.md 列入报告集而 §10.1 将自审独立成目录，两处矛盾需设计收敛（本实现按 §10.1 处理，report/ 不含自审）；③ §10.1 tasks/<task-id>/ 中的"工具调用摘要"（工具名/路径/行范围）目前无宿主数据源，卷宗中如实缺席——需要设计定义宿主上报契约；④ run.json 中 skill_payload_sha256 的口径（本实现：资产树逐文件内容摘要、排序拼接、排除生成字节码缓存）是否需要升格为契约。 |
+
 ## 与并行工作流的接口确认（本文件随实现更新）
 
 | 接口 | 变更 | 消费方 |
@@ -86,3 +100,4 @@
 | `AuditAppService.finalize` | 新增 InvalidStateError 语义：有效租约内 claimed/running attempt >0 时拒绝 finalize。`tests/cli/test_cli.py::test_prepare_run_next_start_hostfail_submit_finalize` 现会命中该门禁（finalize 前需先 pause 或排空在途 claim）——该文件属 MCP/CLI 并行工作流，需同步更新。 | `audit.py finalize`、MCP finalize 工具、tests/cli |
 | `KnowledgeCatalog.get_applicable_indices` | `is_jvm` 升级为三态（默认 None=未知）。`audit.py`/hosts 层不直接调用。 | service 两处调用点、tests/knowledge |
 | 事件账本新增事件类型 | `frontier_recorded`、`sink_probe_recorded`、`connector_paired`、`unpaired_half_chain`、`verify_task_spec_rejected`；`run_finalized` payload 新增 `unprocessed_units` 明细。 | MCP/CLI 工具面若透传事件列表，属只读追加，向后兼容 |
+| 自审输出与卷宗工件路径（DA-07） | `ReportGenerator` 自审输出移至 `skill-review/SKILL-REVIEW.md`（常驻）与 `skill-review/portable.json`（可移植导出，开启时；原 `report/skill-review.json`），`report/` 只保留 §9.3 七件套；service 新增卷宗工件：`run.json`、`plan/plan.json`、`inventory/summary.json`、`recon/recon-result.json`、`tasks/<id>/{result,usage,validation}.json`、`candidates/final.json`、`findings/<finding_id>/{record,history}.json`；plan 读取点回退旧 `plan.json`（只读）。`audit.py report` 只读 `report/REPORT.md`，不读自审，无破坏。 | `audit.py report`（确认无影响）、tests/reporting、tests/swr/test_swr_010、test_swr_012、test_swr_013、test_swr_016、tests/e2e |

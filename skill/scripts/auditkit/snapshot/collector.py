@@ -67,6 +67,8 @@ def check_git_status(target_dir: str | Path) -> Dict[str, str]:
 
     Git metadata is supplementary only (SR-017 / REV-01): content digests,
     not Git state, decide snapshot consistency.
+
+    Requirements: SWR-017(dirty/non_git/unknown如实) / DSR-012(Git状态仅辅助).
     """
     try:
         proc = subprocess.run(
@@ -101,6 +103,8 @@ def count_lines(content_bytes: bytes) -> Tuple[int, str]:
     - Trailing newline at EOF does not create an extra line
     - Content that is not valid UTF-8 and contains NUL bytes is classified
       as ``binary`` (decode failure recorded upstream as a gap).
+
+    Requirements: SWR-017(行数/编码/二进制判定) / DSR-012(行数字段), DSR-013(解码失败缺口).
     """
     if len(content_bytes) == 0:
         return 0, "utf-8"
@@ -151,6 +155,8 @@ class SnapshotCollector:
           definitions (``knowledge/languages/<lang>/signals.json`` missing) as
           explicit collection assumptions, so the absence of knowledge backing
           is disclosed instead of discovered later (DSR-013/DSR-038).
+
+        Requirements: SWR-017(漂移策略与dirty拒绝) / DSR-012, DSR-013 (support).
         """
         if on_drift not in ("raise", "record"):
             raise StorageError(f"Unsupported on_drift policy: {on_drift!r}")
@@ -165,7 +171,11 @@ class SnapshotCollector:
         )
 
     def collect(self) -> SnapshotManifest:
-        """Execute full snapshot collection with pre/post drift checking."""
+        """Execute full snapshot collection with pre/post drift checking.
+
+        Requirements: SWR-017(只读快照+采集复查), SWR-015(不跟随链接)
+        / DSR-012(复制与内容摘要), DSR-013(复查失败处理), DSR-011(TOCTOU防护).
+        """
         if not self.target_dir.exists() or not self.target_dir.is_dir():
             raise StorageError(f"Target directory does not exist: {self.target_dir}")
 
@@ -328,6 +338,8 @@ class SnapshotCollector:
         When a knowledge_dir was supplied, every collected language without a
         knowledge signal definition produces an explicit assumption line;
         unmeasured knowledge backing is disclosed, never silently assumed.
+
+        Requirements: SWR-017(知识缺口披露) / DSR-013(假设如实记录) (support).
         """
         assumptions = [
             "Source tree remained stable during collection window",
@@ -355,6 +367,8 @@ class SnapshotCollector:
         Opens via ``os.open`` with ``O_NOFOLLOW`` where the platform supports
         it, so a symlink swapped in after the walk (TOCTOU) fails instead of
         leaking out-of-root content (DSR-011).
+
+        Requirements: SWR-015(O_NOFOLLOW防TOCTOU) / DSR-011(链接安全访问).
         """
         fd = os.open(path, os.O_RDONLY | _NOFOLLOW)
         try:
@@ -369,7 +383,10 @@ class SnapshotCollector:
             os.close(fd)
 
     def _resolved_within_target(self, path: Path) -> bool:
-        """Re-verify that the fully resolved path is still inside target root."""
+        """Re-verify that the fully resolved path is still inside target root.
+
+        Requirements: SWR-015(打开后逃逸复验) / DSR-011 (support).
+        """
         resolved = Path(os.path.realpath(path))
         try:
             resolved.relative_to(self.target_dir)
@@ -378,7 +395,10 @@ class SnapshotCollector:
             return False
 
     def _scan_source_tree(self) -> Dict[str, Tuple[int, float]]:
-        """Return dict of canonical relative paths to (size, mtime)."""
+        """Return dict of canonical relative paths to (size, mtime).
+
+        Requirements: SWR-017(采集前后树扫描) / DSR-013 (support).
+        """
         entries: Dict[str, Tuple[int, float]] = {}
         for root, dirs, files in os.walk(self.target_dir):
             for fname in files:
@@ -402,6 +422,8 @@ class SnapshotCollector:
         Size/mtime differences here are a fast-fail signal only; content-level
         equality is proven separately by :meth:`_verify_content_hashes`
         (SR-017 forbids relying on mtime alone).
+
+        Requirements: SWR-017(采集中变化快失败) / DSR-013(采集复查).
         """
         pre_keys = set(pre_scan.keys())
         post_keys = set(post_scan.keys())
@@ -433,6 +455,8 @@ class SnapshotCollector:
         drifted paths; empty means content verified stable. Unreadable files
         (deleted, permission-escaped or symlink-swapped mid-collection) count
         as drifted.
+
+        Requirements: SWR-017(同大小同mtime改写必检出) / DSR-012(内容摘要权威复查).
         """
         drift: List[str] = []
         for relpath in sorted(collected_hashes.keys()):

@@ -42,7 +42,11 @@ class BoundaryScanner:
     ]
 
     def scan_file(self, relpath: str, lines: List[str], lang: str) -> List[Dict[str, Any]]:
-        """Identify boundaries in a file."""
+        """Identify boundaries in a file.
+
+        Requirements: SWR-003(跨语言边界检出), SWR-005(未解链保留)
+        / DSR-055(FFI/脚本调用扫描).
+        """
         boundaries: List[Dict[str, Any]] = []
 
         for line_idx, line in enumerate(lines, start=1):
@@ -96,7 +100,10 @@ class BoundaryScanner:
 
     @classmethod
     def _family_of(cls, ext: str) -> Optional[frozenset]:
-        """Return the extension family containing ``ext`` (lowercase), if any."""
+        """Return the extension family containing ``ext`` (lowercase), if any.
+
+        Requirements: SWR-005(扩展名族匹配) / DSR-055 (support).
+        """
         for family in cls.EXTENSION_FAMILIES:
             if ext in family:
                 return frozenset(family)
@@ -118,6 +125,8 @@ class BoundaryScanner:
 
         Anything unmatched keeps ``matched_implementation`` None and
         ``is_gap`` True — an explicit coverage gap, never a guessed match.
+
+        Requirements: SWR-005(声明/实现匹配留缺口) / DSR-055(未匹配明确缺口).
         """
         by_basename: Dict[str, List[str]] = {}
         by_stem: Dict[str, List[Tuple[str, str]]] = {}

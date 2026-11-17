@@ -42,6 +42,10 @@ class Capability:
         features: Optional[Dict[str, Dict[str, Any]]] = None,
         checked_at: Optional[str] = None,
     ) -> None:
+        """Build a capability with conservative default disclosures.
+
+        Requirements: SWR-015(support) / DSR-021(能力披露)
+        """
         self.adapter = adapter
         self.adapter_version = adapter_version
         self.checked_at = checked_at or datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -55,6 +59,10 @@ class Capability:
         }
 
     def to_dict(self) -> Dict[str, Any]:
+        """Serialize the capability report.
+
+        Requirements: SWR-023(support) / DSR-001(能力报告)
+        """
         return {
             "schema_version": "1.0",
             "adapter": self.adapter,
@@ -64,7 +72,7 @@ class Capability:
         }
 
     def verify_safety_policy(self, safety_acceptance: Dict[str, Any]) -> None:
-        """Verify that user has explicitly approved running with unverified or un-enforced isolation."""
+        """Verify that user has explicitly approved running with unverified or un-enforced isolation. Requirements: SWR-015(批准门禁) / DSR-021(未批禁启)"""
         user_approved = safety_acceptance.get("user_approved", False)
 
         fs_state = self.features.get("filesystem_isolation", {}).get("state")

@@ -25,6 +25,10 @@ class ConcurrencyController:
     """Additive-increase / multiplicative-decrease concurrency governor."""
 
     def __init__(self, initial: int = 1, maximum: int = 8, minimum: int = 1) -> None:
+        """Validate and clamp concurrency bounds.
+
+        Requirements: SWR-022(support) / DSR-064(并发边界)
+        """
         if minimum < 1:
             raise ValueError("minimum concurrency must be >= 1")
         if maximum < minimum:
@@ -39,16 +43,16 @@ class ConcurrencyController:
 
     @property
     def current(self) -> int:
-        """Current effective concurrency level."""
+        """Current effective concurrency level. Requirements: SWR-022(support) / DSR-064(当前并发)"""
         return self._current
 
     def on_success(self) -> int:
-        """AIMD additive increase: +1 on success, capped at maximum."""
+        """AIMD additive increase: +1 on success, capped at maximum. Requirements: SWR-022(加性增) / DSR-064(成功升速)"""
         if self._current < self.maximum:
             self._current += 1
         return self._current
 
     def on_failure(self) -> int:
-        """AIMD multiplicative decrease: halve on failure, floored at minimum."""
+        """AIMD multiplicative decrease: halve on failure, floored at minimum. Requirements: SWR-022(乘性减) / DSR-064(失败降速)"""
         self._current = max(self._current // 2, self.minimum)
         return self._current

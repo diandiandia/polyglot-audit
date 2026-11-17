@@ -54,6 +54,8 @@ def _normalize_relpath(raw: str, snapshot_root: Optional[str | Path]) -> Optiona
 
     Returns None when the path cannot be expressed inside the snapshot root
     (absolute paths escaping it, or relative paths climbing out with "..").
+
+    Requirements: SWR-004(路径规范化) / DSR-055 (support).
     """
     p = raw[2:] if raw.startswith("./") else raw
     p = p.replace("\\", "/")
@@ -73,6 +75,8 @@ def find_build_manifest_paths(paths: Iterable[str]) -> List[str]:
     Pure path-list helper shared by component detection (DSR-055) and JVM
     build-evidence detection (DA-03 / SR-003) so the manifest scan happens
     exactly once per run.
+
+    Requirements: SWR-004(构建清单发现) / DSR-055, SWR-003(JVM证据复用) (support).
     """
     manifests: List[str] = []
     for raw in set(paths):
@@ -93,6 +97,8 @@ def component_roots(manifest_paths: Iterable[str]) -> List[Dict[str, str]]:
     directory): ``{"root": <snapshot-relative dir or "">, "manifest":
     <manifest path>, "label": <component label>}``. The top-level root
     carries ``root: ""`` and is labelled with the manifest file's own name.
+
+    Requirements: SWR-004(组件根与标签确定) / DSR-055(构建清单组件识别).
     """
     records: List[Dict[str, str]] = []
     for manifest_path in find_build_manifest_paths(manifest_paths):
@@ -108,6 +114,8 @@ def _nearest_root_label(directory: str, records: List[Dict[str, str]]) -> Option
 
     A root covers a directory when it is the directory itself or an ancestor
     of it; the top-level root (``root == ""``) covers the whole tree.
+
+    Requirements: SWR-004(最近根分配) / DSR-055 (support).
     """
     for record in records:
         root_dir = record["root"]
@@ -133,6 +141,8 @@ def detect_components(
     enclosing component root (deepest build-manifest directory that contains
     the file); files outside every root map to ``default``. The result is
     deterministic for a given manifest.
+
+    Requirements: SWR-004(组件分配确定性) / DSR-055(最近根分配与default).
     """
     entries: List[str] = []
     seen_keys: Dict[str, str] = {}

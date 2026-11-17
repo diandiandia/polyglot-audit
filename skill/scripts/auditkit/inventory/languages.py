@@ -110,7 +110,10 @@ BASE_LANGUAGE_MAP: Dict[str, str] = {
 
 
 def detect_language(path: str, header_bytes: bytes = b"") -> str:
-    """Detect language from path and optional header bytes (shebang)."""
+    """Detect language from path and optional header bytes (shebang).
+
+    Requirements: SWR-004(语言识别未知单列) / DSR-014(扩展名/文件名/shebang).
+    """
     basename = os.path.basename(path)
     if basename in EXACT_FILENAME_MAP:
         return EXACT_FILENAME_MAP[basename]
@@ -143,6 +146,8 @@ def get_base_languages(language: str, platform_is_jvm: bool = True) -> List[str]
     - TypeScript always includes JavaScript.
     - C++ always includes C.
     - Kotlin and Scala only include Java when platform is JVM.
+
+    Requirements: SWR-003(基座语言平台条件) / DSR-038(TS/JS、Kotlin/Scala条件).
     """
     if language == "typescript":
         return ["javascript"]

@@ -35,6 +35,10 @@ class ArtifactManager:
     """Manages file artifacts tied to a run."""
 
     def __init__(self, run_dir: str | Path, conn: sqlite3.Connection) -> None:
+        """Bind the run directory and ledger connection.
+
+        Requirements: SWR-013(support) / DSR-019(目录绑定)
+        """
         self.run_dir = Path(os.path.realpath(os.path.abspath(run_dir)))
         self.conn = conn
 
@@ -46,7 +50,7 @@ class ArtifactManager:
         content_bytes: bytes,
         generation: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Atomically write and register an artifact."""
+        """Atomically write and register an artifact. Requirements: SWR-013(原子发布) / DSR-019(工件登记)"""
         final_path = self.run_dir / rel_path
         final_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -99,7 +103,7 @@ class ArtifactManager:
         }
 
     def verify_artifacts(self, run_id: str) -> None:
-        """Verify all referenced artifacts exist and match digests."""
+        """Verify all referenced artifacts exist and match digests. Requirements: SWR-013(完整性校验) / DSR-019(缺失转corrupt)"""
         rows = self.conn.execute(
             "SELECT artifact_id, kind, relative_path, sha256, size_bytes FROM artifacts WHERE run_id = ?",
             (run_id,),
@@ -124,7 +128,7 @@ class ArtifactManager:
                 )
 
     def cleanup_orphaned_temps(self) -> int:
-        """Remove leftover .tmp files in run_dir."""
+        """Remove leftover .tmp files in run_dir. Requirements: SWR-013(support) / DSR-019(临时清理)"""
         removed = 0
         for root, _, files in os.walk(self.run_dir):
             for fname in files:

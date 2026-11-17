@@ -32,7 +32,10 @@ GATE_STATUSES = ("pass", "fail", "not_applicable")
 
 @dataclass
 class GateCheck:
-    """Single check inside a gate result."""
+    """Single check inside a gate result.
+
+    Requirements: SWR-026(检查三态可定位) / DSR-022(N/A须有理由)
+    """
 
     check_id: str
     name: str
@@ -41,6 +44,10 @@ class GateCheck:
     evidence_ref: Optional[str] = None
 
     def __post_init__(self) -> None:
+        """Enforce the status enum and the N/A-requires-reason rule.
+
+        Requirements: SWR-026(support) / DSR-022(N/A必带理由)
+        """
         if self.status not in GATE_STATUSES:
             raise InvalidInputError(
                 f"Gate check '{self.check_id}' has invalid status '{self.status}'; "
@@ -52,6 +59,10 @@ class GateCheck:
             )
 
     def to_dict(self) -> GateCheckData:
+        """Serialize the check to the gate_result contract shape.
+
+        Requirements: SWR-025(类型化序列化,support) / DSR-073(support)
+        """
         d: GateCheckData = {
             "check_id": self.check_id,
             "name": self.name,
@@ -65,7 +76,10 @@ class GateCheck:
 
 @dataclass
 class GateResult:
-    """Aggregated gate result."""
+    """Aggregated gate result.
+
+    Requirements: SWR-026(门禁结果完整性) / DSR-022(可定位,N/A理由)
+    """
 
     gate_id: str  # G0, G1, G2, G3, G4
     status: str   # pass, fail, not_applicable
@@ -74,6 +88,10 @@ class GateResult:
     reason: Optional[str] = None
 
     def __post_init__(self) -> None:
+        """Enforce the status enum and the N/A-requires-reason rule.
+
+        Requirements: SWR-026(support) / DSR-022(N/A必带理由)
+        """
         if self.status not in GATE_STATUSES:
             raise InvalidInputError(
                 f"Gate '{self.gate_id}' has invalid status '{self.status}'; "
@@ -86,6 +104,10 @@ class GateResult:
             )
 
     def to_dict(self) -> GateResultData:
+        """Serialize the gate result with all child checks.
+
+        Requirements: SWR-025(类型化序列化,support) / DSR-073(support)
+        """
         d: GateResultData = {
             "schema_version": "1.0",
             "gate_id": self.gate_id,
@@ -99,10 +121,17 @@ class GateResult:
 
 
 class GateEvaluator:
-    """Evaluates gates G0 through G4 against run state."""
+    """Evaluates gates G0 through G4 against run state.
+
+    Requirements: SWR-026(G0~G4可程序化检查) / DSR-022(可复用检查框架)
+    """
 
     @staticmethod
     def evaluate_g0(manifest: Optional[Dict[str, Any]], plan: Optional[Dict[str, Any]], revision: int) -> GateResult:
+        """Check snapshot manifest, inventory and planning-unit completeness.
+
+        Requirements: SWR-026(G0快照/清点/计划) / DSR-022(失败可定位)
+        """
         checks: List[GateCheck] = []
         if not manifest:
             checks.append(GateCheck("G0-1", "Snapshot Manifest", "fail", "Missing snapshot manifest"))
@@ -135,6 +164,10 @@ class GateEvaluator:
         overflow_records: List[Dict[str, Any]],
         revision: int,
     ) -> GateResult:
+        """Check unit dispatch completeness and overflow accounting.
+
+        Requirements: SWR-026(G1单元/溢出记账) / DSR-022(失败可定位)
+        """
         checks: List[GateCheck] = []
         if total_units > 0 and completed_units >= total_units:
             checks.append(GateCheck("G1-1", "Unit Dispatch", "pass", f"All {total_units} units dispatched and processed"))
@@ -165,6 +198,8 @@ class GateEvaluator:
         as in-flight without a lost result. Any dispatched task without a
         submitted result and without a valid lease fails the gate. Findings are
         checked against the semantic validator.
+
+        Requirements: SWR-026(G2调度对账+语义完整) / DSR-022(失败可定位), DSR-076(不伪终态)
         """
         from auditkit.contracts.semantic_validator import SemanticValidator
 
@@ -217,6 +252,10 @@ class GateEvaluator:
         generation_id: str,
         revision: int,
     ) -> GateResult:
+        """Check report/ledger findings-count reconciliation and generation id.
+
+        Requirements: SWR-026(G3报告对账) / DSR-022(失败可定位)
+        """
         checks: List[GateCheck] = []
         if report_findings_count == db_findings_count:
             checks.append(GateCheck("G3-1", "Findings Count Reconciliation", "pass", f"Reconciled {db_findings_count} findings"))
@@ -245,6 +284,8 @@ class GateEvaluator:
         revision_consistent: the persisted run revision matches the replayed
         event ledger and artifact generations are consistent.
         export_sanitized: published export content passed leakage sanitization.
+
+        Requirements: SWR-026(G4修订/导出一致) / DSR-022(失败可定位)
         """
         checks: List[GateCheck] = []
         if revision_consistent:

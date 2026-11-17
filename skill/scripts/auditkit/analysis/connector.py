@@ -35,6 +35,8 @@ def _param_arity(participant: Dict[str, Any]) -> Optional[int]:
     """Extract parameter arity from ``params`` list or ``signature`` string.
 
     Returns None when no signature information is declared.
+
+    Requirements: SWR-005(参数签名,support) / DSR-026(support)
     """
     params = participant.get("params")
     if isinstance(params, list):
@@ -51,7 +53,10 @@ def _param_arity(participant: Dict[str, Any]) -> Optional[int]:
 
 
 class HypothesisConnector:
-    """Connects Frontiers and SinkProbes into candidate paths."""
+    """Connects Frontiers and SinkProbes into candidate paths.
+
+    Requirements: SWR-003(跨语言边界), SWR-005(半链关联) / DSR-026(不伪verified)
+    """
 
     def connect(
         self,
@@ -64,6 +69,8 @@ class HypothesisConnector:
         """Attempt to join frontiers and probes (backward-compatible form).
 
         Returns: (connections, synthesized_candidates)
+
+        Requirements: SWR-005(连接假设,support) / DSR-026(support)
         """
         result = self.connect_ex(
             frontiers,
@@ -97,6 +104,8 @@ class HypothesisConnector:
 
         Returns a dict with keys: connections, candidates, unresolved,
         incompatible, gaps, stats.
+
+        Requirements: SWR-003(跨语言保留未决), SWR-005(未连接显式状态) / DSR-026(不兼容不成verified), DSR-058(无匹配与超额留缺口)
         """
         if max_connections < 1:
             raise InvalidInputError(f"max_connections must be >= 1, got {max_connections}")

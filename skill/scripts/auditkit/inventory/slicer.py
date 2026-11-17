@@ -34,7 +34,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 
 def calculate_risk_tier(signal_hits: List[Dict[str, Any]], has_boundary: bool) -> Tuple[str, List[str]]:
-    """Determine risk tier T1..T4 and list risk factor reasons."""
+    """Determine risk tier T1..T4 and list risk factor reasons.
+
+    Requirements: SWR-005(风险分级T1~T4) / DSR-056(风险因子与排序).
+    """
     factors: List[str] = []
     has_sink = any(s["kind"] == "sink" for s in signal_hits)
     has_source = any(s["kind"] == "source" for s in signal_hits)
@@ -70,6 +73,8 @@ def slice_file_ranges(
     1. If line_count == 0, returns []
     2. Intervals cover [1, line_count] completely without gaps
     3. Overlaps are bounded
+
+    Requirements: SWR-005(区间并集完整+回退) / DSR-015(切块与窗口回退).
     """
     if line_count <= 0:
         return []
@@ -104,6 +109,10 @@ class UnitPlanner:
     }
 
     def __init__(self, snapshot_id: str, profile: str = "standard") -> None:
+        """Validate and store the planning profile for this snapshot.
+
+        Requirements: SWR-005(计划策略校验) / DSR-056 (support).
+        """
         if profile not in self.PROFILE_DISPOSITIONS:
             raise ValueError(f"Unknown profile: {profile!r}")
         self.snapshot_id = snapshot_id
@@ -122,6 +131,9 @@ class UnitPlanner:
         ``inventory_only`` (T4). Profiles control which dispositions yield
         units; the profile never changes the evidence standard, only which
         tiers get active hunt units.
+
+        Requirements: SWR-005(确定性单元计划), SWR-004(无命中保留资格)
+        / DSR-056(tier+disposition策略), DSR-015(分块区间).
         """
         units: List[Dict[str, Any]] = []
         boundary_files = {b["path"] for b in boundaries}
