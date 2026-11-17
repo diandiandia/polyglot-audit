@@ -1004,7 +1004,7 @@ class AuditAppService:
     def _resolve_snapshot_path(path: str, snapshot_paths: List[str]) -> str:
         """Resolve an abbreviated model path against the frozen manifest.
 
-        Real workers cite shortened paths ("zcode-protocol/plugins.ts"); the
+        Real workers cite shortened paths (relative names like "dir/name.ext"); the
         manifest is program-owned ground truth. Unique suffix match wins;
         ambiguous or unmatched paths keep the raw value and render as a
         degraded/unavailable block -- never guessed (SR-025).
@@ -1898,7 +1898,7 @@ class AuditAppService:
         # Bind verified findings to their candidate dossier metadata (title/
         # issue/source/sink/steps) when the worker verdict payload omits them:
         # the verify spec's candidate record is program-owned dossier data
-        # (RUN-LESSONS real-shape series, ZCode run-011).
+        # (RUN-LESSONS real-shape series, real run-011).
         spec = self._task_spec(conn, claim)
         cand = ((spec.get("input") or {}).get("candidate")) or {}
         for finding in findings:
@@ -3078,7 +3078,7 @@ class AuditAppService:
         # confirmed finding without rating factor reasons cannot be presented
         # as a rated confirmed finding in the report -- demote honestly to
         # needs_validation, preserving all verified evidence (RUN-LESSONS
-        # ZCode run-011: real verified findings lacked rating factors).
+        # real run-011: verified findings lacked rating factors).
         for f in merged_findings.values():
             if f.get("verdict") != "confirmed":
                 continue

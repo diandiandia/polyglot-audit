@@ -77,7 +77,7 @@ class EventStore:
         # BEGIN IMMEDIATE critical section. Real concurrent drivers append
         # events from multiple worker threads (separate connections); a
         # bare SELECT-then-INSERT races on the same revision and trips the
-        # (run_id, revision) UNIQUE constraint (RUN-LESSONS, ZCode run-009b).
+        # (run_id, revision) UNIQUE constraint (RUN-LESSONS, real run-009b).
         own_tx = not self.conn.in_transaction
         if own_tx:
             self.conn.execute("BEGIN IMMEDIATE")

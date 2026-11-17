@@ -507,7 +507,7 @@ class TestLedger(unittest.TestCase):
 
 
     def test_concurrent_event_appends_unique_revisions(self):
-        """RUN-LESSONS (ZCode run-009b): concurrent append_event from multiple
+        """RUN-LESSONS (real run-009b): concurrent append_event from multiple
         threads must serialize revisions -- never trip the (run_id, revision)
         UNIQUE constraint (IFC-05 / SR-018)."""
         import threading
