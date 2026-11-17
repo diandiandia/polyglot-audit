@@ -9,6 +9,8 @@ Implements DDS-07 / DSR-074:
 - A minimal full lifecycle (prepare -> run -> next -> start -> host-fail ->
   next -> start -> submit -> finalize) is driven through the CLI on the shared
   tests/fixtures/pyapp target (same usage as tests/e2e, read-only reference).
+
+Requirements: SWR-001(guide不建卷宗), SWR-022(共用CLI) / DSR-032(模糊不执行), DSR-052(入口说明), DSR-074(接口冻结)
 """
 
 import json

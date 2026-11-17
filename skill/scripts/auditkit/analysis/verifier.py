@@ -276,6 +276,16 @@ class Verifier:
         "Attacker input unchecked") fabricated the observed justification for
         a severity and were removed.
 
+        The same no-fabrication rule governs the confirmed finding's attack
+        fields: ``attacker`` and ``preconditions`` are carried into the
+        finding ONLY when the worker record (candidate) or the caller
+        recorded them — otherwise the keys stay absent so the report renders
+        its honest placeholders ("unknown" / "none recorded"). A missing
+        remediation is stated as "not recorded" (change/regression_test)
+        anchored at the observed sink location; the former generic advice
+        ("Enforce strict input validation and safe APIs") fabricated a fix
+        nobody proposed (SWR-010 / SR-008).
+
         Requirements: SWR-008(四态处置), SWR-009(E2新attempt,逐跳证据), SWR-011(缺理由降级) / DSR-027(裁决), DSR-028(因子理由必填)
         """
         finding_id = f"F-{uuid.uuid4().hex[:6].upper()}"
@@ -380,6 +390,41 @@ class Verifier:
             source = candidate.get("source", {})
             sink = candidate.get("sink", {})
 
+            # SWR-010 / SR-008: attacker profile, attack preconditions and
+            # remediation are worker-OBSERVED fields. The former unconditional
+            # canned values ("remote_unauth", "Default configuration", generic
+            # remediation advice) fabricated attack conditions that nobody
+            # recorded — they are now passed through only when the worker
+            # record carries them, and honestly stated as absent otherwise.
+            recorded_attacker = candidate.get("attacker")
+            if isinstance(recorded_attacker, str) and recorded_attacker.strip():
+                finding["attacker"] = recorded_attacker
+            recorded_preconditions = candidate.get("preconditions")
+            if (
+                isinstance(recorded_preconditions, list)
+                and recorded_preconditions
+                and all(isinstance(p, str) and p.strip() for p in recorded_preconditions)
+            ):
+                finding["preconditions"] = list(recorded_preconditions)
+
+            recorded_remediation: Optional[Dict[str, Any]]
+            if isinstance(remediation, dict) and remediation:
+                recorded_remediation = remediation
+            elif isinstance(candidate.get("remediation"), dict) and candidate["remediation"]:
+                recorded_remediation = candidate["remediation"]
+            else:
+                # No remediation was recorded by any worker. The semantic
+                # contract requires a non-empty remediation object on a
+                # confirmed finding, so the absence is stated explicitly
+                # instead of inventing generic advice: only the observed
+                # sink anchor is kept; change/regression_test are "not
+                # recorded" (SR-008: 缺失如实缺省，不虚构).
+                recorded_remediation = {
+                    "where": f"{sink.get('path')}:{sink.get('line', 1)}",
+                    "change": "not recorded",
+                    "regression_test": "not recorded",
+                }
+
             finding.update({
                 "title": f"Confirmed vulnerability in {sink.get('path', 'unknown')}",
                 "issue": candidate.get("issue", "general"),
@@ -388,14 +433,8 @@ class Verifier:
                 "sink": sink,
                 "steps": steps,
                 "guards": [],
-                "attacker": "remote_unauth",
-                "preconditions": ["Default configuration"],
                 "rating": rating_dict,
-                "remediation": remediation or {
-                    "where": f"{sink.get('path')}:{sink.get('line', 1)}",
-                    "change": "Enforce strict input validation and safe APIs",
-                    "regression_test": "Verify invalid input payload is safely rejected",
-                },
+                "remediation": recorded_remediation,
                 "variants": [],
             })
 

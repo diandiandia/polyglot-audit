@@ -1,6 +1,7 @@
 """DSR-027 / DSR-061 / DSR-062: verify task API, E2 attempt gate, second-opinion
 tightening, and bounded variant search."""
 
+import json
 import unittest
 
 from auditkit.analysis.verifier import Verifier, bounded_variant_search
@@ -333,6 +334,86 @@ class TestBoundedVariantSearch(unittest.TestCase):
             bounded_variant_search("not-a-dict", {"sink": {"symbol": "x"}})
         with self.assertRaises(InvalidInputError):
             bounded_variant_search(self.SNAPSHOT, {"sink": {"symbol": "x"}}, max_variants=0)
+
+
+class TestConfirmedObservationFields(unittest.TestCase):
+    """SWR-010 / SR-008: attacker, preconditions and remediation are
+    worker-observed fields. The earlier revision wrote fixed values into
+    every confirmed finding unconditionally ("remote_unauth",
+    "Default configuration", generic remediation advice), fabricating attack
+    conditions nobody recorded. Pass-through only; absence stays honest."""
+
+    def _confirmed(self, candidate=None, **kwargs):
+        base = dict(
+            impact=3,
+            exploitability=3,
+            impact_why="observed impact on the studied path",
+            exploitability_why="observed reachability without a guard",
+        )
+        base.update(kwargs)
+        return Verifier().create_finding_from_candidate(
+            _candidate() if candidate is None else candidate,
+            "confirmed", "t-v1", **base
+        )
+
+    def test_no_recorded_fields_stay_absent_or_not_recorded(self):
+        finding = self._confirmed()
+        self.assertNotIn("attacker", finding, "attacker must not be fabricated")
+        self.assertNotIn("preconditions", finding, "preconditions must not be fabricated")
+        remediation = finding["remediation"]
+        self.assertEqual(remediation["change"], "not recorded")
+        self.assertEqual(remediation["regression_test"], "not recorded")
+        # The only factual anchor kept is the observed sink location.
+        self.assertIn("db.py", remediation["where"])
+
+    def test_recorded_fields_pass_through_verbatim(self):
+        candidate = _candidate()
+        candidate["attacker"] = "local_user_with_read_access"
+        candidate["preconditions"] = ["debug endpoint enabled by deploy flag"]
+        candidate["remediation"] = {
+            "where": "db.py:40",
+            "change": "parameterise the query and validate the column allow-list",
+            "regression_test": "submit a crafted column name and assert rejection",
+        }
+        finding = self._confirmed(candidate)
+        self.assertEqual(finding["attacker"], "local_user_with_read_access")
+        self.assertEqual(finding["preconditions"], ["debug endpoint enabled by deploy flag"])
+        self.assertEqual(
+            finding["remediation"]["change"],
+            "parameterise the query and validate the column allow-list",
+        )
+
+    def test_explicit_remediation_argument_wins_over_candidate(self):
+        candidate = _candidate()
+        candidate["remediation"] = {
+            "where": "db.py:40", "change": "candidate-level fix", "regression_test": "x",
+        }
+        finding = self._confirmed(
+            candidate,
+            remediation={
+                "where": "db.py:40",
+                "change": "verifier-recorded fix",
+                "regression_test": "verify-recorded regression",
+            },
+        )
+        self.assertEqual(finding["remediation"]["change"], "verifier-recorded fix")
+
+    def test_blank_attacker_and_broken_preconditions_not_passed_through(self):
+        candidate = _candidate()
+        candidate["attacker"] = "   "
+        candidate["preconditions"] = ["valid precondition", "   "]
+        finding = self._confirmed(candidate)
+        self.assertNotIn("attacker", finding)
+        self.assertNotIn("preconditions", finding)
+
+    def test_canned_defaults_absent_from_finding(self):
+        """The fixed strings themselves never appear on a finding that did
+        not record them."""
+        finding = self._confirmed()
+        blob = json.dumps(finding)
+        self.assertNotIn("remote_unauth", blob)
+        self.assertNotIn("Default configuration", blob)
+        self.assertNotIn("Enforce strict input validation and safe APIs", blob)
 
 
 if __name__ == "__main__":

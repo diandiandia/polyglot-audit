@@ -25,6 +25,8 @@ Acceptance coverage
    findings.json、NEEDS-VALIDATION.md、COVERAGE.md、coverage.csv、
    AUDIT-TRAIL.md、COST.md、SKILL-REVIEW.md) 中都不得出现原始密钥值,
    且脱敏占位符存在。
+
+Requirements: SWR-010(字段呈现+凭据不外泄) / DSR-035(逐字段可追溯), DSR-069(脱敏介质覆盖)
 """
 
 from __future__ import annotations

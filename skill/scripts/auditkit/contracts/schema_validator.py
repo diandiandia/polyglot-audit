@@ -129,6 +129,13 @@ class SchemaValidator:
             elif key == "$defs" and isinstance(val, dict):
                 for def_name, def_schema in val.items():
                     self._validate_schema_syntax(def_schema, f"{path}/$defs/{def_name}")
+            elif key == "additionalProperties" and isinstance(val, dict):
+                # DSR-007 fail-closed: a dict-form additionalProperties is a
+                # schema of its own — unknown keywords inside it are neither
+                # effective nor ignorable, so they must be rejected at
+                # construction time just like any other subschema. (The
+                # boolean form is not a schema and needs no recursion.)
+                self._validate_schema_syntax(val, f"{path}/additionalProperties")
 
     def _resolve_ref(self, ref: str) -> Dict[str, Any]:
         """Resolve local '#/...' references only; remote refs are rejected.

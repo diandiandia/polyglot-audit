@@ -60,6 +60,49 @@ class TestContracts(unittest.TestCase):
         with self.assertRaises(UnsupportedSchemaError):
             SchemaValidator(schema)
 
+    def test_schema_validator_rejects_unsupported_keyword_in_additionalProperties(self):
+        """DSR-007 fail-closed: a dict-form additionalProperties is a schema
+        of its own — an unknown keyword inside it must be rejected at
+        construction time. The earlier revision recursed only into
+        properties/items/oneOf/$defs, so the keyword was neither effective
+        nor reported (a silent hole in the subset boundary)."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "meta": {
+                    "type": "object",
+                    "additionalProperties": {"type": "string", "frobnicateXYZ": 1},
+                },
+            },
+        }
+        with self.assertRaises(UnsupportedSchemaError) as ctx:
+            SchemaValidator(schema)
+        self.assertIn("frobnicateXYZ", str(ctx.exception))
+        self.assertEqual(
+            ctx.exception.details["path"], "#/properties/meta/additionalProperties"
+        )
+
+    def test_schema_validator_rejects_unsupported_keyword_at_top_additionalProperties(self):
+        schema = {
+            "type": "object",
+            "additionalProperties": {"type": "string", "frobnicateXYZ": 1},
+        }
+        with self.assertRaises(UnsupportedSchemaError):
+            SchemaValidator(schema)
+
+    def test_schema_validator_still_applies_dict_additionalProperties_schema(self):
+        """The boolean form is not a schema and the dict form remains a live
+        constraint at validation time — recursion at construction must not
+        break runtime application of the subschema."""
+        schema = {
+            "type": "object",
+            "additionalProperties": {"type": "string"},
+        }
+        v = SchemaValidator(schema)
+        self.assertEqual(v.validate({"anything": "ok"}), [])
+        errs = v.validate({"anything": 5})
+        self.assertTrue(any(e.keyword == "type" for e in errs))
+
     def test_semantic_validator_rating_matrix(self):
         # 4x4 matrix exhaustive verification
         matrix_expectations = {

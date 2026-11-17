@@ -15,6 +15,8 @@ Implements the recalibrated CLI contracts:
   matches the REPORT.md header.
 
 Standard library only; invokes skill/scripts/audit.py as a subprocess (-I).
+
+Requirements: SWR-022(驱动与暂停) / DSR-064(缺失宿主拒绝), DSR-074(in-flight契约)
 """
 
 import json

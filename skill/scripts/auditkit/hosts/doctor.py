@@ -91,9 +91,12 @@ class Doctor:
                 reason="OS socket access not restricted by runtime",
             ),
             "execution_isolation": make_feature(
-                FeatureState.ENFORCED,
-                method="runtime policy review",
-                evidence="Audit tool does not execute target repository code",
+                FeatureState.UNKNOWN,
+                method="runtime policy review (not a falsifiable probe)",
+                reason=(
+                    "runtime policy review is not a falsifiable probe; "
+                    "execution isolation requires host-level evidence"
+                ),
             ),
         }
         capabilities.append(Capability("python_core", py_ver, core_features))

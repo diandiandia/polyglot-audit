@@ -111,6 +111,10 @@ _FORMAT_HELP = (
 
 
 def _add_format_argument(parser, choices=("json", "human")) -> None:
+    """Attach --format json|human to a subparser (DSR-074 dual format).
+
+    Requirements: SWR-001(CLI格式) / DSR-074(json默认)
+    """
     if list(choices) == ["json"]:
         help_text = "Output format; the MCP stdio wire protocol is fixed JSON-RPC 2.0"
     else:
@@ -119,6 +123,10 @@ def _add_format_argument(parser, choices=("json", "human")) -> None:
 
 
 def emit_json_success(value: dict) -> None:
+    """Write the frozen JSON success envelope to stdout (DSR-074).
+
+    Requirements: SWR-001(JSON信封) / DSR-074(成功信封)
+    """
     envelope = {
         "schema_version": "1.0",
         "ok": True,
@@ -129,6 +137,10 @@ def emit_json_success(value: dict) -> None:
 
 
 def emit_json_error(code: str, message: str, retryable: bool = False, details: dict = None) -> None:
+    """Write the frozen JSON error envelope to stdout (DSR-074).
+
+    Requirements: SWR-001(错误信封) / DSR-074(错误结构)
+    """
     envelope = {
         "schema_version": "1.0",
         "ok": False,
@@ -157,6 +169,10 @@ _KV_WIDTH = 24
 
 
 def _human_scalar(value) -> str:
+    """Render one scalar for the human format (null/true/false fallback).
+
+    Requirements: SWR-001(human格式) / DSR-074(support)
+    """
     if value is None:
         return "null"
     if isinstance(value, bool):
@@ -165,17 +181,28 @@ def _human_scalar(value) -> str:
 
 
 def _human_kv(key: str, value) -> str:
+    """Render one aligned `key: value` line for the human format.
+
+    Requirements: SWR-001(human格式) / DSR-074(键值行)
+    """
     label = f"{key}:"
     return f"{label:<{_KV_WIDTH}}{_human_scalar(value)}"
 
 
 def _human_nested(obj, indent: str = "  ") -> str:
+    """Render a nested dict/list as indented JSON for the human format.
+
+    Requirements: SWR-001(human格式) / DSR-074(嵌套缩进)
+    """
     body = json.dumps(obj, ensure_ascii=False, indent=2, sort_keys=True)
     return "\n".join(indent + line for line in body.splitlines())
 
 
 def _render_remaining(lines: list, value: dict, consumed: set) -> list:
-    """Append generic rendering of keys not handled by a custom renderer."""
+    """Append generic rendering of keys not handled by a custom renderer.
+
+    Requirements: SWR-001(human格式) / DSR-074(兜底渲染)
+    """
     for key, val in value.items():
         if key in consumed:
             continue
@@ -191,6 +218,10 @@ def _render_remaining(lines: list, value: dict, consumed: set) -> list:
 
 
 def render_human_generic(value: dict) -> str:
+    """Generic human renderer: scalars as key/value, nested as JSON.
+
+    Requirements: SWR-001(human格式) / DSR-074(通用回退)
+    """
     lines = []
     for key, val in value.items():
         if isinstance(val, (dict, list)):
@@ -205,6 +236,10 @@ def render_human_generic(value: dict) -> str:
 
 
 def render_human_status(value: dict) -> str:
+    """Human renderer for `status`: run state, task counts, budget lines.
+
+    Requirements: SWR-018(状态可读) / DSR-074(定制渲染), DSR-020(预算可见)
+    """
     lines = [
         _human_kv("run_id", value.get("run_id")),
         _human_kv("snapshot_id", value.get("snapshot_id")),
@@ -237,6 +272,10 @@ def render_human_status(value: dict) -> str:
 
 
 def render_human_finalize(value: dict) -> str:
+    """Human renderer for `finalize`: terminal state, gates, incomplete reasons.
+
+    Requirements: SWR-012(终态可读) / DSR-076(原因明示), DSR-026(门禁结果)
+    """
     lines = [
         _human_kv("run_id", value.get("run_id")),
         _human_kv("final_state", value.get("final_state")),
@@ -270,6 +309,10 @@ def render_human_finalize(value: dict) -> str:
 
 
 def render_human_report(value: dict) -> str:
+    """Human renderer for `report`: generation id plus the REPORT.md body.
+
+    Requirements: SWR-012(报告可读) / DSR-068(可追溯路径), DSR-074(定制渲染)
+    """
     body = value.get("report_md") or ""
     lines = [
         _human_kv("generation_id", value.get("generation_id")),
@@ -284,6 +327,10 @@ def render_human_report(value: dict) -> str:
 
 
 def render_human_pause(value: dict) -> str:
+    """Human renderer for `pause`: revision plus honest in-flight accounting.
+
+    Requirements: SWR-022(暂停可读) / DSR-064(在途如实), DSR-074(定制渲染)
+    """
     attempts = value.get("in_flight_attempt_ids") or []
     lines = [
         (
@@ -308,6 +355,10 @@ def render_human_pause(value: dict) -> str:
 
 
 def render_human_run(value: dict) -> str:
+    """Human renderer for `run`: mode, dispatch summary, next-step guidance.
+
+    Requirements: SWR-022(驱动可读) / DSR-074(定制渲染), DSR-052(会话指引)
+    """
     lines = [
         (
             f"run {_human_scalar(value.get('run_id'))} -> "
@@ -341,6 +392,10 @@ _HUMAN_RENDERERS = {
 
 
 def render_human_error(code: str, message: str, retryable: bool = False, details: dict = None) -> str:
+    """Human renderer for failures: `ERROR code: message` plus details.
+
+    Requirements: SWR-001(错误可读) / DSR-074(错误渲染)
+    """
     lines = [
         f"ERROR {code}: {message}",
         f"  retryable: {'true' if retryable else 'false'}",
@@ -353,7 +408,10 @@ def render_human_error(code: str, message: str, retryable: bool = False, details
 
 def emit_result(value: dict, fmt: str, command: str) -> None:
     """Emit a successful command result: JSON envelope (default) or the
-    DSR-074 human rendering for --format human."""
+    DSR-074 human rendering for --format human.
+
+    Requirements: SWR-001(输出选择) / DSR-074(双格式)
+    """
     if fmt == "human":
         renderer = _HUMAN_RENDERERS.get(command, render_human_generic)
         sys.stdout.write(renderer(value) + "\n")
@@ -363,7 +421,10 @@ def emit_result(value: dict, fmt: str, command: str) -> None:
 
 
 def emit_failure(code: str, message: str, retryable: bool = False, details: dict = None, fmt: str = "json") -> None:
-    """Emit a command failure in the requested format (DSR-074)."""
+    """Emit a command failure in the requested format (DSR-074).
+
+    Requirements: SWR-001(失败输出) / DSR-074(格式无关退出码)
+    """
     if fmt == "human":
         sys.stdout.write(render_human_error(code, message, retryable, details) + "\n")
         sys.stdout.flush()
@@ -380,7 +441,10 @@ def emit_failure(code: str, message: str, retryable: bool = False, details: dict
 
 
 def _resolve_host_binary(host: str) -> str:
-    """Locate the host CLI on PATH or fail loudly (never a silent no-op)."""
+    """Locate the host CLI on PATH or fail loudly (never a silent no-op).
+
+    Requirements: SWR-022(宿主就绪) / DSR-064(缺失不空转), DSR-029(未知不降级)
+    """
     binary = HOST_BINARIES[host]
     resolved = shutil.which(binary)
     if not resolved:
@@ -403,6 +467,8 @@ def _require_events_db(run_dir) -> None:
     run before ANY connect call so a missing dossier yields the standard
     INVALID_INPUT envelope (exit 2, ERROR_CODE_TO_EXIT_CODE mapping) and the
     run directory is left untouched.
+
+    Requirements: SWR-001(缺条件不运行) / DSR-074(非零退出), DSR-032(卷宗前置)
     """
     db_path = Path(run_dir) / "events.db"
     if not db_path.exists():
@@ -414,7 +480,10 @@ def _require_events_db(run_dir) -> None:
 
 
 def _load_run_row(conn, run_dir: str):
-    """Return the single run row of the dossier, or raise InvalidInputError."""
+    """Return the single run row of the dossier, or raise InvalidInputError.
+
+    Requirements: SWR-018(卷宗定位) / DSR-072(打开点校验)+(support)
+    """
     run_row = conn.execute("SELECT run_id, state FROM runs LIMIT 1").fetchone()
     if not run_row:
         raise InvalidInputError(f"No run found in database at {run_dir}")
@@ -422,7 +491,10 @@ def _load_run_row(conn, run_dir: str):
 
 
 def _task_kind(conn, claim: dict) -> str:
-    """Read the authoritative task kind for a claim from the ledger."""
+    """Read the authoritative task kind for a claim from the ledger.
+
+    Requirements: SWR-018(任务真值) / DSR-017(账本权威)+(support)
+    """
     row = conn.execute(
         "SELECT kind FROM tasks WHERE task_id = ?", (claim["task_id"],)
     ).fetchone()
@@ -436,6 +508,8 @@ def _build_worker_prompt(claim: dict, run_dir: str) -> str:
     contract). The claim token / lease credentials are deliberately excluded:
     the prompt is passed as an argv argument to the host CLI and argv is not a
     credential channel (DSR-074).
+
+    Requirements: SWR-006(任务提示) / DSR-074(凭证不走argv), DSR-059(包外供给)
     """
     spec = claim.get("spec") if isinstance(claim.get("spec"), dict) else {}
     snapshot_id = spec.get("snapshot_id", "unknown")
@@ -471,6 +545,8 @@ def _derive_packet_coverage(run_dir: str, claim: dict) -> list:
     published packet is parsed for its ``<untrusted_code path=... lines=...>``
     markers and each marker becomes one coverage range. Worker-claimed
     coverage is not trusted for the denominator (SR-021: 自述不能替代观测).
+
+    Requirements: SWR-021(上下文供给观测) / DSR-034(程序记账)
     """
     import re as _re
     packet_path = Path(run_dir) / "tasks" / claim["task_id"] / "packet.json"
@@ -504,6 +580,8 @@ def _normalize_worker_result(raw: object, claim: dict, kind: str, run_dir: str) 
     stamped from it. Lists (coverage/records/overflow) pass through when the
     worker provided them; a present-but-malformed list is a worker format
     failure (HostFailureError), never silently coerced into an empty one.
+
+    Requirements: SWR-013(结果绑定声明) / DSR-065(畸形不归一), DSR-034(覆盖程序管)
     """
     if not isinstance(raw, dict):
         raise HostFailureError(
@@ -563,8 +641,14 @@ def _make_execute_fn(app: AuditAppService, conn, run_dir: str, adapter) -> objec
     Adapters built on the pre-envelope contract (bare worker_result return)
     still work: execute_fn then yields a ``None`` usage and run_dispatch_loop
     falls back to the legacy build_usage path.
+
+    Requirements: SWR-020(用量捕获) / DSR-033(同次执行绑定)
     """
     def execute_fn(claim: dict) -> object:
+        """Execute one claim through the adapter and its per-attempt usage.
+
+        Requirements: SWR-022(单任务执行) / DSR-033(用量不串扰)+(support)
+        """
         prompt = _build_worker_prompt(claim, run_dir)
         outcome = adapter.execute_worker(
             prompt,
@@ -586,6 +670,8 @@ def _stop_reason_for_drain(conn, run_id: str, summary: dict) -> str:
     The service loop reports stop_reason 'queue_drained' for any empty claim
     batch; when queued tasks remain the real cause is the stop sequence, so
     the CLI names it honestly from the ledger instead of mislabeling it.
+
+    Requirements: SWR-019(停止原因) / DSR-066(预算耗尽明示), DSR-020(保留核对)
     """
     if summary.get("stop_reason") != "queue_drained":
         return summary.get("stop_reason")
@@ -607,6 +693,8 @@ def _in_flight_stats(conn, run_id: str):
 
     Mirrors the ledger's own in-flight definition used by finalize gate G2
     (status claimed/running and the attempt lease not yet expired).
+
+    Requirements: SWR-018(在途统计) / DSR-076(未终态核对)+(support)
     """
     rows = conn.execute(
         """
@@ -622,7 +710,10 @@ def _in_flight_stats(conn, run_id: str):
 
 
 def _resolve_generation_id(run_dir: str, report_md: str):
-    """Resolve the report generation id (artifacts ledger first, header fallback)."""
+    """Resolve the report generation id (artifacts ledger first, header fallback).
+
+    Requirements: SWR-012(代次可追溯) / DSR-036(账本权威), DSR-068(路径引用)
+    """
     db_path = Path(run_dir) / "events.db"
     if db_path.exists():
         conn = get_db_connection(db_path)
@@ -648,6 +739,10 @@ def _resolve_generation_id(run_dir: str, report_md: str):
 
 
 def main() -> int:
+    """CLI entry: frozen subcommands, envelope output, mapped exit codes.
+
+    Requirements: SWR-001(分流入口) / DSR-074(接口冻结), DSR-032(guide/audit)
+    """
     parser = argparse.ArgumentParser(
         prog="audit",
         description="polyglot-audit: Universal source code security audit skill",

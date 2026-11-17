@@ -16,6 +16,8 @@ Tests that need a run directory seed events.db directly (same pattern as
 tests/hosts) so status/pause/run coverage cannot be broken by in-flight
 changes to AuditAppService.prepare in a parallel workstream; the finalize
 lifecycle is isolated in its own class because it does exercise prepare.
+
+Requirements: SWR-001(格式冻结) / DSR-074(json默认human可选)
 """
 
 import json

@@ -146,6 +146,12 @@ def _candidate_paths(candidate: Dict[str, Any]) -> List[str]:
 def _covers_path(pattern: str, paths: List[str]) -> Optional[str]:
     """Return the first candidate path covered by ``pattern`` (substring match).
 
+    The match is loose on purpose: a pattern covers any path containing it and
+    vice versa. That looseness widens the guard-exemption surface beyond the
+    exact files a guard author may have meant — a recorded design choice, not
+    an oversight (SWR-006 tension record: exemptions are suggestions reviewed
+    by the operator, so the wide match trades precision for recall).
+
     Empty patterns never match: an empty applicability/exception entry must not
     be treated as a blanket (global) match.
 

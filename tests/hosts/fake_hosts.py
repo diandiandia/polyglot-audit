@@ -19,6 +19,7 @@ Standard library only; no test framework dependency (usable from unittest).
 from __future__ import annotations
 import os
 import stat
+import sys
 import tempfile
 
 _SCRIPT_TEMPLATE = """#!/bin/sh
@@ -239,3 +240,81 @@ def create_mcp_stdio_fake_server(directory: str, name: str = "fake_mcp_server.py
 def make_path_dir() -> str:
     """Create an empty directory usable as a PATH entry (missing-CLI scenario)."""
     return tempfile.mkdtemp(prefix="fakepath-")
+
+
+# Synthetic host whose headless call HONOURS the network counterexample
+# prompt: it parses the loopback address/port out of the prompt text and
+# connects as the host CLI process would. Three synthesised behaviours cover
+# the probe's verdict space (connect = host used the network, refuse =
+# sandboxed host that fails its headless call, hang = host slower than the
+# probe window). The shebang pins the interpreter absolutely so the fake
+# keeps working under tests that replace PATH with a bare directory.
+_NETWORK_FAKE_TEMPLATE = """#!@@INTERPRETER@@
+# Auto-generated fake host CLI with network behaviour (tests/hosts/fake_hosts.py). Do not edit.
+import re
+import socket
+import sys
+import time
+
+BEHAVIOUR = '@@NET_BEHAVIOUR@@'
+CONNECT_DELAY = @@CONNECT_DELAY@@
+HANG_SECONDS = @@HANG_SECONDS@@
+
+args = sys.argv[1:]
+if args and args[0] == "--version":
+    print('fake-host version 9.9.9')
+    sys.exit(0)
+
+# The headless prompt is the trailing positional argument for both supported
+# shapes (claude --print PROMPT / codex exec --skip-git-repo-check PROMPT).
+prompt = args[-1] if args else ''
+match = re.search(r"127\\.0\\.0\\.1 port (\\d+)", prompt)
+if BEHAVIOUR == 'connect':
+    if match:
+        if CONNECT_DELAY:
+            time.sleep(CONNECT_DELAY)
+        sock = socket.create_connection(('127.0.0.1', int(match.group(1))), timeout=5)
+        sock.close()
+        print('connected to listener')
+    else:
+        print('OK')
+    sys.exit(0)
+if BEHAVIOUR == 'refuse':
+    sys.stderr.write('connection refused by sandbox policy')
+    sys.exit(7)
+if BEHAVIOUR == 'hang':
+    time.sleep(HANG_SECONDS)
+    print('OK')
+    sys.exit(0)
+sys.exit(0)
+"""
+
+
+def create_network_fake_host(
+    directory: str,
+    name: str,
+    behaviour: str,
+    connect_delay: int = 0,
+    hang_seconds: int = 0,
+) -> str:
+    """Create a fake host CLI with synthesised network behaviour.
+
+    behaviour="connect": the headless call reads the loopback port out of the
+    prompt and opens a TCP connection to it (after an optional delay).
+    behaviour="refuse": the headless call fails with exit 7 and a sandbox
+    refusal on stderr - the fake of a host whose process cannot use sockets.
+    behaviour="hang": the headless call sleeps hang_seconds (longer than the
+    probe window) - the fake of a host slower than its probe timeout.
+
+    Standard library only; usable from unittest like the other fakes.
+    """
+    if behaviour not in ("connect", "refuse", "hang"):
+        raise ValueError(f"invalid behaviour: {behaviour!r}")
+    script = (
+        _NETWORK_FAKE_TEMPLATE
+        .replace("@@INTERPRETER@@", sys.executable)
+        .replace("@@NET_BEHAVIOUR@@", behaviour)
+        .replace("@@CONNECT_DELAY@@", str(connect_delay))
+        .replace("@@HANG_SECONDS@@", str(hang_seconds))
+    )
+    return _write_executable(os.path.join(directory, name), script)

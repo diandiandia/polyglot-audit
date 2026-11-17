@@ -36,10 +36,10 @@ STATE_LABELS: Dict[str, Dict[str, str]] = {
         "unknown": "unknown state",
     },
     "zh": {
-        "complete": "complete",
-        "incomplete": "incomplete (run interrupted or budget exhausted)",
-        "finalizing": "finalizing",
-        "unknown": "unknown state",
+        "complete": "完整（计划范围处理与门禁对账完成；不代表无漏洞）",
+        "incomplete": "不完整（运行中断或预算耗尽；未处理部分已在缺口中如实列出）",
+        "finalizing": "收尾中",
+        "unknown": "未知状态",
     },
 }
 
@@ -249,6 +249,10 @@ class ReportLanguage:
     """Resolved report language with explicit unknown-language fallback."""
 
     def __init__(self, requested: str) -> None:
+        """Resolve the requested language; unknown falls back to zh (recorded).
+
+        Requirements: SWR-012(语言解析) / DSR-068(回退留痕)
+        """
         self.requested = requested
         if requested in SUPPORTED_LANGUAGES:
             self.language = requested
@@ -263,6 +267,10 @@ class ReportLanguage:
 
     @property
     def fallback_note(self) -> str:
+        """The report-header note disclosing the applied language fallback.
+
+        Requirements: SWR-012(回退可见) / DSR-068(报告头披露)
+        """
         if not self.fallback_applied:
             return ""
         return (
@@ -272,8 +280,16 @@ class ReportLanguage:
         )
 
     def t(self, key: str) -> str:
+        """Look up a label in the resolved language (fallback table second).
+
+        Requirements: SWR-012(标签本地化) / DSR-068(用户语言)
+        """
         table = LABELS[self.language]
         return table.get(key, LABELS[FALLBACK_LANGUAGE].get(key, key))
 
     def state(self, state: str) -> str:
+        """Terminal-state copy; unmapped states render as unknown state.
+
+        Requirements: SWR-012(终态文案) / DSR-068(状态跟随语言)
+        """
         return STATE_LABELS[self.language].get(state, STATE_LABELS[self.language]["unknown"])

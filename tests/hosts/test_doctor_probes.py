@@ -71,6 +71,19 @@ class TestDoctorProbeHonesty(unittest.TestCase):
         codex = next(c for c in caps if c["adapter"] == "codex_cli")
         self.assertEqual(codex["adapter_version"], "not_installed")
 
+    def test_python_core_execution_isolation_never_claimed_without_probe(self):
+        """DSR-002 discipline: 'runtime policy review' is not a falsifiable
+        probe, so python_core.execution_isolation must stay UNKNOWN with the
+        honest reason — matching the honest NOT_ENFORCED treatment of the
+        filesystem/network rows on the same adapter."""
+        caps = Doctor().probe(probe_cli=False)
+        core = next(c for c in caps if c["adapter"] == "python_core")
+        feature = core["features"]["execution_isolation"]
+        self.assertEqual(feature["state"], FeatureState.UNKNOWN)
+        self.assertNotIn("evidence", feature)
+        self.assertIn("not a falsifiable probe", feature["method"])
+        self.assertIn("runtime policy review is not a falsifiable probe", feature["reason"])
+
     def test_every_feature_records_method(self):
         """DSR-001: capability report is evidence-with-command; each feature
         must disclose the probe method used."""

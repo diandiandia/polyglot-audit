@@ -59,6 +59,10 @@ class GuideService:
         verb_whitelist: Optional[Sequence[str]] = None,
         min_query_length: int = MIN_QUERY_LENGTH,
     ) -> None:
+        """Build the guide service: catalog access plus ambiguity thresholds.
+
+        Requirements: SWR-001(guide模式) / DSR-032(阈值可配)
+        """
         self.catalog = KnowledgeCatalog(knowledge_root)
         self.verb_whitelist = tuple(
             verb.lower() for verb in (verb_whitelist if verb_whitelist is not None else DEFAULT_VERB_WHITELIST)
@@ -73,6 +77,8 @@ class GuideService:
         Ambiguous means: empty / whitespace, shorter than min_query_length, or
         containing none of the configured verb keywords. Ambiguous queries are
         never executed; the guide responds with clarification questions.
+
+        Requirements: SWR-001(模糊请求识别) / DSR-032(不执行)
         """
         q = (query or "").strip()
         if not q:
@@ -85,7 +91,10 @@ class GuideService:
         return "ok", ""
 
     def clarification_response(self, query: str, reason: str, language: Optional[str] = None) -> Dict[str, Any]:
-        """Build the explicit ambiguous-state response (no execution, no cards)."""
+        """Build the explicit ambiguous-state response (no execution, no cards).
+
+        Requirements: SWR-001(澄清不执行) / DSR-032(模糊状态)
+        """
         return {
             "mode": "guide",
             "status": "ambiguous",
@@ -104,6 +113,8 @@ class GuideService:
         Ambiguous queries (empty / too short / no verb keyword) return an
         explicit ambiguous state with clarification questions instead of
         executing or silently launching a full audit (DSR-032).
+
+        Requirements: SWR-001(不建卷宗应答) / DSR-032(不隐式审计), DSR-052(入口分流)
         """
         status, reason = self.classify_query(query)
         if status == "ambiguous":

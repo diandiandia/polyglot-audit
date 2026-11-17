@@ -39,7 +39,10 @@ SECRET_PATTERNS = [
 
 
 def mask_secrets(text: str) -> str:
-    """Mask known credential patterns in text."""
+    """Mask known credential patterns in text.
+
+    Requirements: SWR-010(凭据值不外泄) / DSR-069(已知模式脱敏)
+    """
     if not text:
         return text
 
@@ -55,6 +58,8 @@ def mask_tree(obj: Any) -> Any:
     DSR-069 / SWR-010: JSON report media (findings.json, skill-review.json) must
     not leak credential values stored in nested dicts/lists. Keys are preserved
     (they carry schema meaning); only string values are masked.
+
+    Requirements: SWR-010(嵌套值脱敏) / DSR-069(JSON介质)
     """
     if isinstance(obj, str):
         return mask_secrets(obj)
@@ -72,6 +77,8 @@ def mask_json_text(json_text: str) -> str:
 
     Falls back to plain textual masking if the payload is not valid JSON so
     sanitization never silently degrades to a no-op.
+
+    Requirements: SWR-010(JSON脱敏) / DSR-069(降级不失效)
     """
     if not json_text:
         return json_text
@@ -89,6 +96,8 @@ def mask_csv_text(csv_text: str) -> str:
     cells are handled correctly; each cell value is passed through the same
     secret pattern substitution used for Markdown media. Comment/meta lines
     starting with '#' are preserved verbatim (still passed through masking).
+
+    Requirements: SWR-010(CSV逐格脱敏) / DSR-069(介质覆盖)
     """
     if not csv_text:
         return csv_text

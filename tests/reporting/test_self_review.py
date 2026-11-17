@@ -1,4 +1,7 @@
-"""Tests for the eight-category skill self-review collector (DSR-070 / SWR-014)."""
+"""Tests for the eight-category skill self-review collector (DSR-070 / SWR-014).
+
+Requirements: SWR-014(缺失不当零) / DSR-070(八类检测), DSR-044(三场景)
+"""
 
 import unittest
 

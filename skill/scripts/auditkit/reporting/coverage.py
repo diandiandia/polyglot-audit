@@ -28,7 +28,10 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 
 def compute_interval_union(intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
-    """Compute minimal disjoint sorted intervals covering the union of inputs."""
+    """Compute minimal disjoint sorted intervals covering the union of inputs.
+
+    Requirements: SWR-021(重叠只计一次) / DSR-034(区间并集)
+    """
     if not intervals:
         return []
 
@@ -48,7 +51,10 @@ def compute_interval_union(intervals: List[Tuple[int, int]]) -> List[Tuple[int, 
 
 
 def count_covered_lines(intervals: List[Tuple[int, int]]) -> int:
-    """Return total unique covered lines from disjoint intervals."""
+    """Return total unique covered lines from disjoint intervals.
+
+    Requirements: SWR-021(覆盖行去重) / DSR-034(并集计数)
+    """
     union_ints = compute_interval_union(intervals)
     return sum(e - s + 1 for s, e in union_ints if e >= s)
 
@@ -57,6 +63,10 @@ class CoverageCalculator:
     """Aggregates multi-dimensional coverage across files in a run."""
 
     def __init__(self, manifest_files: List[Dict[str, Any]]) -> None:
+        """Seed the inventoried dimension and per-dimension interval stores.
+
+        Requirements: SWR-021(分母为清单) / DSR-034(维度初始化)
+        """
         self.manifest_files = manifest_files
         self._total_inventoried_lines = sum(f.get("line_count", 0) for f in manifest_files)
         # Store intervals per file per dimension: {file: {dimension: [(start, end)]}}
@@ -80,7 +90,10 @@ class CoverageCalculator:
         start_line: int,
         end_line: int,
     ) -> None:
-        """Record a covered interval for a file and dimension."""
+        """Record a covered interval for a file and dimension.
+
+        Requirements: SWR-021(来源分层) / DSR-034(区间登记)
+        """
         if path not in self._intervals:
             self._intervals[path] = {
                 "inventoried": [],
@@ -92,7 +105,10 @@ class CoverageCalculator:
         self._intervals[path].setdefault(dimension, []).append((start_line, end_line))
 
     def get_summary(self) -> Dict[str, Any]:
-        """Compute aggregated coverage percentages and line totals."""
+        """Compute aggregated coverage percentages and line totals.
+
+        Requirements: SWR-021(缺失标unknown) / DSR-034(维度unknown披露)
+        """
         dimensions = ["inventoried", "signal_scanned", "context_supplied", "observed_read", "review_claimed"]
         totals: Dict[str, int] = {dim: 0 for dim in dimensions}
         file_breakdown: List[Dict[str, Any]] = []

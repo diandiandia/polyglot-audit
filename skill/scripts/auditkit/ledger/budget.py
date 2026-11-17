@@ -100,10 +100,31 @@ class BudgetLedger:
         ).fetchone()
 
         if not row:
-            # Dimension not constrained
+            # SWR-019: a dimension with no declared budget cannot be
+            # enforced — and it must not silently vanish either. Record an
+            # explicit degradation row (mode='unavailable') so the
+            # unconstrained dimension stays visible in get_summary and the
+            # "no limit applies here" fact is auditable instead of implied.
+            self.conn.execute(
+                """
+                INSERT INTO budget_dimensions
+                    (run_id, dimension, mode, limit_val, settled, reserved, unit)
+                VALUES (?, ?, 'unavailable', 0, 0, 0, 'unknown')
+                ON CONFLICT(run_id, dimension) DO NOTHING
+                """,
+                (run_id, dimension),
+            )
             return
 
         mode = row["mode"]
+        if mode == "unavailable":
+            # Explicitly degraded dimension (SWR-019: 无法约束的维度明确降级):
+            # there is no budget to reserve against, so reserve stays a
+            # no-op — the degradation row is the durable record that the
+            # dimension is unconstrained, and later reserves keep leaving it
+            # untouched (traceable, never silently unaccounted).
+            return
+
         limit_val = row["limit_val"]
         settled = row["settled"]
         reserved = row["reserved"]
@@ -127,11 +148,14 @@ class BudgetLedger:
                     f"(limit: {limit_val}, settled: {settled}, reserved: {reserved}, requested: {amount})"
                 )
 
-        # Reservation accounting applies to EVERY mode: only `enforced` may
-        # refuse (hard limit), but observed/unavailable dimensions still track
-        # their outstanding reservations honestly — a reservation that is not
-        # reflected in `reserved` would under-report the committed budget
-        # (DSR-020 / SR-019: degraded dimensions stay honest, never unaccounted).
+        # Reservation accounting applies to every RESERVABLE mode: only
+        # `enforced` may refuse (hard limit), but observed dimensions still
+        # track their outstanding reservations honestly — a reservation that
+        # is not reflected in `reserved` would under-report the committed
+        # budget (DSR-020 / SR-019: degraded dimensions stay honest, never
+        # unaccounted). The explicitly degraded `unavailable` mode never
+        # reaches this point: it cannot constrain anything, so its reserve
+        # stays a no-op above (SWR-019).
         self.conn.execute(
             """
             UPDATE budget_dimensions
@@ -341,6 +365,10 @@ class BudgetLedger:
         settlement books the dimension), None otherwise. source is the source
         of the most recent usage record, or None when data is missing; missing
         values stay null and are never defaulted to zero.
+        The rows also include explicitly degraded dimensions (mode
+        'unavailable', SWR-019): a dimension that was never given a budget
+        is reported as unavailable instead of being omitted from the
+        summary.
         Requirements: SWR-019(预算汇总), SWR-020 / DSR-033(可用性溯源)
         """
         rows = self.conn.execute(

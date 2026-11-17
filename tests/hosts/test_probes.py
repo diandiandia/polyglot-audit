@@ -7,6 +7,7 @@ delegation / budget / timeout probe plans.
 """
 
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -171,6 +172,105 @@ class TestProbePlanDefaults(unittest.TestCase):
     def test_timeout_probe_default_unknown(self):
         feature = probes.probe_timeout_cancellation()
         self.assertEqual(feature["state"], FeatureState.UNKNOWN)
+
+
+class TestNetworkCounterexampleProbe(unittest.TestCase):
+    """DSR-002/003: the network counterexample measures the HOST process.
+
+    The earlier revision connected from the audit process itself, so it
+    judged the local environment and wrote that verdict into the host's
+    network_isolation. These tests pin the corrected contract: only a
+    connection made by the host CLI process is evidence, and an
+    unmeasurable host stays UNKNOWN (never mislabelled NOT_ENFORCED).
+    """
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp(prefix="net-probe-")
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_connecting_host_reports_not_enforced(self):
+        """A host whose CLI process connects to the listener is observed
+        using the network: NOT_ENFORCED with the executed command recorded."""
+        fake = fake_hosts.create_network_fake_host(
+            self.temp_dir, "claude", behaviour="connect"
+        )
+        feature = probes.probe_network_counterexample(
+            fake, "claude", timeout=15, listen_seconds=3
+        )
+        self.assertEqual(feature["state"], FeatureState.NOT_ENFORCED)
+        self.assertIn("host CLI process", feature["evidence"])
+        # DSR-001: the method carries the exact command that was executed.
+        self.assertIn(fake, feature["method"])
+
+    def test_refusing_host_stays_unknown_not_mislabeled(self):
+        """The fix for the DSR-002 deviation: a sandboxed host whose CLI
+        fails its headless call must stay UNKNOWN. The audit machine itself
+        can always reach loopback, so the old environment-level probe would
+        have returned NOT_ENFORCED here."""
+        fake = fake_hosts.create_network_fake_host(
+            self.temp_dir, "claude", behaviour="refuse"
+        )
+        feature = probes.probe_network_counterexample(
+            fake, "claude", timeout=15, listen_seconds=1
+        )
+        self.assertEqual(feature["state"], FeatureState.UNKNOWN)
+        self.assertNotIn("evidence", feature)
+        self.assertIn("host exited 7", feature["reason"])
+
+    def test_hanging_host_times_out_to_unknown(self):
+        """Conservative default: a host slower than the probe window is
+        UNKNOWN with the timed-out reason, never a fabricated verdict."""
+        fake = fake_hosts.create_network_fake_host(
+            self.temp_dir, "claude", behaviour="hang", hang_seconds=30
+        )
+        feature = probes.probe_network_counterexample(
+            fake, "claude", timeout=2, listen_seconds=1
+        )
+        self.assertEqual(feature["state"], FeatureState.UNKNOWN)
+        self.assertIn("timed out", feature["reason"])
+        self.assertNotIn("evidence", feature)
+
+    def test_prompt_instructs_the_host_with_the_bound_port(self):
+        """The transmitted prompt is the connection instruction carrying the
+        listener's own port, and the evidence names that same port — the
+        local socket work is preparation only, the host process connects."""
+        captured = {}
+        real_run = probes.subprocess.run
+
+        def spy_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            return real_run(cmd, **kwargs)
+
+        fake = fake_hosts.create_network_fake_host(
+            self.temp_dir, "claude", behaviour="connect"
+        )
+        with mock.patch.object(probes.subprocess, "run", spy_run):
+            feature = probes.probe_network_counterexample(
+                fake, "claude", timeout=15, listen_seconds=3
+            )
+        self.assertEqual(feature["state"], FeatureState.NOT_ENFORCED)
+        prompt = captured["cmd"][-1]
+        match = re.search(r"127\.0\.0\.1 port (\d+)", prompt)
+        self.assertIsNotNone(match, "prompt must name the loopback port")
+        self.assertIn(f"127.0.0.1:{match.group(1)}", feature["evidence"])
+        self.assertEqual(fake, captured["cmd"][0])
+
+    def test_aggressive_report_writes_host_outcome_not_local_environment(self):
+        """Integration through probe_host_capabilities (aggressive level): a
+        refusing host lands UNKNOWN in network_isolation even though the
+        runner's own environment permits loopback connections."""
+        fake_hosts.create_network_fake_host(self.temp_dir, "claude", behaviour="refuse")
+        with mock.patch.dict(os.environ, {"PATH": self.temp_dir}):
+            report = probes.probe_host_capabilities(
+                "claude", "claude", probe_level=probes.PROBE_LEVEL_AGGRESSIVE,
+                timeout=10,
+            )
+        net = report["features"]["network_isolation"]
+        self.assertEqual(net["state"], FeatureState.UNKNOWN)
+        self.assertNotIn("evidence", net)
+        self.assertIn("loopback socket counterexample", net["method"])
 
 
 class TestMcpHandshakeProbe(unittest.TestCase):

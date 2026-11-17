@@ -22,6 +22,8 @@ Acceptance coverage
 3. 写失败: 阶段写入失败显式抛 StorageError 且失败信息包含出错的报告工件
    路径 (故障路径可见); 已发布的上一代自审保持不变 (不留下半成品);
    finalize 路径的存储失败同样显式报错并给出路径, 运行不得伪称 complete。
+
+Requirements: SWR-014(自审+缺失说明) / DSR-044(三场景), DSR-070(八类检测)
 """
 
 from __future__ import annotations

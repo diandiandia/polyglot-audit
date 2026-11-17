@@ -40,12 +40,19 @@ class SelfReviewCollector:
     """Collects self-review anomalies for one finished run."""
 
     def __init__(self, run_stats: Optional[Dict[str, Any]] = None) -> None:
+        """Accept optional run statistics; detectors cope with partial input.
+
+        Requirements: SWR-014(缺失容忍) / DSR-070(输入可缺)
+        """
         # run_stats may be None or partially filled; every detector must cope.
         self.run_stats = run_stats
 
     # ------------------------------------------------------------------ API
     def collect(self) -> List[Dict[str, Any]]:
-        """Run all eight detectors and return the anomaly list."""
+        """Run all eight detectors and return the anomaly list.
+
+        Requirements: SWR-014(自审采集) / DSR-070(八类检测)
+        """
         stats = self.run_stats
         anomalies: List[Dict[str, Any]] = []
         detectors: List[Callable[[Optional[Dict[str, Any]]], List[Dict[str, Any]]]] = [
@@ -71,6 +78,10 @@ class SelfReviewCollector:
         recommendation: str,
         unknown_note: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """Shape one anomaly: category/evidence/impact/recommendation/unknown.
+
+        Requirements: SWR-014(结构化异常) / DSR-070(依据影响建议)
+        """
         return {
             "category": category,
             "evidence": evidence,
@@ -81,6 +92,10 @@ class SelfReviewCollector:
 
     @classmethod
     def _unknown(cls, category: str, missing: str) -> Dict[str, Any]:
+        """Emit the explicit unknown anomaly for missing input data.
+
+        Requirements: SWR-014(缺失不当零) / DSR-070(unknown说明)
+        """
         return cls._anomaly(
             category=category,
             evidence=f"input data unavailable: {missing}",
@@ -91,6 +106,10 @@ class SelfReviewCollector:
 
     # ------------------------------------------------------------ detectors
     def detect_flow(self, stats: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Detect flow anomalies: stage/report task accounting.
+
+        Requirements: SWR-014(流程检测) / DSR-070(流程类)
+        """
         if stats is None:
             return [self._unknown("flow", "run flow statistics (task counts / stage tasks)")]
         out: List[Dict[str, Any]] = []
@@ -115,6 +134,10 @@ class SelfReviewCollector:
         return out
 
     def detect_coverage(self, stats: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Detect coverage anomalies: unknown summaries and recorded gaps.
+
+        Requirements: SWR-014(覆盖检测) / DSR-070(覆盖类)
+        """
         cov = (stats or {}).get("coverage_summary") if stats else None
         if stats is None or cov is None:
             return [self._unknown("coverage", "coverage_summary")]
@@ -137,6 +160,10 @@ class SelfReviewCollector:
         return out
 
     def detect_cost(self, stats: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Detect cost anomalies: unavailable telemetry and missing rates.
+
+        Requirements: SWR-014(成本检测) / DSR-070(成本类)
+        """
         cost = (stats or {}).get("cost_metrics") if stats else None
         if stats is None or cost is None:
             return [self._unknown("cost", "cost_metrics")]
@@ -160,6 +187,10 @@ class SelfReviewCollector:
         return out
 
     def detect_verification(self, stats: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Detect a verdict distribution dominated by unverified findings.
+
+        Requirements: SWR-014(验证检测) / DSR-070(验证类)
+        """
         verdicts = (stats or {}).get("verdict_distribution") if stats else None
         if stats is None or verdicts is None:
             return [self._unknown("verification", "verdict_distribution")]
@@ -176,6 +207,10 @@ class SelfReviewCollector:
         return out
 
     def detect_knowledge(self, stats: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Detect knowledge-catalog gaps disclosed during the run.
+
+        Requirements: SWR-014(知识检测) / DSR-070(知识类)
+        """
         if stats is None:
             return [self._unknown("knowledge", "knowledge statistics (version / gaps)")]
         gaps = stats.get("knowledge_gaps")
@@ -193,6 +228,10 @@ class SelfReviewCollector:
         return out
 
     def detect_adaptation(self, stats: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Detect detected-but-unadapted languages.
+
+        Requirements: SWR-014(适配检测) / DSR-070(适配类)
+        """
         if stats is None:
             return [self._unknown("adaptation", "language adaptation statistics")]
         uncovered = stats.get("uncovered_languages")
@@ -210,6 +249,10 @@ class SelfReviewCollector:
         return out
 
     def detect_error(self, stats: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Detect recorded error events that may hide dropped work.
+
+        Requirements: SWR-014(错误检测) / DSR-070(错误类)
+        """
         if stats is None:
             return [self._unknown("error", "error event statistics")]
         errors = stats.get("error_events")
@@ -226,6 +269,10 @@ class SelfReviewCollector:
         return out
 
     def detect_usage_missing(self, stats: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Detect attempts without usable host usage records.
+
+        Requirements: SWR-014(用量缺失) / DSR-070(用量类)
+        """
         if stats is None:
             return [self._unknown("usage_missing", "host usage statistics")]
         missing_usage = stats.get("usage_missing_count")

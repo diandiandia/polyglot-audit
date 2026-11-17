@@ -27,6 +27,8 @@ Acceptance coverage
    不产出伪造卷宗。
 4. 存储不可写: report 发布路径不可写时显式 StorageError (含失败路径),
    运行不得伪称 complete, 也不得留下半成品报告。
+
+Requirements: SWR-012(七件套+终态对账) / DSR-036(分代发布), DSR-068(语言与拆分), DSR-076(incomplete原因)
 """
 
 from __future__ import annotations

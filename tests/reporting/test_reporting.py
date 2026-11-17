@@ -1,4 +1,7 @@
-"""Tests for coverage calculation, secret masking, cost metrics, and report generation."""
+"""Tests for coverage calculation, secret masking, cost metrics, and report generation.
+
+Requirements: SWR-010(凭据不外泄), SWR-012(报告集), SWR-016(导出白名单), SWR-021(覆盖并集) / DSR-034, DSR-036, DSR-045, DSR-067, DSR-069
+"""
 
 import json
 import shutil

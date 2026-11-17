@@ -54,7 +54,10 @@ GATE_DESCRIPTIONS: Dict[str, str] = {
 
 
 def _load_entry(entry: EvidenceEntry, gate_id: str) -> Dict[str, Any]:
-    """Normalize an evidence entry (inline dict or JSON file path) to a dict."""
+    """Normalize an evidence entry (inline dict or JSON file path) to a dict.
+
+    Requirements: SWR-026(证据缺失unknown) / DSR-051(缺证据不标支持)
+    """
     if entry is None:
         return {"status": "unknown", "summary": f"{gate_id}: 未提供证据"}
     if isinstance(entry, (str, Path)):
@@ -78,18 +81,34 @@ class ReleaseGateEvaluator:
     """Evaluates release gates GATE-01..GATE-07 against unified-test evidence."""
 
     def __init__(self, evidence: Optional[Dict[str, Any]] = None) -> None:
+        """Hold the unified-test evidence bundle for GATE-01..07 evaluation.
+
+        Requirements: SWR-026(发布门禁) / DSR-051(证据汇总)
+        """
         self.evidence: Dict[str, Any] = dict(evidence or {})
 
     # -- evidence accessors ---------------------------------------------------
 
     def _gate_evidence(self, gate_id: str) -> Dict[str, Any]:
+        """Load one gate's evidence entry (missing becomes unknown).
+
+        Requirements: SWR-026(门禁证据) / DSR-051(support)
+        """
         return _load_entry(self.evidence.get(gate_id), gate_id)
 
     def _requirement_evidence(self, key: str) -> Dict[str, Any]:
+        """Load a named supporting-evidence entry (compatibility tests, ...).
+
+        Requirements: SWR-026(佐证证据) / DSR-051(support)
+        """
         return _load_entry(self.evidence.get(key), key)
 
     @staticmethod
     def _entry_status(data: Dict[str, Any]) -> str:
+        """Normalize an entry status; unrecognized values fall to unknown.
+
+        Requirements: SWR-026(未知不标支持) / DSR-051(状态收敛)
+        """
         status = str(data.get("status", "unknown")).lower()
         return status if status in VALID_ENTRY_STATUSES else "unknown"
 
@@ -100,6 +119,8 @@ class ReleaseGateEvaluator:
 
         Any required capability that is unknown/unverified means the host
         combination is NOT supported (blocking, per the design review).
+
+        Requirements: SWR-026(发布门禁), SWR-023(宿主实测) / DSR-051(unknown不标支持)
         """
         gate_id = "GATE-01"
         data = self._gate_evidence(gate_id)
@@ -137,7 +158,10 @@ class ReleaseGateEvaluator:
         return GateResult(gate_id, "pass", checks, 0, data.get("summary"))
 
     def check_generic(self, gate_id: str, check_name: str) -> GateResult:
-        """Generic single-evidence gate: status comes from the gate's evidence entry."""
+        """Generic single-evidence gate: status comes from the gate's evidence entry.
+
+        Requirements: SWR-026(门禁三态) / DSR-051(NA必有理由), DSR-022(契约一致)
+        """
         data = self._gate_evidence(gate_id)
         status = self._entry_status(data)
         summary = str(data.get("summary") or "")
@@ -163,6 +187,8 @@ class ReleaseGateEvaluator:
 
         Additionally cross-checks test_results["compatibility"] when provided:
         an explicit fail there overrides an otherwise passing evidence entry.
+
+        Requirements: SWR-026(发布门禁), SWR-024(版本下限) / DSR-051(兼容必过)
         """
         gate_id = "GATE-07"
         result = self.check_generic(gate_id, "Python 下限 / Schema 子集 / CLI+MCP 接口版本")
@@ -185,7 +211,10 @@ class ReleaseGateEvaluator:
     # -- aggregate ------------------------------------------------------------
 
     def evaluate_gate(self, gate_id: str) -> GateResult:
-        """Evaluate a single release gate by id."""
+        """Evaluate a single release gate by id.
+
+        Requirements: SWR-026(按门禁评估) / DSR-051(未知门禁拒绝)
+        """
         if gate_id not in GATE_IDS:
             raise InvalidInputError(f"Unknown release gate id '{gate_id}'")
         if gate_id == "GATE-01":
@@ -202,6 +231,8 @@ class ReleaseGateEvaluator:
         including not_applicable, which requires (and always has) an explicit
         reason (DSR-022) and is listed as blocking so deferred gates can never
         be silently promoted into an allowed release.
+
+        Requirements: SWR-026(发布结论) / DSR-051(阻塞明示), DSR-022(NA理由)
         """
         if evidence is not None:
             self.evidence = dict(evidence)

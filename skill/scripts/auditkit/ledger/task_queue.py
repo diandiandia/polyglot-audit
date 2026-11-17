@@ -197,8 +197,24 @@ class TaskQueue:
                         },
                     )
                     break
-                except Exception:
-                    # Non-budget failure while reserving: stop claiming more
+                except Exception as e:  # noqa: BLE001 - keep the claim loop alive
+                    # SWR-018: a non-budget reservation failure must not
+                    # vanish silently. Record the failure with its
+                    # reason/attempt context (the task stays queued and no
+                    # attempt row exists yet), then stop claiming further
+                    # tasks — the loop never crashes on a reservation error.
+                    self.event_store.append_event(
+                        run_id,
+                        "reserve_failed",
+                        worker_id,
+                        {
+                            "dimension": "tasks",
+                            "reason": str(e),
+                            "error": e.__class__.__name__,
+                            "attempt_id": attempt_id,
+                            "blocked_task_id": task_id,
+                        },
+                    )
                     break
 
                 # Update task state and insert attempt

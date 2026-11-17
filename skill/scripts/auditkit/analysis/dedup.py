@@ -1,7 +1,10 @@
 """Candidate fingerprinting and reversible deduplication suggestions.
 
 Implements DSR-063 / SD-04 / REV-06:
-- Computes stable fingerprints based on (issue, sink_path, sink_symbol, source_kind).
+- Computes stable fingerprints based on (issue, source.control, source_kind,
+  sink_path, sink_symbol); ``source.path`` is excluded from the fingerprint
+  itself and applied as a separate composite key so distinct sources are never
+  merged.
 - Explicitly prevents irreversible merging of candidates with distinct sources into the same sink.
 - Retains original candidate records and provenance links.
 - Merging is gated: propose_deduplication() only suggests; confirm_merge()
@@ -29,7 +32,13 @@ def compute_fingerprint(candidate: Dict[str, Any]) -> str:
     """Compute stable fingerprint for candidate.
 
     Excludes line numbers so minor formatting changes don't fracture identity.
-    Includes source kind, sink path, sink symbol, issue.
+    The digest covers exactly: issue, source.control, source.kind, sink.path
+    and sink.symbol. ``source.path`` is deliberately NOT part of the
+    fingerprint: candidates that reach the same sink from different source
+    files keep separate identities through the composite key
+    (fingerprint + source.path) used by ``propose_deduplication`` and
+    ``deduplicate``, which is what prevents irreversible cross-source merges
+    (DSR-063).
 
     Requirements: SWR-007(稳定指纹,support) / DSR-063(support)
     """

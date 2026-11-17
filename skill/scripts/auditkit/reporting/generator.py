@@ -90,6 +90,10 @@ class ReportGenerator:
         artifact_manager: ArtifactManager,
         report_language: str = DEFAULT_LANGUAGE,
     ) -> None:
+        """Bind one generation to a run state and resolved report language.
+
+        Requirements: SWR-012(终态与语言) / DSR-068(语言解析)
+        """
         self.run_id = run_id
         self.snapshot_id = snapshot_id
         self.run_state = run_state
@@ -118,6 +122,8 @@ class ReportGenerator:
         dossier) is always written.
         DSR-070: when ``anomalies`` is not supplied but ``self_review_inputs``
         is, the SelfReviewCollector produces the anomaly list.
+
+        Requirements: SWR-012(报告集生成), SWR-014(自审渲染) / DSR-036(原子发布), DSR-045(默认不导出), DSR-070(异常采集)
         """
         generation_id = f"gen-{uuid.uuid4().hex[:8]}"
 
@@ -148,7 +154,10 @@ class ReportGenerator:
         generation_id: str,
         export_skill_review: bool,
     ) -> List[Tuple[str, str, bool, bytes]]:
-        """Return (kind, rel_path, carries_generation_marker, content) tuples."""
+        """Return (kind, rel_path, carries_generation_marker, content) tuples.
+
+        Requirements: SWR-010(逐介质脱敏), SWR-012(报告集构建) / DSR-035(固定记录), DSR-069(凭据掩蔽)
+        """
         payloads: List[Tuple[str, str, bool, bytes]] = []
 
         # SR-005/DSR-058/DSR-066: unconnected half-chains are reconciled from
@@ -225,6 +234,8 @@ class ReportGenerator:
         Phase C (commit): replace-only tail — every risky operation already
         happened, so the mixed-generation window is limited to the
         uninterruptible ``os.replace`` calls themselves.
+
+        Requirements: SWR-012(中断不混合) / DSR-036(两阶段发布)
         """
         run_dir = self.artifacts.run_dir
         staged: List[Tuple[Path, Path, str, str, bool, bytes]] = []
@@ -268,6 +279,10 @@ class ReportGenerator:
 
     @staticmethod
     def _cleanup_staged(tmp_paths) -> None:
+        """Remove staged temp files best-effort (publication stays fail-safe).
+
+        Requirements: SWR-012(半成品清理) / DSR-036(support)
+        """
         for tmp_path in tmp_paths:
             try:
                 tmp_path.unlink(missing_ok=True)
@@ -282,6 +297,8 @@ class ReportGenerator:
         window; therefore the generator commits the already-staged file
         itself and only registers the row here. Keep the column list in sync
         with ledger/db.py (artifacts table).
+
+        Requirements: SWR-013(工件登记) / DSR-036(同代登记)
         """
         hasher = hashlib.sha256()
         hasher.update(content)
@@ -303,6 +320,8 @@ class ReportGenerator:
         time they were recorded; a record that a LATER submission paired
         carries a ``connector_paired`` event and is excluded here, so the
         rendered section always reflects the run's final pairing state.
+
+        Requirements: SWR-005(半链对账) / DSR-058(未配对渲染)
         """
         paired_ids = {
             str(e.get("payload", {}).get("frontier_id") or "")
@@ -331,6 +350,10 @@ class ReportGenerator:
         generation_id: str,
         half_chains: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
+        """Render REPORT.md: summary table, per-finding details, limitations.
+
+        Requirements: SWR-010(逐字段呈现), SWR-012(主报告) / DSR-035(溯源呈现), DSR-069(风险声明)
+        """
         t = self._lang.t
         confirmed = [f for f in findings if f.get("verdict") == "confirmed"]
         needs_val = [f for f in findings if f.get("verdict") == "needs_validation"]
@@ -338,6 +361,10 @@ class ReportGenerator:
 
         # Sort confirmed by urgency P0 -> P1 -> P2 -> P3
         def urgency_key(f: Dict[str, Any]) -> int:
+            """Sort key: confirmed findings by final urgency P0..P3.
+
+            Requirements: SWR-011(紧迫度排序) / DSR-028(重算呈现)+(support)
+            """
             urg = f.get("rating", {}).get("final_urgency", "P3")
             return URGENCY_ORDER.index(urg) if urg in URGENCY_ORDER else -1
 
@@ -446,6 +473,10 @@ class ReportGenerator:
         return "\n".join(lines)
 
     def _state_label(self) -> str:
+        """Render the terminal-state label in the resolved report language.
+
+        Requirements: SWR-012(终态呈现) / DSR-068(状态本地化)
+        """
         label = self._lang.state(self.run_state)
         return f"{label} (`{self.run_state}`)"
 
@@ -463,6 +494,8 @@ class ReportGenerator:
         - Unconnected half-chains (frontier / dangling sink) that remained
           unpaired after run-level aggregation (DSR-058 / SR-005).
         - Unverified candidates with their reason, at candidate granularity.
+
+        Requirements: SWR-012(未决渲染) / DSR-066(未验证保留), DSR-058(半链呈现)
         """
         t = self._lang.t
         needs_val = [
@@ -556,6 +589,10 @@ class ReportGenerator:
         return "\n".join(lines)
 
     def _render_coverage_md(self, coverage_summary: Dict[str, Any], generation_id: str) -> str:
+        """Render COVERAGE.md with per-dimension coverage and unknown flags.
+
+        Requirements: SWR-021(覆盖报告) / DSR-034(维度分层)
+        """
         t = self._lang.t
         lines = [
             t("coverage_title"),
@@ -581,6 +618,10 @@ class ReportGenerator:
         return "\n".join(lines)
 
     def _render_coverage_csv(self, file_breakdown: List[Dict[str, Any]], generation_id: str) -> str:
+        """Render the per-file coverage CSV carrying the generation marker.
+
+        Requirements: SWR-021(逐文件覆盖) / DSR-034(CSV分层), DSR-036(代次标记)
+        """
         output = io.StringIO()
         writer = csv.writer(output)
         # DSR-036: leading meta comment carries the generation id so staged
@@ -604,6 +645,10 @@ class ReportGenerator:
         return output.getvalue()
 
     def _render_audit_trail(self, events: List[Dict[str, Any]], findings: List[Dict[str, Any]], generation_id: str) -> str:
+        """Render AUDIT-TRAIL.md: event timeline plus finding provenance.
+
+        Requirements: SWR-013(轨迹可追溯) / DSR-035(溯源映射)
+        """
         t = self._lang.t
         lines = [
             t("trail_title"),
@@ -631,6 +676,10 @@ class ReportGenerator:
         return "\n".join(lines)
 
     def _render_cost_report(self, cost_metrics: Dict[str, Any], generation_id: str) -> str:
+        """Render COST.md with explicit denominators and unavailable metrics.
+
+        Requirements: SWR-020(成本报告) / DSR-067(不可计算标注)
+        """
         t = self._lang.t
         non_computable = t("non_computable")
         tasks_per_kloc = cost_metrics.get("tasks_per_kloc")
@@ -706,6 +755,10 @@ class ReportGenerator:
         return "\n".join(lines)
 
     def _render_skill_review_md(self, anomalies: List[Dict[str, Any]], generation_id: str) -> str:
+        """Render the local SKILL-REVIEW.md (dossier-aware, always written).
+
+        Requirements: SWR-014(本地自审) / DSR-044(三场景), DSR-070(异常呈现)
+        """
         t = self._lang.t
         lines = [
             t("review_title"),
@@ -738,6 +791,10 @@ class ReportGenerator:
         findings: List[Dict[str, Any]],
         generation_id: str,
     ) -> Dict[str, Any]:
+        """Build the opt-in portable skill-review export (whitelist-only).
+
+        Requirements: SWR-016(白名单导出) / DSR-045(仅枚举统计), DSR-071(允许列表)
+        """
         portable_export = {
             "schema_version": "1.0",
             "generation_id": generation_id,
@@ -761,7 +818,10 @@ class ReportGenerator:
 
     @staticmethod
     def _enforce_export_whitelist(export: Dict[str, Any]) -> None:
-        """DSR-045 / SWR-016: reject any non-whitelisted key before export."""
+        """DSR-045 / SWR-016: reject any non-whitelisted key before export.
+
+        Requirements: SWR-016(非白名单拒绝) / DSR-045(失败关闭), DSR-071(受控导出)
+        """
         for key, value in export.items():
             if key not in SKILL_REVIEW_EXPORT_ALLOWED_ROOT_KEYS:
                 raise InvalidInputError(

@@ -5,6 +5,8 @@ Implements DSR-051:
 - Missing or unknown evidence blocks the release: unknown capability is never
   silently promoted to supported.
 - An all-pass evidence set allows the release.
+
+Requirements: SWR-026(发布门禁) / DSR-051(未知不标支持), DSR-022(NA理由)
 """
 
 import json

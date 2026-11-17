@@ -29,6 +29,8 @@ Covered here:
 - Admission is a pure, read-only consumption: no file writes anywhere (no
   write-back into skill assets), the payload is not mutated, and no old-run
   data is read.
+
+Requirements: SWR-016(默认不导出+失败关闭) / DSR-045(有限字段准入), DSR-071(允许列表)
 """
 
 import copy

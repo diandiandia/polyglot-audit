@@ -53,6 +53,10 @@ class CostTracker:
     """Computes cost metrics and telemetry summaries."""
 
     def __init__(self) -> None:
+        """Initialize counters with every optional metric marked unavailable.
+
+        Requirements: SWR-020(缺省不可得) / DSR-067(遥测初始化), DSR-033(来源保留)
+        """
         self.stage_tasks: Dict[str, int] = {"recon": 0, "hunt": 0, "verify": 0, "report": 0}
         # O-03: executed tasks per stage (settled done / quarantined / failed
         # work actually processed), recorded by the LED wiring. Empty until a
@@ -77,7 +81,10 @@ class CostTracker:
         self.protocol_overhead_reason: Optional[str] = DEFAULT_PROTOCOL_OVERHEAD_UNAVAILABLE_REASON
 
     def record_task(self, kind: str, is_retry: bool = False) -> None:
-        """Record an ENQUEUED task (plan scope), not executed work (O-03)."""
+        """Record an ENQUEUED task (plan scope), not executed work (O-03).
+
+        Requirements: SWR-020(入队计数) / DSR-067(阶段分子), DSR-033(重试观察)
+        """
         if kind in self.stage_tasks:
             self.stage_tasks[kind] += 1
         if is_retry:
@@ -90,6 +97,8 @@ class CostTracker:
         done, quarantined, or failed. Only these count toward the executed
         denominator of the normalized rates; enqueued-but-never-dispatched
         tasks stay visible in ``stage_tasks`` / ``total_enqueued`` only.
+
+        Requirements: SWR-020(执行分母) / DSR-067(实做计数)
         """
         self.stage_tasks_executed[kind] = self.stage_tasks_executed.get(kind, 0) + 1
         self.executed_recorded = True
@@ -102,6 +111,8 @@ class CostTracker:
         with an empty dict is meaningful: it records that the caller tracked
         executions and observed ZERO of them, so the rates use a real
         executed denominator of 0 instead of the enqueued fallback.
+
+        Requirements: SWR-020(执行分母) / DSR-067(LED接线)
         """
         for kind, count in (counts or {}).items():
             count = int(count)
@@ -110,27 +121,46 @@ class CostTracker:
         self.executed_recorded = True
 
     def set_retries(self, count: int, source: str = "host") -> None:
-        """Accept a caller-supplied retry counter (WIRE wiring point)."""
+        """Accept a caller-supplied retry counter (WIRE wiring point).
+
+        Requirements: SWR-020(重试指标) / DSR-067(宿主来源)
+        """
         self.retries_override = int(count)
         self.retries_source = source
 
     def set_tokens(self, tokens: int, source: str = "exact") -> None:
+        """Record the verified token total with its availability source.
+
+        Requirements: SWR-020(用量来源) / DSR-033(exact保留)
+        """
         self.total_tokens = tokens
         self.token_source = source
         self.unavailable_reason = None
 
     def set_cache_hits(self, count: int, source: str = "exact") -> None:
+        """Record caller-supplied cache-hit telemetry (missing stays unavailable).
+
+        Requirements: SWR-020(缓存遥测) / DSR-067(缺失不写零)
+        """
         self.cache_hits = int(count)
         self.cache_hits_source = source
         self.cache_hits_reason = None
 
     def set_protocol_overhead(self, overhead: int, source: str = "exact") -> None:
+        """Record caller-supplied protocol-overhead telemetry (never defaulted).
+
+        Requirements: SWR-020(协议开销) / DSR-067(可观测开销)
+        """
         self.protocol_overhead = int(overhead)
         self.protocol_overhead_source = source
         self.protocol_overhead_reason = None
 
     @staticmethod
     def _optional_metric(value: Optional[int], source: str, reason: Optional[str]) -> Dict[str, Any]:
+        """Render an optional metric as available or unavailable-with-reason.
+
+        Requirements: SWR-020(不可得标识) / DSR-067(缺失留原因)
+        """
         if value is None:
             return {
                 "availability": "unavailable",
@@ -152,6 +182,8 @@ class CostTracker:
         the enqueued total only for legacy callers that never recorded them —
         in that case the rate reason strings say the denominator is the
         enqueued fallback, so a plan is never presented as executed work.
+
+        Requirements: SWR-020(比率可复算) / DSR-067(不可计算标注), DSR-033(来源标注)
         """
         total_enqueued = sum(self.stage_tasks.values())
         total_executed: Optional[int] = (

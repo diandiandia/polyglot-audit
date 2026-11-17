@@ -21,6 +21,8 @@ a real dossier (same pattern as tests/cli/test_human_format.seed_run) to pin
 the positive direction: legal run-directory paths keep working unchanged.
 
 Standard library only; invokes skill/scripts/audit.py as a subprocess (-I).
+
+Requirements: SWR-001(缺条件不运行) / DSR-074(非法参数非零)
 """
 
 import json

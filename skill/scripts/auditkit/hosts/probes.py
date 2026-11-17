@@ -322,53 +322,119 @@ def probe_execution_counterexample(
 
 
 def probe_network_counterexample(
+    binary_path: str,
+    host: str,
     timeout: int = 60,
-    listen_seconds: int = 20,
+    listen_seconds: int = 5,
 ) -> Dict[str, Any]:
     """DSR-002/003 network counterexample probe (aggressive level only).
 
-    Plan: bind a loopback listener, then run one headless call instructing the
-    host to connect to it. An observed connection proves the host can use the
-    network (NOT_ENFORCED); silence leaves the isolation state UNKNOWN.
-    Returns a callable-style record; only executed at aggressive level.
-    Requirements: SWR-015(网络探针) / DSR-002(回环反例)
+    The counterexample must exercise the HOST process, never this probe
+    runner: the earlier revision connected from the audit process itself, so
+    it measured the LOCAL environment and wrote that verdict into the HOST's
+    ``network_isolation`` (DSR-002/003 deviation — a host confined by a
+    sandbox was mislabelled NOT_ENFORCED because the audit machine could
+    reach loopback).
+
+    Corrected plan: bind a loopback listener as PREPARATION ONLY, then run
+    one real headless host call whose prompt instructs the host CLI to open
+    the TCP connection. Only a connection made by the host CLI process is
+    evidence about the host:
+
+    - host CLI cannot be executed / times out -> UNKNOWN (conservative
+      default: an unmeasurable host is never mislabelled NOT_ENFORCED);
+    - the host process connects -> NOT_ENFORCED (observed network use by
+      the host);
+    - the host completes without connecting -> UNKNOWN (cannot distinguish
+      sandbox denial from non-compliance).
+
+    Completed TCP connections sit in the listener backlog while the host
+    call runs, so the short post-call accept window observes any connection
+    the host made at any point during its invocation.
+    Requirements: SWR-015(网络探针) / DSR-002(宿主实测), DSR-003(独立)
     """
-    method = "loopback socket counterexample: host asked to connect to 127.0.0.1 listener"
+    method = (
+        "loopback socket counterexample: host CLI process asked to connect "
+        "to a 127.0.0.1 listener (only the host's own connection counts)"
+    )
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    listener.settimeout(listen_seconds)
-    saw_connection = False
-    reason: Optional[str] = None
     try:
         listener.bind(("127.0.0.1", 0))
         port = listener.getsockname()[1]
         listener.listen(1)
-        prompt = (
-            f"Open a TCP connection to 127.0.0.1 port {port} and then stop. "
-            "Do not do anything else."
-        )
-        # The loopback counterexample is environment-level: verify whether the
-        # local environment itself permits arbitrary socket connections.
-        probe_sock = socket.create_connection(("127.0.0.1", port), timeout=5)
-        probe_sock.close()
-        try:
-            listener.accept()
-            saw_connection = True
-        except socket.timeout:
-            reason = "listener accepted no connection within timeout"
     except OSError as exc:
-        reason = f"loopback network counterexample failed: {exc}"
+        listener.close()
+        return make_feature(
+            FeatureState.UNKNOWN,
+            method=method,
+            reason=f"loopback listener could not be prepared: {exc}",
+        )
+
+    prompt = (
+        f"Open a TCP connection to 127.0.0.1 port {port} and then stop. "
+        "Do not do anything else."
+    )
+    args = _headless_args(host, prompt)
+    cmd = [binary_path] + args
+    full_method = method + " -> " + " ".join(cmd)
+    host_failure: Optional[str] = None
+    try:
+        res = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout,
+            stdin=subprocess.DEVNULL
+        )
+        if res.returncode != 0:
+            host_failure = (
+                f"host exited {res.returncode}: stderr={res.stderr.strip()[:200]!r}"
+            )
+    except subprocess.TimeoutExpired:
+        host_failure = f"host headless call timed out after {timeout}s"
+    except OSError as exc:
+        listener.close()
+        return make_feature(
+            FeatureState.UNKNOWN,
+            method=full_method,
+            reason=f"host headless call failed to execute: {exc}",
+        )
+
+    saw_connection = False
+    try:
+        listener.settimeout(max(1, int(listen_seconds)))
+        conn, _addr = listener.accept()
+        conn.close()
+        saw_connection = True
+    except socket.timeout:
+        pass
+    except OSError as exc:
+        host_failure = host_failure or f"listener accept failed: {exc}"
     finally:
         listener.close()
+
     if saw_connection:
         return make_feature(
             FeatureState.NOT_ENFORCED,
-            method=method,
-            evidence="loopback TCP connection succeeded; host environment allows sockets",
+            method=full_method,
+            evidence=(
+                f"host CLI process connected to 127.0.0.1:{port}; the host "
+                "process can use the network"
+            ),
+        )
+    if host_failure is not None:
+        return make_feature(
+            FeatureState.UNKNOWN,
+            method=full_method,
+            reason=(
+                f"{host_failure}; no host connection observed — conservative "
+                "default is UNKNOWN (host behaviour unmeasurable)"
+            ),
         )
     return make_feature(
         FeatureState.UNKNOWN,
-        method=method,
-        reason=reason or "loopback counterexample inconclusive",
+        method=full_method,
+        reason=(
+            "host exited 0 without connecting to the listener; cannot "
+            "distinguish sandbox denial from non-compliance"
+        ),
     )
 
 
@@ -649,7 +715,7 @@ def probe_host_capabilities(
             )
             features["execution_isolation"] = dict(features["filesystem_isolation"])
             features["network_isolation"] = probe_network_counterexample(
-                timeout=effective_timeout
+                binary_path, host, timeout=effective_timeout
             )
         finally:
             try:
