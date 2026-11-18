@@ -18,7 +18,14 @@ conclusion:
 3. ``python3 tools/probe_isolation.py``          -> gate01-isolation.json.
 4. ``python3 skill/scripts/audit.py doctor --probe`` -> gate01-capability-matrix.json
    (normalized capability_matrix consumed by the GATE-01 check).
-5. ``ReleaseGateEvaluator.evaluate_all(evidence)`` -> release_gate_summary.json
+5. targeted export-boundary unittest run (tests/security + tests/reporting +
+   tests/swr lessons, filtered to export/whitelist/lessons/secret/mask with
+   ``-k``) -> gate06-export-boundary.json (per-test outcomes / counts /
+   timestamp / environment; the expert-review part of GATE-06 stays manual).
+6. GATE-03 usage evidence read: docs/evidence/gate03-usage-unavailable.json
+   (coordinator-produced real-run measurement) is consumed verbatim into the
+   release summary; missing file/fields stay ``unknown`` — nothing invented.
+7. ``ReleaseGateEvaluator.evaluate_all(evidence)`` -> release_gate_summary.json
    (per-GATE pass/fail/unknown + release_allowed conclusion).
 
 Design constraints (DSR-051 / SR-029 / design principle 8):
@@ -29,9 +36,10 @@ Design constraints (DSR-051 / SR-029 / design principle 8):
   block.
 - Nothing is fabricated: items that cannot be automated (LLM online
   evaluation, expert review of the 150 knowledge cards, provider-side token
-  cost bounds, aggressive-level isolation counterexamples) stay unknown and
-  are listed under ``manual_pending`` in the release summary. A blocked
-  release is the expected honest outcome until those human steps are done.
+  cost bounds, aggressive-level isolation counterexamples, expert review of
+  export-field sensitivity) stay unknown and are listed under
+  ``manual_pending`` in the release summary. A blocked release is the
+  expected honest outcome until those human steps are done.
 
 Usage:
     python3 tools/generate_release_evidence.py                 # full collection
@@ -46,6 +54,10 @@ Usage:
 # SWR-026  G0~G4 与 GATE-01~07 证据汇总与发布检查；未知能力不标支持
 # SWR-029  统一测试编排：五类套件分组汇总；缺失/跳过单列；禁止把 mock 计为真实宿主通过
 #   绑定实现: DSR-051 (ReleaseGateEvaluator), 本工具做证据自动收集与规约
+# SR-020/DSR-033  GATE-03 用量遥测实测证据只读接入（P2.1a，协调方产物；
+#   downgrade_documented 走 SD §5.2 明确降级分支，不给 pass）
+# SR-016/SWR-016  GATE-06 导出边界定向测试自动化规约（P2.1b，
+#   gate06-export-boundary.json；专家评审保持 manual）
 # 状态以统一测试结论为准；未实测能力保持 unknown（设计原则 8：能观测的不靠声明）。
 # ---------------------------------------------------------------------------
 
@@ -85,7 +97,28 @@ STEP_TIMEOUTS_SECONDS = {
     "evaluate_holdout": 600,
     "probe_isolation": 600,
     "doctor_probe": 600,
+    "gate06_export_tests": 600,
 }
+
+# GATE-03 usage evidence (P2.1a): coordinator-produced real-run artifact. The
+# generator CONSUMES it (never rewrites it): its ``status`` /
+# ``release_note_required`` fields are passed through verbatim; a missing file
+# or missing fields stay ``unknown`` in the summary (nothing invented).
+GATE03_USAGE_EVIDENCE_NAME = "gate03-usage-unavailable.json"
+GATE03_DOWNGRADE_STATUS = "downgrade_documented"
+
+# GATE-06 export-boundary tests (P2.1b): a targeted unittest run filtered to
+# the export-boundary assertions (whitelist fail-closed, export default-off,
+# secret masking, lessons.md never exported). Modules are named explicitly —
+# package-name loading finds nothing under tests.reporting without a
+# load_tests hook. The patterns are OR-combined substring filters (case
+# insensitive) applied by unittest -k.
+GATE06_EXPORT_TEST_MODULES = (
+    "tests.security.test_skill_isolation",
+    "tests.reporting.test_reporting",
+    "tests.swr.test_swr_031",
+)
+GATE06_EXPORT_TEST_PATTERNS = ("export", "whitelist", "lessons", "secret", "mask")
 
 # GATE-NN <- run_all_tests category mapping (DSR-078 five-category split).
 # gate07 additionally cites the stdlib-only checks that run in the scale
@@ -530,6 +563,258 @@ def build_isolation_evidence(report: Dict[str, Any], env: Dict[str, Any]) -> Dic
 
 
 # ---------------------------------------------------------------------------
+# GATE-03 usage evidence (coordinator artifact, consumed read-only)
+# ---------------------------------------------------------------------------
+
+def load_gate03_usage_evidence(path: Path, env: Dict[str, Any]) -> Dict[str, Any]:
+    """Consume the coordinator-produced GATE-03 usage evidence verbatim.
+
+    The file records the MEASURED real-run unavailability (26/26 attempts
+    returned no usage block, SR-020/DSR-033) plus the honest-degradation
+    markers (``status: "downgrade_documented"`` / ``release_note_required``).
+    Requirements: SR-020 / DSR-033 / SD §5.2 (明确降级分支), P2.1a.
+
+    Semantics (fail-closed by construction):
+    - The markers are passed through AS-IS. A documented downgrade is never
+      upgraded into a pass here: whether the gate can close (via the required
+      release note) is a design-review decision, not a tool verdict.
+    - A missing file, unreadable JSON, or missing ``status`` /
+      ``release_note_required`` fields are recorded as ``unknown`` — the
+      unknown capability is not invented away (design principle 8).
+    """
+    body: Dict[str, Any] = {
+        "schema_version": EVIDENCE_SCHEMA_VERSION,
+        "gate": "GATE-03",
+        "evidence_kind": "usage_telemetry_unavailable_measurement",
+        "generated_at": utc_now(),
+        "environment": env,
+        "source": {"file": str(path)},
+        "status": "unknown",
+        "release_note_required": "unknown",
+        "attempts_total": "unknown",
+        "availability_distribution": {},
+        "conclusion": "",
+        "summary": "GATE-03 用量遥测证据缺失或不可解析；usage 完整性保持 unknown，不伪造。",
+        "notes": [
+            "本条目只归档协调方实测证据的规约视图（不重写原始文件）；"
+            "门禁结论由 ReleaseGateEvaluator 按 SD §5.2 明确降级分支输出。",
+        ],
+    }
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+    except (OSError, ValueError) as exc:
+        body["error"] = f"usage evidence unreadable: {exc}"
+        return body
+    if not isinstance(raw, dict):
+        body["error"] = "usage evidence top level must be a JSON object"
+        return body
+    raw_status = raw.get("status")
+    body["status"] = str(raw_status).strip().lower() if raw_status else "unknown"
+    note_required = raw.get("release_note_required")
+    body["release_note_required"] = (
+        note_required if isinstance(note_required, bool) else "unknown"
+    )
+    body["attempts_total"] = raw.get("attempts_total", "unknown")
+    dist = raw.get("availability_distribution")
+    body["availability_distribution"] = dist if isinstance(dist, dict) else {}
+    body["conclusion"] = str(raw.get("conclusion", ""))
+    body["per_run_count"] = len(raw.get("per_run") or [])
+    if body["status"] == GATE03_DOWNGRADE_STATUS:
+        body["summary"] = (
+            f"诚实降级已实测归档：attempts_total={body['attempts_total']}, "
+            f"availability={body['availability_distribution']}；"
+            f"release_note_required={body['release_note_required']}"
+            "——工具只如实规约，不给 pass；门禁关闭与否由设计审查决定。"
+        )
+    elif body["status"] == "unknown":
+        body["error"] = (
+            "usage evidence lacks a recognized status field; recorded as unknown"
+        )
+    return body
+
+
+# ---------------------------------------------------------------------------
+# GATE-06 export-boundary unittest run (targeted -k filter)
+# ---------------------------------------------------------------------------
+
+_UNITTEST_ID_RE = re.compile(
+    r"^(?P<name>\S+) \((?P<test_id>[^)]+)\)(?: \.\.\. (?P<inline>.+))?$"
+)
+_UNITTEST_OUTCOME_RE = re.compile(
+    r"\.\.\. (?P<outcome>ok|FAIL|ERROR|skipped|expected failure|unexpected success)"
+    r"(?: '(?P<reason>[^']*)')?\s*$"
+)
+# Single-line renderer form: the outcome follows the "... " separator, so the
+# captured inline group is exactly the outcome token (no separator left).
+_UNITTEST_INLINE_OUTCOME_RE = re.compile(
+    r"^(?P<outcome>ok|FAIL|ERROR|skipped|expected failure|unexpected success)"
+    r"(?: '(?P<reason>[^']*)')?\s*$"
+)
+_UNITTEST_RAN_RE = re.compile(r"^Ran (?P<total>\d+) tests? in (?P<seconds>\d+(?:\.\d+)?)s$")
+_UNITTEST_RESULT_LINE_RE = re.compile(r"^(?P<result>(OK|FAILED).*)$")
+
+
+def parse_unittest_verbose(stdout: str) -> Dict[str, Any]:
+    """Parse ``python3 -m unittest -v`` output into per-test outcomes.
+
+    Both renderer layouts are handled: the single-line form
+    ``test_x (module.Class.test_x) ... ok`` and the two-line form where the
+    test docstring is printed before the outcome line. Only tests with an
+    observed outcome are listed — nothing is inferred for tests whose output
+    was cut off (those lower the denominator honestly instead of passing).
+    """
+    tests: List[Dict[str, Any]] = []
+    pending: Optional[str] = None
+    ran_line = ""
+    result_line = ""
+    for raw_line in stdout.splitlines():
+        line = raw_line.rstrip()
+        # Summary/result lines are checked FIRST: "FAILED (failures=1)" has
+        # the same parenthesized shape as a test id line and would otherwise
+        # be swallowed as a stale pending id.
+        stripped = line.strip()
+        ran_match = _UNITTEST_RAN_RE.match(stripped)
+        if ran_match:
+            ran_line = stripped
+            pending = None
+            continue
+        result_match = _UNITTEST_RESULT_LINE_RE.match(stripped)
+        if result_match:
+            result_line = result_match.group("result").strip()
+            continue
+        id_match = _UNITTEST_ID_RE.match(line)
+        if id_match:
+            inline = id_match.group("inline")
+            if inline is None:
+                pending = id_match.group("test_id")
+                continue
+            outcome_match = _UNITTEST_INLINE_OUTCOME_RE.match(inline)
+            if outcome_match:
+                tests.append({
+                    "test_id": id_match.group("test_id"),
+                    "outcome": outcome_match.group("outcome"),
+                    "detail": outcome_match.group("reason"),
+                })
+                pending = None
+            continue
+        if pending:
+            outcome_match = _UNITTEST_OUTCOME_RE.search(line)
+            if outcome_match:
+                tests.append({
+                    "test_id": pending,
+                    "outcome": outcome_match.group("outcome"),
+                    "detail": outcome_match.group("reason"),
+                })
+                pending = None
+
+    counts: Dict[str, Any] = {
+        "passed": 0, "failed": 0, "errors": 0, "skipped": 0,
+        "expected_failures": 0, "unexpected_successes": 0, "total": len(tests),
+    }
+    for t in tests:
+        outcome = t["outcome"]
+        if outcome == "ok":
+            counts["passed"] += 1
+        elif outcome == "FAIL":
+            counts["failed"] += 1
+        elif outcome == "ERROR":
+            counts["errors"] += 1
+        elif outcome == "skipped":
+            counts["skipped"] += 1
+        elif outcome == "expected failure":
+            counts["expected_failures"] += 1
+        elif outcome == "unexpected success":
+            counts["unexpected_successes"] += 1
+    return {
+        "tests": tests,
+        "counts": counts,
+        "summary_line": ran_line,
+        "result_line": result_line,
+    }
+
+
+def build_gate06_export_boundary_evidence(
+    parsed: Dict[str, Any],
+    env: Dict[str, Any],
+    modules: Tuple[str, ...],
+    patterns: Tuple[str, ...],
+    exit_code: Optional[int],
+) -> Dict[str, Any]:
+    """Normalize the targeted export-boundary unittest run into GATE-06 evidence.
+
+    The file documents the AUTOMATED portion of GATE-06 only (synthetic
+    counterexamples, whitelist fail-closed, export default-off, secret
+    masking, lessons never exported). The expert-review obligations
+    (export-field sensitivity, human-review responsibility) stay explicitly
+    pending in ``manual_review`` — the tool neither closes them nor hides
+    them (design principle 8 / SR-016).
+    """
+    counts = dict(parsed["counts"])
+    blocking = counts["failed"] + counts["errors"] + counts["unexpected_successes"]
+    if counts["total"] == 0:
+        status = "unknown"
+        summary = (
+            "导出边界过滤器未匹配到任何测试（或输出不可解析）；"
+            "GATE-06 自动化部分保持 unknown，不宣称通过。"
+        )
+    elif blocking:
+        status = "fail"
+        summary = (
+            f"导出边界定向测试存在失败: fail={counts['failed']} "
+            f"error={counts['errors']} unexpected_success={counts['unexpected_successes']}；"
+            "失败关闭语义被破坏的测试不得计入通过。"
+        )
+    else:
+        status = "pass"
+        summary = (
+            f"导出边界定向测试通过: passed={counts['passed']}, "
+            f"skipped={counts['skipped']}（跳过单列不计入通过分母）；"
+            f"覆盖白名单失败关闭/默认不导出/秘密脱敏/lessons 不导出共 "
+            f"{counts['total']} 项断言。"
+        )
+    return {
+        "schema_version": EVIDENCE_SCHEMA_VERSION,
+        "gate": "GATE-06",
+        "evidence_kind": "export_boundary_unittest",
+        "title": "导出边界定向测试（合成反例/白名单失败关闭/默认不导出/秘密脱敏）",
+        "source": {
+            "tool": "python3 -m unittest (targeted -k filter)",
+            "modules": list(modules),
+            "patterns": list(patterns),
+            "exit_code": exit_code,
+            "unittest_summary": parsed.get("summary_line", ""),
+            "unittest_result": parsed.get("result_line", ""),
+        },
+        "generated_at": utc_now(),
+        "environment": env,
+        "status": status,
+        "summary": summary,
+        "counts": counts,
+        "key_assertions": parsed["tests"],
+        "manual_review": {
+            "status": "pending",
+            "items": [
+                "导出字段敏感性专家评审（REV-10：白名单不证明匿名）",
+                "人工审核责任（维护者）确认",
+                "合成反例与白名单字段的专家评审",
+            ],
+        },
+        "not_automated": [
+            "导出字段敏感性与人工审核责任的专家评审（保持 manual_pending，"
+            "不由本工具裁决为通过）",
+        ],
+        "notes": [
+            "本文件只记录自动化导出边界测试的实测结果；关键断言清单来自 "
+            "unittest -v 逐测试输出（test_id + outcome；unittest 将进度流写入 "
+            "stderr，本工具合并 stdout/stderr 解析），无伪造条目。",
+            "GATE-06 关闭与否由评估器按证据与设计审查裁决；本文件的 "
+            "manual_review 块如实保留待审项。",
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Step runners (each step independent; failure recorded as error + unknown)
 # ---------------------------------------------------------------------------
 
@@ -590,11 +875,15 @@ def collect_evidence(
     runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
     corpus_dir: Path = HOLDOUT_CORPUS_DIR,
     knowledge_dir: Path = KNOWLEDGE_DIR,
+    usage_unavailable_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """Collect all automated evidence and return the release summary payload.
 
     Every step is independently guarded: a failing step writes its error into
     the affected evidence file (status unknown) and never blocks the others.
+
+    ``usage_unavailable_path`` points at the coordinator-produced GATE-03
+    usage evidence (P2.1a); it defaults to the repo docs/evidence artifact.
     """
     env = environment_info()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -762,7 +1051,55 @@ def collect_evidence(
     gate_paths["GATE-01-matrix"] = str(path)
     gate_summaries["GATE-01-matrix"] = matrix_body
 
-    # -- step 5: ReleaseGateEvaluator over the collected evidence -----------
+    # -- step 5: GATE-03 usage evidence (coordinator artifact, read-only) ---
+    # Consumed verbatim (P2.1a); never rewritten by this tool. A missing file
+    # or missing downgrade markers stays unknown and keeps the GATE-03 usage
+    # telemetry item in manual_pending.
+    if usage_unavailable_path is None:
+        usage_unavailable_path = DEFAULT_OUT_DIR / GATE03_USAGE_EVIDENCE_NAME
+    usage_body = load_gate03_usage_evidence(usage_unavailable_path, env)
+    usage_documented = usage_body["status"] == GATE03_DOWNGRADE_STATUS
+    steps.append({
+        "step": "gate03_usage_evidence",
+        "ok": usage_documented,
+        "status": usage_body["status"],
+        "source": str(usage_unavailable_path),
+        "error": None if usage_documented else (
+            usage_body.get("error")
+            or "usage evidence missing or downgrade markers absent; "
+               "GATE-03 usage telemetry stays unknown"
+        ),
+        "duration_seconds": 0.0,
+    })
+
+    # -- step 6: targeted export-boundary tests -> gate06-export-boundary ---
+    gate06_cmd = [sys.executable, "-m", "unittest", "-v"]
+    for module in GATE06_EXPORT_TEST_MODULES:
+        gate06_cmd.append(module)
+    for pattern in GATE06_EXPORT_TEST_PATTERNS:
+        gate06_cmd.extend(["-k", pattern])
+    res = _run_step(
+        "gate06_export_tests",
+        gate06_cmd,
+        STEP_TIMEOUTS_SECONDS["gate06_export_tests"],
+        runner,
+    )
+    steps.append({k: v for k, v in res.items() if k not in ("stdout", "stderr")})
+    # unittest writes its progress stream (including -v output) to STDERR;
+    # both captured streams are parsed, so the evidence never depends on
+    # which stream the interpreter chose.
+    gate06_output = (res.get("stdout") or "") + "\n" + (res.get("stderr") or "")
+    gate06_parsed = parse_unittest_verbose(gate06_output)
+    gate06_body = build_gate06_export_boundary_evidence(
+        gate06_parsed, env,
+        GATE06_EXPORT_TEST_MODULES, GATE06_EXPORT_TEST_PATTERNS,
+        res.get("exit_code"),
+    )
+    path = _write_json(out_dir / "gate06-export-boundary.json", gate06_body)
+    gate_paths["GATE-06"] = str(path)
+    gate_summaries["GATE-06"] = gate06_body
+
+    # -- step 7: ReleaseGateEvaluator over the collected evidence -----------
     det_body = gate_summaries.get("GATE-07", {})
     compatibility_tests = {
         "status": det_body.get("status", "unknown"),
@@ -781,6 +1118,12 @@ def collect_evidence(
         "GATE-07": gate_paths.get("GATE-07", ""),
         "compatibility_tests": compatibility_tests,
     }
+    if usage_unavailable_path.exists():
+        # P2.1a: the evaluator consumes the coordinator artifact directly;
+        # check_gate_03 applies the SD §5.2 honest-degradation branch.
+        evidence["GATE-03"] = str(usage_unavailable_path)
+        gate_paths["GATE-03-usage"] = str(usage_unavailable_path)
+    evidence["GATE-06"] = gate_paths.get("GATE-06", "")
     try:
         gate_result = ReleaseGateEvaluator().evaluate_all(dict(evidence))
     except Exception as exc:  # noqa: BLE001 - evaluator failure must not crash the tool
@@ -793,17 +1136,32 @@ def collect_evidence(
             "conclusion": "门禁评估器异常；发布结论按失败关闭（blocked）处理。",
         }
 
+    # GATE-03 manual split (P2.1a): the usage-telemetry sub-item leaves
+    # manual_pending once the coordinator evidence documents the honest
+    # downgrade; the token/cost hard-cap sub-item stays manual — the host
+    # provides no verifiable hard caps.
+    if usage_documented:
+        gate03_manual = {
+            "gate": "GATE-03",
+            "item": "token/费用最坏上限证据（宿主未提供可验证的单次调用硬限额与可靠上游计量）"
+                    "无法离线自动化；用量遥测不可用已实测归档（gate03-usage-unavailable.json），"
+                    "按 SD §5.2 只能以明确的软预算/任务预算模式发布",
+            "status": "unknown",
+        }
+    else:
+        gate03_manual = {
+            "gate": "GATE-03",
+            "item": "token/费用最坏上限证据（上游用量完整性）无法离线自动化；"
+                    "或显式发布软预算/任务预算模式",
+            "status": "unknown",
+        }
     manual_pending = [
         {
             "gate": "GATE-01",
             "item": "aggressive 级隔离反例（执行/网络隔离）与结构化输出/用量证明未由 doctor --probe 执行",
             "status": "unknown",
         },
-        {
-            "gate": "GATE-03",
-            "item": "token/费用最坏上限证据（上游用量完整性）无法离线自动化；或显式发布软预算/任务预算模式",
-            "status": "unknown",
-        },
+        gate03_manual,
         {
             "gate": "GATE-04",
             "item": "LLM 在线评测、独立维护者留出集、150 类逐语言专家评审",
@@ -811,7 +1169,8 @@ def collect_evidence(
         },
         {
             "gate": "GATE-06",
-            "item": "导出字段敏感性与人工审核责任的专家评审及合成反例评审",
+            "item": "导出字段敏感性与人工审核责任的专家评审及合成反例评审"
+                    "（合成反例边界测试已自动化归档于 gate06-export-boundary.json）",
             "status": "unknown",
         },
     ]
@@ -833,12 +1192,34 @@ def collect_evidence(
             "suites": parsed.get("suites", []),
         },
         "evidence_files": gate_paths,
-        "evidence_inline": {"compatibility_tests": compatibility_tests},
+        "evidence_inline": {
+            "compatibility_tests": compatibility_tests,
+            "gate03_usage": {
+                "source_file": str(usage_unavailable_path),
+                "status": usage_body["status"],
+                "release_note_required": usage_body["release_note_required"],
+                "attempts_total": usage_body["attempts_total"],
+                "availability_distribution": usage_body["availability_distribution"],
+                "conclusion": usage_body["conclusion"],
+                "evaluator_semantics": (
+                    "downgrade_documented 走 SD §5.2 明确降级分支：评估输出 fail + "
+                    "发布说明前置 reason，不给 pass；门禁关闭由设计审查决定。"
+                ),
+            },
+            "gate06_export_boundary": {
+                "status": gate06_body["status"],
+                "counts": gate06_body["counts"],
+                "manual_review": gate06_body["manual_review"],
+            },
+        },
         "steps": steps,
         "manual_pending": manual_pending,
         "automation_notes": [
             "每步独立采集：单步失败仅将对应门禁证据记为 error+unknown，不影响其余步骤。",
             "所有无法自动化的项保持 unknown 并列入 manual_pending；本工具不伪造在线评测或专家评审。",
+            "GATE-03 用量遥测不可用已实测归档（协调方证据只读接入）；按 SD §5.2 走明确降级分支，"
+            "评估结论如实输出 fail + 发布说明前置，不放行为 pass。",
+            "GATE-06 导出边界合成反例测试已自动化归档；导出字段敏感性/人工审核责任的专家评审仍为 manual。",
             "release_blocked 是未完成人工项时的如实结论，不是工具失败。",
         ],
     }

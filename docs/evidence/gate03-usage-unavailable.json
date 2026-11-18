@@ -2,6 +2,9 @@
   "schema_version": "1.0",
   "generated_at": "2026-11-18T13:12:26Z",
   "evidence_type": "GATE-03 real-run usage telemetry (SR-020/DSR-033)",
+  "status": "downgrade_documented",
+  "release_note_required": true,
+  "status_semantics": "诚实降级已实测归档（26/26 usage unavailable）；门禁关闭与否由设计审查决定，工具与评估器只如实规约——本状态不等于 pass，token/费用硬预算主张仍然无证据（SD §5.2 明确降级分支）",
   "attempts_total": 26,
   "availability_distribution": {
     "unavailable": 26

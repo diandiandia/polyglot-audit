@@ -12,6 +12,13 @@ Behavioral rules (DSR-051):
 - Any required capability whose state is "unknown" is treated as NOT supported:
   the gate fails and the release conclusion is blocked. Unverified capabilities
   are never silently promoted to supported (design principle 8).
+- GATE-03 evidence carrying ``status: "downgrade_documented"`` (a MEASURED
+  usage-telemetry unavailability with the honest degradation archived, SD
+  §5.2 明确降级分支) is NOT a pass: no such GateResult status exists, so the
+  most conservative existing verdict (fail) is emitted and the reason names
+  the release-note requirement (``release_note_required``). Closing the gate
+  via the required release note is a design-review decision — the evaluator
+  never relaxes the semantics to let a documented downgrade through.
 - The aggregate verdict ("release_allowed") is False whenever any gate is not
   pass (fail, unknown-evidence fail, or not_applicable); the blocking reasons
   are reported explicitly. Fail-closed: an unverified or explicitly deferred
@@ -157,6 +164,47 @@ class ReleaseGateEvaluator:
         ))
         return GateResult(gate_id, "pass", checks, 0, data.get("summary"))
 
+    def check_gate_03(self) -> GateResult:
+        """GATE-03: hard token/cost caps + usage integrity, or explicit soft budget.
+
+        Honest-degradation branch (SD §5.2 / P2.1a): evidence with
+        ``status: "downgrade_documented"`` records a MEASURED usage-telemetry
+        unavailability (e.g. real-run 26/26 attempts returned no usage block,
+        SR-020/DSR-033) with the honest degradation archived. That is
+        faithfully reported, not scored: ``pass_with_documented_downgrade``
+        does not exist in the GateResult enum (pass/fail/not_applicable), so
+        the most conservative existing verdict — ``fail`` — is emitted and
+        the reason states the release-note requirement. The gate can only
+        close by actually publishing the explicit soft-budget/task-budget
+        mode (the release note), a decision that belongs to the design
+        review; hard token/cost claims remain unsupported either way.
+
+        Any other recognized status keeps the generic single-evidence
+        semantics (pass/fail/unknown fail-closed), so no existing behavior is
+        relaxed.
+
+        Requirements: SWR-026(发布门禁) / DSR-051(未知不标支持), SR-020/DSR-033,
+        SD §5.2(明确降级), P2.1a
+        """
+        gate_id = "GATE-03"
+        data = self._gate_evidence(gate_id)
+        raw_status = str(data.get("status", "")).strip().lower()
+        if raw_status == "downgrade_documented":
+            note_required = data.get("release_note_required")
+            reason = (
+                "用量遥测已实测不可用并诚实降级归档"
+                f"（attempts_total={data.get('attempts_total', 'unknown')}, "
+                f"availability={data.get('availability_distribution') or {}}）；"
+                "按 SD §5.2 只能以明确的软预算/任务预算模式发布，发布说明为关闭前置"
+                f"（release_note_required={note_required}）——token/费用硬预算主张仍无证据，"
+                "未经发布说明与设计审查确认不得放行发布。"
+            )
+            checks = [GateCheck(
+                "GATE-03-a", "Token/费用最坏上限与用量完整性（或明确降级）", "fail", reason,
+            )]
+            return GateResult(gate_id, "fail", checks, 0, reason)
+        return self.check_generic(gate_id, GATE_DESCRIPTIONS[gate_id])
+
     def check_generic(self, gate_id: str, check_name: str) -> GateResult:
         """Generic single-evidence gate: status comes from the gate's evidence entry.
 
@@ -219,6 +267,8 @@ class ReleaseGateEvaluator:
             raise InvalidInputError(f"Unknown release gate id '{gate_id}'")
         if gate_id == "GATE-01":
             return self.check_gate_01()
+        if gate_id == "GATE-03":
+            return self.check_gate_03()
         if gate_id == "GATE-07":
             return self.check_gate_07()
         return self.check_generic(gate_id, GATE_DESCRIPTIONS[gate_id])

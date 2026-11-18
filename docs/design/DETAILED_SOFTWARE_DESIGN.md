@@ -57,6 +57,8 @@
 
 运行状态：`preparing → ready → active → paused → active`，可从 ready/active/paused 进入 `finalizing → complete | incomplete`；准备失败为 `prepare_failed`，不可恢复的损坏为 `corrupt`。`complete` 仅代表声明范围与必要门禁完成；预算停止、未处理任务、未知保护或未验证候选产生可枚举 incomplete 原因。持久状态和门禁状态不可用时返回错误而非构造终态。
 
+driver 派发的停止序列按预算维度感知 **[DA-06]**：hunt 领取被 `BUDGET_EXHAUSTED`（验证保留底线）阻断时不全局停止，仍继续派发 verify/second-opinion 任务以消费验证保留底座，直至验证预算也耗尽或队列清空才进入停止；停止原因按维度细分（`budget_exhausted`＝hunt 预算耗尽且仍有排队任务、`verification_reserve_exhausted`＝验证保留底线导致、`queue_drained`＝队列清空、`paused_or_blocked`＝run 非活跃或无成因事件），不以 hunt 预算耗尽冒充验证完成或全局预算耗尽。
+
 `finalizing` 首先禁止新 claim，收敛/取消在途任务，记下未完成与未知用量，按一致数据库读快照生成报告；G3/G4 通过并原子发布所有报告后记录终态。进入收敛前有效租约内的 claimed/running 在途 attempt 先行阻断（`INVALID_STATE`，先 pause 或等租约过期）**[DA-01]**。若无法发布完整报告保留 finalizing 与错误，允许恢复重新生成；禁止出现报告显示 complete 但 DB 是 incomplete。冻结快照被修改或卷宗关键文件缺失时进入 corrupt，保留诊断，不能在同一 run 重新采集。切换引擎前必须暂停，等待已运行任务提交或过期且停止确认，保留预算预留；禁止将活跃任务当作已释放。
 
 ## 4. DDS-04 调度、数据一致性与预算
