@@ -374,6 +374,134 @@ class TestLedger(unittest.TestCase):
         self.assertEqual(queue.reclaim_expired_attempts(self.run_id), [])
 
     # ------------------------------------------------------------------
+    # DSR-019 / L-11: forced reclamation of valid (unexpired) leases
+    # ------------------------------------------------------------------
+    def test_force_reclaim_revokes_valid_lease(self):
+        budget = BudgetLedger(self.conn)
+        budget.set_budget(self.run_id, "tasks", limit_val=1, unit="tasks", mode="enforced")
+        queue = TaskQueue(self.conn)
+        task_id = queue.enqueue(self.run_id, "hunt:u1", "hunt", {"unit": "u1"})
+
+        # A long lease (simulating a crashed driver that never submitted):
+        # the lease is still valid, so the default reclaim must remain a no-op.
+        claim = queue.claim(self.run_id, batch_size=1, lease_seconds=3600)[0]
+        original_expires_at = claim["expires_at"]
+        self.assertEqual(queue.reclaim_expired_attempts(self.run_id), [])
+
+        # Budget fully reserved by the stranded lease: nothing else can be
+        # claimed until the lease is revoked.
+        with self.assertRaises(BudgetExhaustedError):
+            budget.reserve(self.run_id, "att-other", "tasks", 1)
+
+        # Force reclamation: revokes the valid lease atomically.
+        reclaimed = queue.reclaim_expired_attempts(self.run_id, force=True)
+        self.assertEqual(len(reclaimed), 1)
+        record = reclaimed[0]
+        self.assertEqual(record["task_id"], task_id)
+        self.assertEqual(record["attempt_id"], claim["attempt_id"])
+        self.assertEqual(record["generation"], 2)
+        self.assertEqual(record["reservations_released"], 1)
+        self.assertTrue(record["forced"])
+        self.assertEqual(record["expires_at"], original_expires_at)
+
+        # Task queued again at generation+1; the attempt is expired.
+        row = self.conn.execute(
+            "SELECT state, generation FROM tasks WHERE task_id = ?", (task_id,)
+        ).fetchone()
+        self.assertEqual(row["state"], "queued")
+        self.assertEqual(row["generation"], 2)
+        att = self.conn.execute(
+            "SELECT status FROM attempts WHERE attempt_id = ?", (claim["attempt_id"],)
+        ).fetchone()
+        self.assertEqual(att["status"], "expired")
+
+        # Reservation released: the budget unit is available again.
+        summary = {b["dimension"]: b for b in budget.get_summary(self.run_id)}["tasks"]
+        self.assertEqual(summary["reserved"], 0)
+
+        # Late submission under the revoked lease is rejected even though the
+        # original lease had not yet expired (same stale semantics as expiry).
+        with self.assertRaises(StaleAttemptError):
+            queue.submit(
+                run_id=self.run_id,
+                task_id=task_id,
+                attempt_id=claim["attempt_id"],
+                generation=claim["generation"],
+                claim_token=claim["claim_token"],
+                worker_result={"records": []},
+                result_digest="digest-late",
+            )
+
+        # The reclamation event carries the forced marker and the original
+        # lease expiry for auditability.
+        events = EventStore(self.conn).get_events(self.run_id)
+        expired_events = [e for e in events if e["event_type"] == "attempt_expired"]
+        self.assertEqual(len(expired_events), 1)
+        payload = expired_events[0]["payload"]
+        self.assertTrue(payload["forced"])
+        self.assertEqual(payload["expires_at"], original_expires_at)
+        self.assertEqual(payload["task_id"], task_id)
+        self.assertEqual(payload["generation"], 2)
+
+        # The queue is usable again: re-claim succeeds with a fresh
+        # generation and a fresh reservation.
+        claim2 = queue.claim(self.run_id, batch_size=1)[0]
+        self.assertEqual(claim2["generation"], 3)
+        self.assertNotEqual(claim2["attempt_id"], claim["attempt_id"])
+
+    def test_force_reclaim_revokes_running_attempt(self):
+        budget = BudgetLedger(self.conn)
+        budget.set_budget(self.run_id, "tasks", limit_val=1, unit="tasks", mode="enforced")
+        queue = TaskQueue(self.conn)
+        task_id = queue.enqueue(self.run_id, "hunt:u1", "hunt", {"unit": "u1"})
+        claim = queue.claim(self.run_id, batch_size=1, lease_seconds=3600)[0]
+        queue.start(
+            run_id=self.run_id,
+            task_id=task_id,
+            attempt_id=claim["attempt_id"],
+            generation=claim["generation"],
+            claim_token=claim["claim_token"],
+        )
+
+        reclaimed = queue.reclaim_expired_attempts(self.run_id, force=True)
+        self.assertEqual(len(reclaimed), 1)
+        row = self.conn.execute(
+            "SELECT state, generation FROM tasks WHERE task_id = ?", (task_id,)
+        ).fetchone()
+        self.assertEqual(row["state"], "queued")
+        self.assertEqual(row["generation"], 2)
+        att = self.conn.execute(
+            "SELECT status FROM attempts WHERE attempt_id = ?", (claim["attempt_id"],)
+        ).fetchone()
+        self.assertEqual(att["status"], "expired")
+        summary = {b["dimension"]: b for b in budget.get_summary(self.run_id)}["tasks"]
+        self.assertEqual(summary["reserved"], 0)
+
+    def test_force_reclaim_is_noop_when_nothing_is_in_flight(self):
+        queue = TaskQueue(self.conn)
+        queue.enqueue(self.run_id, "hunt:u1", "hunt", {"unit": "u1"})
+        self.assertEqual(queue.reclaim_expired_attempts(self.run_id, force=True), [])
+
+        # Done attempts are terminal: force never revokes them.
+        budget = BudgetLedger(self.conn)
+        budget.set_budget(self.run_id, "tasks", limit_val=10, unit="tasks", mode="enforced")
+        claim = queue.claim(self.run_id, batch_size=1)[0]
+        queue.submit(
+            run_id=self.run_id,
+            task_id=claim["task_id"],
+            attempt_id=claim["attempt_id"],
+            generation=claim["generation"],
+            claim_token=claim["claim_token"],
+            worker_result={"records": []},
+            result_digest="digest-done",
+        )
+        self.assertEqual(queue.reclaim_expired_attempts(self.run_id, force=True), [])
+        row = self.conn.execute(
+            "SELECT state FROM tasks WHERE task_id = ?", (claim["task_id"],)
+        ).fetchone()
+        self.assertEqual(row["state"], "done")
+
+    # ------------------------------------------------------------------
     # DSR-065: bounded retry and quarantine
     # ------------------------------------------------------------------
     def test_fail_attempt_retry_then_quarantine(self):

@@ -3,6 +3,9 @@
 Implements DSR-014 / DSR-054 / SD-03 / SR-004:
 - Default exclusions: vcs, dependencies, build outputs, binaries, test suites.
 - User overrides with documented reasons.
+- Positive include scope: an explicit ``scope.include`` list (other than the
+  universal ``["*"]``) narrows the inventory — a regular file matching none of
+  the include patterns is excluded with an explicit reason (L-13 / O-10).
 - Never falsely counts excluded files as security-reviewed.
 """
 
@@ -104,6 +107,11 @@ DEFAULT_EXCLUDED_EXTENSIONS = {
 class ExclusionRules:
     """Manages file exclusion decisions."""
 
+    # The universal include list: identical semantics to no include list at
+    # all (everything stays inside the inventory), preserved verbatim so
+    # existing configurations that spell "no narrowing" as ["*"] are unaffected.
+    UNIVERSAL_INCLUDE = ["*"]
+
     def __init__(
         self,
         user_includes: Optional[List[str]] = None,
@@ -118,17 +126,57 @@ class ExclusionRules:
         self.user_excludes = user_excludes or []
         self.include_tests = include_tests
 
+    def _matches_include(self, relpath: str) -> bool:
+        """Return True when relpath matches any include pattern.
+
+        A pattern matches either the full relative path or the bare basename,
+        so both ``src/**`` and ``Makefile`` styles work.
+
+        Requirements: SWR-004(纳入范围) / SR-004(SD-03 范围语义).
+        """
+        return any(
+            fnmatch.fnmatch(relpath, pattern)
+            or fnmatch.fnmatch(os.path.basename(relpath), pattern)
+            for pattern in self.user_includes
+        )
+
     def evaluate(self, relpath: str) -> Tuple[bool, str]:
         """Determine if a file should be excluded and provide the reason.
 
         Returns: (is_excluded, reason)
 
+        Include scope semantics (SR-004 / SD-03, L-13 / O-10):
+
+        - ``user_includes`` empty: no narrowing — every file walks the default
+          exclusion chain (historical behavior, unchanged).
+        - ``user_includes`` == ``["*"]``: the legacy universal include — every
+          file is short-circuited straight to "included", ahead of all other
+          rules (historical behavior, unchanged; not a narrowing filter).
+        - ``user_includes`` otherwise non-empty: a POSITIVE filter. A regular
+          file matching none of the patterns is excluded immediately with
+          "Outside user include scope" and never reaches the directory /
+          binary / test rules (after an explicit narrowing those rules are
+          irrelevant to the rest of the tree). A file matching an include
+          still walks the exclusion chain below — matching an include never
+          exempts a file from explicit user excludes or default rules.
+
         Requirements: SWR-004(纳入/排除带原因) / DSR-054(默认排除规则).
         """
-        # 1. User include override takes precedence
-        for pattern in self.user_includes:
-            if fnmatch.fnmatch(relpath, pattern) or fnmatch.fnmatch(os.path.basename(relpath), pattern):
-                return False, "Matched user include rule"
+        include_active = bool(self.user_includes) and self.user_includes != self.UNIVERSAL_INCLUDE
+
+        # 1. Positive include scope (narrowing filter)
+        if include_active:
+            if not self._matches_include(relpath):
+                return True, "Outside user include scope"
+            # Matched an include: fall through — the exclusion chain below
+            # still applies (an include is not an exemption).
+        elif self.user_includes == self.UNIVERSAL_INCLUDE:
+            # Legacy universal include: ["*"] historically matched every file
+            # and short-circuited straight to "included" ahead of all other
+            # rules. That exact semantics is preserved (existing configs and
+            # tests depend on it); the universal list is NOT a narrowing
+            # filter, it is the explicit "everything is in scope" spelling.
+            return False, "Matched user include rule"
 
         # 2. User exclude rule
         for pattern in self.user_excludes:
@@ -194,7 +242,9 @@ def classify_exclusion_reason(reason: str) -> str:
         if dir_name in GENERATED_DIRS:
             return "generated"
         return "directory_rule"
-    if "user exclude" in reason_lower:
+    if "user exclude" in reason_lower or "user include" in reason_lower:
+        # Covers both "Matched user exclude pattern" and the positive-scope
+        # reason "Outside user include scope": both are user-scope decisions.
         return "user_rule"
     if "symlink" in reason_lower:
         return "symlink"

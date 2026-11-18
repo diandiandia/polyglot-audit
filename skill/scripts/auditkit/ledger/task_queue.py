@@ -10,6 +10,8 @@ Implements DSR-017 / DSR-018 / DSR-019 / DSR-020 / DSR-033 / DSR-065 / DSR-066 /
 - Stale attempt and generation mismatch rejection.
 - Lease reclamation: expired claimed/running attempts are expired, tasks return
   to the queue with generation+1 and their reservations are released (DSR-019).
+  ``reclaim_expired_attempts(force=True)`` additionally revokes valid unexpired
+  leases atomically — the crash-recovery path for a stranded driver (L-11).
 - Bounded task retry: retryable host failures requeue the task (a new attempt
   with a new reservation and incremented generation is created on the next
   claim); exceeding max_retries quarantines the task and records a coverage gap.
@@ -315,13 +317,31 @@ class TaskQueue:
             "reservations_released": released,
         }
 
-    def reclaim_expired_attempts(self, run_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def reclaim_expired_attempts(
+        self,
+        run_id: Optional[str] = None,
+        force: bool = False,
+    ) -> List[Dict[str, Any]]:
         """Expire stale claimed/running attempts and return their tasks to the queue (DSR-019).
 
-        Each expired attempt: status -> 'expired', task state -> 'queued' with
+        Each reclaimed attempt: status -> 'expired', task state -> 'queued' with
         generation+1 (so late submissions are rejected as stale), and its budget
         reservation is released back to the available pool. Returns the list of
         reclamation records.
+
+        With ``force=True`` (L-11) the lease expiry check is bypassed: valid,
+        unexpired leases of claimed/running attempts are revoked atomically.
+        This is the recovery path for a crashed driver whose outstanding
+        leases would otherwise block all further dispatch (e.g. a verify
+        pass that cannot claim a single budget unit) until the leases expire
+        on their own. Force reclamation is still generation-bumping and
+        reservation-releasing, so a late submission under the old token is
+        rejected exactly like an expiry-driven reclamation. The event carries
+        ``forced: true`` plus the original ``expires_at`` for auditability.
+
+        Default ``force=False`` behavior is unchanged: only attempts whose
+        lease has already expired are reclaimed.
+
         Requirements: SWR-018(租约回收) / DSR-019(过期失效)
         """
         now_iso = utc_now_iso()
@@ -330,12 +350,15 @@ class TaskQueue:
         self.conn.execute("BEGIN IMMEDIATE")
         try:
             sql = """
-                SELECT a.attempt_id, a.task_id, t.run_id, t.generation
+                SELECT a.attempt_id, a.task_id, a.expires_at, t.run_id, t.generation
                 FROM attempts a
                 JOIN tasks t ON a.task_id = t.task_id
-                WHERE a.status IN ('claimed', 'running') AND a.expires_at < ?
+                WHERE a.status IN ('claimed', 'running')
             """
-            params: List[Any] = [now_iso]
+            params: List[Any] = []
+            if not force:
+                sql += " AND a.expires_at < ?"
+                params.append(now_iso)
             if run_id is not None:
                 sql += " AND t.run_id = ?"
                 params.append(run_id)
@@ -352,24 +375,26 @@ class TaskQueue:
                     (new_gen, r["task_id"]),
                 )
                 released = self.budget_ledger.release(r["attempt_id"])
-                self.event_store.append_event(
-                    r["run_id"],
-                    "attempt_expired",
-                    "task_queue",
-                    {
-                        "task_id": r["task_id"],
-                        "attempt_id": r["attempt_id"],
-                        "generation": new_gen,
-                        "reservations_released": released,
-                    },
-                )
-                reclaimed.append({
+                detail: Dict[str, Any] = {
+                    "task_id": r["task_id"],
+                    "attempt_id": r["attempt_id"],
+                    "generation": new_gen,
+                    "reservations_released": released,
+                }
+                record: Dict[str, Any] = {
                     "task_id": r["task_id"],
                     "attempt_id": r["attempt_id"],
                     "run_id": r["run_id"],
                     "generation": new_gen,
                     "reservations_released": released,
-                })
+                }
+                if force:
+                    detail["forced"] = True
+                    detail["expires_at"] = r["expires_at"]
+                    record["forced"] = True
+                    record["expires_at"] = r["expires_at"]
+                self.event_store.append_event(r["run_id"], "attempt_expired", "task_queue", detail)
+                reclaimed.append(record)
         except BaseException:
             self.conn.execute("ROLLBACK")
             raise
