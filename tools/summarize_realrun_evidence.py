@@ -67,7 +67,10 @@ def summarize_run(run_dir: Path) -> dict:
 
     return {
         "run_id": run_id,
-        "run_dir": str(run_dir),
+        # SR-016/DSR-082: record only the run directory NAME (e.g. "run-008")
+        # -- absolute paths may embed the audited target's name and are
+        # forbidden in skill-repo evidence assets (RUN-LESSONS P0 leak).
+        "run_dir_name": Path(run_dir).name,
         "workers_submitted": len(submitted),
         "tasks_quarantined": quarantined,
         "usage_telemetry": {

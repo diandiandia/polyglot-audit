@@ -1,11 +1,11 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-11-18T00:46:22Z",
+  "generated_at": "2026-11-18T13:12:26Z",
   "evidence_type": "GATE-01 real-run host behavior (aggregate only, SR-016 sanitized)",
   "runs": [
     {
       "run_id": "run-7e0205c7",
-      "run_dir": "/root/zcode_run/run-008",
+      "run_dir_name": "run-008",
       "workers_submitted": 6,
       "tasks_quarantined": 1,
       "usage_telemetry": {
@@ -25,7 +25,7 @@
     },
     {
       "run_id": "run-ecbd39fc",
-      "run_dir": "/root/zcode_run/run-010",
+      "run_dir_name": "run-010",
       "workers_submitted": 10,
       "tasks_quarantined": 0,
       "usage_telemetry": {
@@ -46,7 +46,7 @@
     },
     {
       "run_id": "run-263f518b",
-      "run_dir": "/root/zcode_run/run-011",
+      "run_dir_name": "run-011",
       "workers_submitted": 10,
       "tasks_quarantined": 0,
       "usage_telemetry": {

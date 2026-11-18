@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-11-18T00:46:22Z",
+  "generated_at": "2026-11-18T13:12:26Z",
   "evidence_type": "GATE-03 real-run usage telemetry (SR-020/DSR-033)",
   "attempts_total": 26,
   "availability_distribution": {

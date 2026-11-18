@@ -38,8 +38,14 @@ class TestVerdictShapeSamples(unittest.TestCase):
                                 f"{f.name}: confirmed 需 impact_why")
 
     def test_no_target_identifiers_in_samples(self):
-        banned = ("zcode", "zcode-protocol", "file-config.adapter", "marketplace")
+        """SR-016/设计§12: 仓库内不得出现被审计目标名称。禁用词清单存于
+        gitignored 的 tests/model_eval/forbidden_tokens.local.json（运行侧
+        维护），文件缺失时本断言跳过（结构校验仍执行）。"""
+        banned_file = Path(__file__).resolve().parent / "forbidden_tokens.local.json"
+        if not banned_file.exists():
+            self.skipTest("no local forbidden-token list; structural checks still apply")
+        banned = json.loads(banned_file.read_text(encoding="utf-8"))
         for f in sorted(SAMPLES.glob("*.json")):
             text = f.read_text(encoding="utf-8").lower()
             for b in banned:
-                self.assertNotIn(b, text, f"{f.name}: 目标标识泄漏")
+                self.assertNotIn(b.lower(), text, f"{f.name}: 目标标识泄漏")

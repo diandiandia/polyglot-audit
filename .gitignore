@@ -13,3 +13,6 @@ tests/model_eval/records/
 *.log
 events.db
 .scratch-*/
+
+# 运行侧禁用词清单（SR-016）：目标项目名称不入库
+tests/model_eval/forbidden_tokens.local.json
