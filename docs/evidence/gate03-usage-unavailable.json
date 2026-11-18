@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-11-18T00:46:22Z",
+  "evidence_type": "GATE-03 real-run usage telemetry (SR-020/DSR-033)",
+  "attempts_total": 26,
+  "availability_distribution": {
+    "unavailable": 26
+  },
+  "conclusion": "real host CLI (this version) does not report per-call token usage in headless mode; hard token budget claims remain unsupported (tasks is the sole enforced dimension), consistent with the honest-degradation requirement",
+  "per_run": [
+    {
+      "run_id": "run-7e0205c7",
+      "attempts": 6,
+      "availability_distribution": {
+        "unavailable": 6
+      },
+      "unavailable_reasons": [
+        "worker execution returned no usage block"
+      ],
+      "note": "real headless workers did not return a usage block in any attempt (SR-020/DSR-033 evidence: token telemetry unavailable on this host CLI version; tasks-only budget is the sole enforced dimension)"
+    },
+    {
+      "run_id": "run-ecbd39fc",
+      "attempts": 10,
+      "availability_distribution": {
+        "unavailable": 10
+      },
+      "unavailable_reasons": [
+        "worker execution returned no usage block"
+      ],
+      "note": "real headless workers did not return a usage block in any attempt (SR-020/DSR-033 evidence: token telemetry unavailable on this host CLI version; tasks-only budget is the sole enforced dimension)"
+    },
+    {
+      "run_id": "run-263f518b",
+      "attempts": 10,
+      "availability_distribution": {
+        "unavailable": 10
+      },
+      "unavailable_reasons": [
+        "worker execution returned no usage block"
+      ],
+      "note": "real headless workers did not return a usage block in any attempt (SR-020/DSR-033 evidence: token telemetry unavailable on this host CLI version; tasks-only budget is the sole enforced dimension)"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "verdict": "rejected",
+  "finding_id": "F-EXAMPLE-004",
+  "counter_evidence": {
+    "where": "example-service/src/guard.ts:12-20",
+    "what": "example: allowlist rejects all non-internal ids"
+  }
+}

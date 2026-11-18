@@ -1,0 +1,8 @@
+{
+  "verdict": "needs_validation",
+  "finding_id": "F-EXAMPLE-003",
+  "blockers": [
+    "cannot determine runtime key handling for example store"
+  ],
+  "validation_plan": "instrument example store; re-run with traced writes"
+}

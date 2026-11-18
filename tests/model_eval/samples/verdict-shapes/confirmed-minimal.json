@@ -1,0 +1,28 @@
+{
+  "verdict": "needs_validation",
+  "finding_id": "F-EXAMPLE-002",
+  "category": "authorization-policy-gap",
+  "source": {
+    "artifact": "example-bootstrap/src/plugins.ts:42-58 (unofficial id passes gate)"
+  },
+  "sink": {
+    "artifact": "example-adapters/src/config/file.ts:101-120 (writes example config)"
+  },
+  "steps": [
+    "example-protocol/plugins.ts:11-29 passes id raw",
+    "example-bootstrap/src/plugins.ts:42-58 uses id without selector"
+  ],
+  "demoted_from": "confirmed",
+  "blockers": [
+    "missing rating factor reason: impact_why",
+    "missing rating factor reason: exploitability_why"
+  ],
+  "rating": {
+    "schema_version": "1.0",
+    "impact": 3,
+    "exploitability": 3,
+    "calculated_severity": "Medium",
+    "validation_priority": "V2"
+  },
+  "validation_plan": "re-rate with impact/exploitability factor reasons and re-submit"
+}

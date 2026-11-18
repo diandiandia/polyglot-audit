@@ -1,0 +1,46 @@
+{
+  "verdict": "confirmed",
+  "finding_id": "F-EXAMPLE-001",
+  "evidence_level": "E2",
+  "issue": "input-validation/path-injection",
+  "title": "Example: unvalidated path joins user-controlled segments",
+  "source": {
+    "path": "example-service/src/routes/example_route.ts",
+    "line": 42
+  },
+  "sink": {
+    "path": "example-service/src/lib/example_fs.ts",
+    "line": 87
+  },
+  "steps": [
+    {
+      "path": "example-service/src/routes/example_route.ts",
+      "line": 42,
+      "role": "source"
+    },
+    {
+      "path": "example-service/src/lib/example_fs.ts",
+      "line": 87,
+      "role": "sink"
+    }
+  ],
+  "rating": {
+    "schema_version": "1.0",
+    "impact": 4,
+    "exploitability": 3,
+    "factor_reasons": {
+      "impact_why": "example: config file overwrite",
+      "exploitability_why": "example: unauthenticated route"
+    },
+    "calculated_severity": "High",
+    "final_severity": "High",
+    "calculated_urgency": "P1",
+    "final_urgency": "P1"
+  },
+  "provenance": {
+    "hunt_tasks": [
+      "task-example"
+    ],
+    "verify_attempt_id": "att-example"
+  }
+}

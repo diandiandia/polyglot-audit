@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-11-18T00:46:22Z",
+  "evidence_type": "SR-028 two-independent-runs corroboration (generic categories only)",
+  "runs": [
+    {
+      "run_id": "run-7e0205c7",
+      "candidate_categories": {
+        "correctness/prototype-chain-lookup": 1
+      }
+    },
+    {
+      "run_id": "run-ecbd39fc",
+      "candidate_categories": {
+        "correctness": 1,
+        "input-validation/path-injection": 1
+      }
+    },
+    {
+      "run_id": "run-263f518b",
+      "candidate_categories": {
+        "path-resolution/trust-mismatch": 1,
+        "authorization-policy-gap": 1
+      }
+    }
+  ],
+  "pooled_categories": {
+    "correctness/prototype-chain-lookup": 1,
+    "correctness": 1,
+    "input-validation/path-injection": 1,
+    "path-resolution/trust-mismatch": 1,
+    "authorization-policy-gap": 1
+  },
+  "note": "category labels come from the generic hunt taxonomy; no target paths, names, or finding contents are recorded"
+}
