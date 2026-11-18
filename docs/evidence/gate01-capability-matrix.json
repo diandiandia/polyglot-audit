@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "gate": "GATE-01",
   "evidence_kind": "host_capability_matrix",
-  "generated_at": "2026-11-16T15:05:58Z",
+  "generated_at": "2026-11-18T13:49:57Z",
   "environment": {
     "python_version": "3.14.4",
     "platform": "Linux-7.0.12-linuxkit-aarch64-with-glibc2.43",
@@ -13,14 +13,14 @@
     "memory_total_bytes": 17007304704
   },
   "status": "fail",
-  "summary": "存在未验证（unknown/not_enforced）能力；相应组合不标受支持: claude_cli.execution_isolation=unknown, claude_cli.filesystem_isolation=unknown, claude_cli.hard_token_budget=unknown, claude_cli.network_isolation=unknown, claude_cli.structured_output=unknown, codex_cli.config_loading=unknown, codex_cli.execution_isolation=unknown, codex_cli.filesystem_isolation=unknown, codex_cli.hard_token_budget=unknown, codex_cli.headless_cli=unknown, codex_cli.network_isolation=unknown, codex_cli.structured_output=unknown 等 18 项",
+  "summary": "存在未验证（unknown/not_enforced）能力；相应组合不标受支持: claude_cli.execution_isolation=unknown, claude_cli.filesystem_isolation=unknown, claude_cli.hard_token_budget=unknown, claude_cli.network_isolation=unknown, claude_cli.structured_output=unknown, codex_cli.config_loading=unknown, codex_cli.execution_isolation=unknown, codex_cli.filesystem_isolation=unknown, codex_cli.hard_token_budget=unknown, codex_cli.headless_cli=unknown, codex_cli.network_isolation=unknown, codex_cli.structured_output=unknown 等 19 项",
   "capability_matrix": {
     "python_core": {
       "sqlite_wal": "enforced",
       "stdlib_offline": "enforced",
       "filesystem_isolation": "not_enforced",
       "network_isolation": "not_enforced",
-      "execution_isolation": "enforced"
+      "execution_isolation": "unknown"
     },
     "claude_cli": {
       "installed": "enforced",
@@ -52,14 +52,14 @@
   },
   "real_cli_gate": {
     "status": "pass",
-    "summary": "类别 real_cli: tests=7 fail=0 error=0 skipped=1 耗时 246.5s（1 项跳过，单列不计入通过分母）"
+    "summary": "类别 real_cli: tests=7 fail=0 error=0 skipped=1 耗时 250.6s（1 项跳过，单列不计入通过分母）"
   },
   "adapters": [
     {
       "schema_version": "1.0",
       "adapter": "python_core",
       "adapter_version": "3.14.4",
-      "checked_at": "2026-11-16T15:04:27.003824+00:00",
+      "checked_at": "2026-11-18T13:48:25.670190+00:00",
       "features": {
         "sqlite_wal": {
           "state": "enforced",
@@ -82,9 +82,9 @@
           "reason": "OS socket access not restricted by runtime"
         },
         "execution_isolation": {
-          "state": "enforced",
-          "method": "runtime policy review",
-          "evidence": "Audit tool does not execute target repository code"
+          "state": "unknown",
+          "method": "runtime policy review (not a falsifiable probe)",
+          "reason": "runtime policy review is not a falsifiable probe; execution isolation requires host-level evidence"
         }
       }
     },
@@ -92,7 +92,7 @@
       "schema_version": "1.0",
       "adapter": "claude_cli",
       "adapter_version": "2.1.319 (Claude Code)",
-      "checked_at": "2026-11-16T15:04:28.888613+00:00",
+      "checked_at": "2026-11-18T13:48:27.463818+00:00",
       "features": {
         "installed": {
           "state": "enforced",
@@ -140,7 +140,7 @@
       "schema_version": "1.0",
       "adapter": "codex_cli",
       "adapter_version": "codex-cli 0.167.0",
-      "checked_at": "2026-11-16T15:05:58.935350+00:00",
+      "checked_at": "2026-11-18T13:49:57.523246+00:00",
       "features": {
         "installed": {
           "state": "enforced",
@@ -193,7 +193,7 @@
       "schema_version": "1.0",
       "adapter": "in_session",
       "adapter_version": "1.0",
-      "checked_at": "2026-11-16T15:05:58.935366+00:00",
+      "checked_at": "2026-11-18T13:49:57.523260+00:00",
       "features": {
         "subagent_delegation": {
           "state": "unknown",

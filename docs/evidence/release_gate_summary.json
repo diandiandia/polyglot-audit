@@ -2,8 +2,8 @@
   "schema_version": "1.0",
   "tool": "tools/generate_release_evidence.py",
   "requirement": "DSR-051 / SR-029 / SWR-026",
-  "run_id": "ev-8683cc8e",
-  "generated_at": "2026-11-16T15:05:58Z",
+  "run_id": "ev-ad550f2c",
+  "generated_at": "2026-11-18T13:49:57Z",
   "environment": {
     "python_version": "3.14.4",
     "platform": "Linux-7.0.12-linuxkit-aarch64-with-glibc2.43",
@@ -29,7 +29,7 @@
             "check_id": "GATE-01-b",
             "name": "Real-host capability verification",
             "status": "fail",
-            "message": "必需能力未在真实宿主验证（unknown 不标支持）: claude_cli.execution_isolation=unknown, claude_cli.filesystem_isolation=unknown, claude_cli.hard_token_budget=unknown, claude_cli.network_isolation=unknown, claude_cli.structured_output=unknown, codex_cli.config_loading=unknown, codex_cli.execution_isolation=unknown, codex_cli.filesystem_isolation=unknown, codex_cli.hard_token_budget=unknown, codex_cli.headless_cli=unknown, codex_cli.network_isolation=unknown, codex_cli.structured_output=unknown, in_session.mcp_os_sandbox=not_enforced, in_session.mcp_stdio_transport=unknown, in_session.sequential_session_fallback=unknown, in_session.subagent_delegation=unknown, python_core.filesystem_isolation=not_enforced, python_core.network_isolation=not_enforced"
+            "message": "必需能力未在真实宿主验证（unknown 不标支持）: claude_cli.execution_isolation=unknown, claude_cli.filesystem_isolation=unknown, claude_cli.hard_token_budget=unknown, claude_cli.network_isolation=unknown, claude_cli.structured_output=unknown, codex_cli.config_loading=unknown, codex_cli.execution_isolation=unknown, codex_cli.filesystem_isolation=unknown, codex_cli.hard_token_budget=unknown, codex_cli.headless_cli=unknown, codex_cli.network_isolation=unknown, codex_cli.structured_output=unknown, in_session.mcp_os_sandbox=not_enforced, in_session.mcp_stdio_transport=unknown, in_session.sequential_session_fallback=unknown, in_session.subagent_delegation=unknown, python_core.execution_isolation=unknown, python_core.filesystem_isolation=not_enforced, python_core.network_isolation=not_enforced"
           }
         ],
         "revision": 0,
@@ -57,13 +57,13 @@
         "checks": [
           {
             "check_id": "GATE-03-a",
-            "name": "以宿主证据证明 token/费用最坏上限和用量完整性，或只发布明确的软预算/任务预算模式。",
+            "name": "Token/费用最坏上限与用量完整性（或明确降级）",
             "status": "fail",
-            "message": "GATE-03: 未提供证据"
+            "message": "用量遥测已实测不可用并诚实降级归档（attempts_total=26, availability={'unavailable': 26}）；按 SD §5.2 只能以明确的软预算/任务预算模式发布，发布说明为关闭前置（release_note_required=True）——token/费用硬预算主张仍无证据，未经发布说明与设计审查确认不得放行发布。"
           }
         ],
         "revision": 0,
-        "reason": "GATE-03: 未提供证据"
+        "reason": "用量遥测已实测不可用并诚实降级归档（attempts_total=26, availability={'unavailable': 26}）；按 SD §5.2 只能以明确的软预算/任务预算模式发布，发布说明为关闭前置（release_note_required=True）——token/费用硬预算主张仍无证据，未经发布说明与设计审查确认不得放行发布。"
       },
       {
         "schema_version": "1.0",
@@ -89,26 +89,26 @@
             "check_id": "GATE-05-a",
             "name": "在规定机器、文件分布、预算及统计口径下测量性能、成本与覆盖；公布缺失数据。",
             "status": "pass",
-            "message": "类别 scale: tests=19 fail=0 error=0 skipped=1 耗时 5.3s（1 项跳过，单列不计入通过分母）"
+            "message": "类别 scale: tests=19 fail=0 error=0 skipped=1 耗时 5.5s（1 项跳过，单列不计入通过分母）"
           }
         ],
         "revision": 0,
-        "reason": "类别 scale: tests=19 fail=0 error=0 skipped=1 耗时 5.3s（1 项跳过，单列不计入通过分母）"
+        "reason": "类别 scale: tests=19 fail=0 error=0 skipped=1 耗时 5.5s（1 项跳过，单列不计入通过分母）"
       },
       {
         "schema_version": "1.0",
         "gate_id": "GATE-06",
-        "status": "fail",
+        "status": "pass",
         "checks": [
           {
             "check_id": "GATE-06-a",
             "name": "明确导出字段、敏感性、人工审核责任和失败关闭行为；以合成反例测试。",
-            "status": "fail",
-            "message": "GATE-06: 未提供证据"
+            "status": "pass",
+            "message": "导出边界定向测试通过: passed=12, skipped=0（跳过单列不计入通过分母）；覆盖白名单失败关闭/默认不导出/秘密脱敏/lessons 不导出共 12 项断言。"
           }
         ],
         "revision": 0,
-        "reason": "GATE-06: 未提供证据"
+        "reason": "导出边界定向测试通过: passed=12, skipped=0（跳过单列不计入通过分母）；覆盖白名单失败关闭/默认不导出/秘密脱敏/lessons 不导出共 12 项断言。"
       },
       {
         "schema_version": "1.0",
@@ -119,43 +119,42 @@
             "check_id": "GATE-07-a",
             "name": "Python 下限 / Schema 子集 / CLI+MCP 接口版本",
             "status": "pass",
-            "message": "类别 deterministic: tests=807 fail=0 error=0 skipped=0 耗时 18.9s"
+            "message": "类别 deterministic: tests=915 fail=0 error=0 skipped=0 耗时 29.3s"
           },
           {
             "check_id": "GATE-07-b",
             "name": "Compatibility test suite",
             "status": "pass",
-            "message": "确定性套件代理口径（contracts/snapshot/ledger/analysis/knowledge/reporting/security/holdout-wiring/e2e/swr/CLI 确定性/宿主 mock）: 类别 deterministic: tests=807 fail=0 error=0 skipped=0 耗时 18.9s；stdlib-only 环境检查随 GATE-05 类别运行。"
+            "message": "确定性套件代理口径（contracts/snapshot/ledger/analysis/knowledge/reporting/security/holdout-wiring/e2e/swr/CLI 确定性/宿主 mock）: 类别 deterministic: tests=915 fail=0 error=0 skipped=0 耗时 29.3s；stdlib-only 环境检查随 GATE-05 类别运行。"
           }
         ],
         "revision": 0,
-        "reason": "类别 deterministic: tests=807 fail=0 error=0 skipped=0 耗时 18.9s"
+        "reason": "类别 deterministic: tests=915 fail=0 error=0 skipped=0 耗时 29.3s"
       }
     ],
     "blocking": [
-      "GATE-01: fail — 存在 unknown/unverified 必需能力 — 必需能力未在真实宿主验证（unknown 不标支持）: claude_cli.execution_isolation=unknown, claude_cli.filesystem_isolation=unknown, claude_cli.hard_token_budget=unknown, claude_cli.network_isolation=unknown, claude_cli.structured_output=unknown, codex_cli.config_loading=unknown, codex_cli.execution_isolation=unknown, codex_cli.filesystem_isolation=unknown, codex_cli.hard_token_budget=unknown, codex_cli.headless_cli=unknown, codex_cli.network_isolation=unknown, codex_cli.structured_output=unknown, in_session.mcp_os_sandbox=not_enforced, in_session.mcp_stdio_transport=unknown, in_session.sequential_session_fallback=unknown, in_session.subagent_delegation=unknown, python_core.filesystem_isolation=not_enforced, python_core.network_isolation=not_enforced",
-      "GATE-03: fail — GATE-03: 未提供证据 — GATE-03: 未提供证据",
-      "GATE-04: fail — 已自动化：信号级留出语料接线评测（分母=300, 检出 tp=150, 漏报 fn=0, 误报 fp=37, 未决 pending=0, unknown 类别=0/150）。未自动化（保持 unknown）：LLM 在线评测（llm_results=unknown）、独立留出集、150 类逐语言专家评审。 — 已自动化：信号级留出语料接线评测（分母=300, 检出 tp=150, 漏报 fn=0, 误报 fp=37, 未决 pending=0, unknown 类别=0/150）。未自动化（保持 unknown）：LLM 在线评测（llm_results=unknown）、独立留出集、150 类逐语言专家评审。",
-      "GATE-06: fail — GATE-06: 未提供证据 — GATE-06: 未提供证据"
+      "GATE-01: fail — 存在 unknown/unverified 必需能力 — 必需能力未在真实宿主验证（unknown 不标支持）: claude_cli.execution_isolation=unknown, claude_cli.filesystem_isolation=unknown, claude_cli.hard_token_budget=unknown, claude_cli.network_isolation=unknown, claude_cli.structured_output=unknown, codex_cli.config_loading=unknown, codex_cli.execution_isolation=unknown, codex_cli.filesystem_isolation=unknown, codex_cli.hard_token_budget=unknown, codex_cli.headless_cli=unknown, codex_cli.network_isolation=unknown, codex_cli.structured_output=unknown, in_session.mcp_os_sandbox=not_enforced, in_session.mcp_stdio_transport=unknown, in_session.sequential_session_fallback=unknown, in_session.subagent_delegation=unknown, python_core.execution_isolation=unknown, python_core.filesystem_isolation=not_enforced, python_core.network_isolation=not_enforced",
+      "GATE-03: fail — 用量遥测已实测不可用并诚实降级归档（attempts_total=26, availability={'unavailable': 26}）；按 SD §5.2 只能以明确的软预算/任务预算模式发布，发布说明为关闭前置（release_note_required=True）——token/费用硬预算主张仍无证据，未经发布说明与设计审查确认不得放行发布。 — 用量遥测已实测不可用并诚实降级归档（attempts_total=26, availability={'unavailable': 26}）；按 SD §5.2 只能以明确的软预算/任务预算模式发布，发布说明为关闭前置（release_note_required=True）——token/费用硬预算主张仍无证据，未经发布说明与设计审查确认不得放行发布。",
+      "GATE-04: fail — 已自动化：信号级留出语料接线评测（分母=300, 检出 tp=150, 漏报 fn=0, 误报 fp=37, 未决 pending=0, unknown 类别=0/150）。未自动化（保持 unknown）：LLM 在线评测（llm_results=unknown）、独立留出集、150 类逐语言专家评审。 — 已自动化：信号级留出语料接线评测（分母=300, 检出 tp=150, 漏报 fn=0, 误报 fp=37, 未决 pending=0, unknown 类别=0/150）。未自动化（保持 unknown）：LLM 在线评测（llm_results=unknown）、独立留出集、150 类逐语言专家评审。"
     ],
     "conclusion": "发布被阻止：存在 fail/unknown 门禁或未验证（unknown）必需能力；相应组合不标受支持。"
   },
   "orchestrator": {
     "exit_code": 0,
     "total": {
-      "tests": 846,
+      "tests": 959,
       "fail": 0,
       "error": 0,
       "skipped": 2,
       "missing_suites": 0,
-      "duration_seconds": 363.6
+      "duration_seconds": 376.9
     },
     "result_line": "NO FAILURES OR ERRORS (missing/skipped categories remain honestly unclaimed)",
     "suites": [
       {
         "category": "deterministic",
         "suite": "Contracts & Schemas",
-        "tests": 28,
+        "tests": 31,
         "fail": 0,
         "error": 0,
         "skipped": 0,
@@ -165,7 +164,7 @@
       {
         "category": "deterministic",
         "suite": "Snapshot & Paths",
-        "tests": 69,
+        "tests": 81,
         "fail": 0,
         "error": 0,
         "skipped": 0,
@@ -175,17 +174,17 @@
       {
         "category": "deterministic",
         "suite": "Ledger, Tasks, & Budget",
-        "tests": 30,
+        "tests": 41,
         "fail": 0,
         "error": 0,
         "skipped": 0,
-        "duration_seconds": 0.6,
+        "duration_seconds": 0.8,
         "status": "PASS"
       },
       {
         "category": "deterministic",
         "suite": "Analysis, Verifier, & Rating",
-        "tests": 72,
+        "tests": 118,
         "fail": 0,
         "error": 0,
         "skipped": 0,
@@ -205,11 +204,11 @@
       {
         "category": "deterministic",
         "suite": "Reporting & Coverage",
-        "tests": 35,
+        "tests": 40,
         "fail": 0,
         "error": 0,
         "skipped": 0,
-        "duration_seconds": 0.2,
+        "duration_seconds": 0.3,
         "status": "PASS"
       },
       {
@@ -229,27 +228,27 @@
         "fail": 0,
         "error": 0,
         "skipped": 0,
-        "duration_seconds": 0.0,
+        "duration_seconds": 0.1,
         "status": "PASS"
       },
       {
         "category": "deterministic",
         "suite": "End-to-End Synthetics",
-        "tests": 65,
+        "tests": 81,
         "fail": 0,
         "error": 0,
         "skipped": 0,
-        "duration_seconds": 3.8,
+        "duration_seconds": 4.7,
         "status": "PASS"
       },
       {
         "category": "deterministic",
         "suite": "SWR Acceptance (per-SWR tests/swr)",
-        "tests": 317,
+        "tests": 320,
         "fail": 0,
         "error": 0,
         "skipped": 0,
-        "duration_seconds": 2.0,
+        "duration_seconds": 2.3,
         "status": "PASS"
       },
       {
@@ -265,11 +264,11 @@
       {
         "category": "deterministic",
         "suite": "Host Adapters (mock)",
-        "tests": 91,
+        "tests": 103,
         "fail": 0,
         "error": 0,
         "skipped": 0,
-        "duration_seconds": 5.1,
+        "duration_seconds": 14.2,
         "status": "PASS"
       },
       {
@@ -279,17 +278,17 @@
         "fail": 0,
         "error": 0,
         "skipped": 1,
-        "duration_seconds": 246.5,
+        "duration_seconds": 250.6,
         "status": "PASS"
       },
       {
         "category": "model_eval",
         "suite": "Model-in-the-loop Evaluation",
-        "tests": 6,
+        "tests": 11,
         "fail": 0,
         "error": 0,
         "skipped": 0,
-        "duration_seconds": 92.7,
+        "duration_seconds": 91.4,
         "status": "PASS"
       },
       {
@@ -309,7 +308,7 @@
         "fail": 0,
         "error": 0,
         "skipped": 1,
-        "duration_seconds": 5.3,
+        "duration_seconds": 5.5,
         "status": "PASS"
       }
     ]
@@ -321,12 +320,45 @@
     "GATE-07": "/root/polyglot-audit/docs/evidence/gate07-summary.json",
     "GATE-04": "/root/polyglot-audit/docs/evidence/gate04-holdout.json",
     "GATE-01-isolation": "/root/polyglot-audit/docs/evidence/gate01-isolation.json",
-    "GATE-01-matrix": "/root/polyglot-audit/docs/evidence/gate01-capability-matrix.json"
+    "GATE-01-matrix": "/root/polyglot-audit/docs/evidence/gate01-capability-matrix.json",
+    "GATE-06": "/root/polyglot-audit/docs/evidence/gate06-export-boundary.json",
+    "GATE-03-usage": "/root/polyglot-audit/docs/evidence/gate03-usage-unavailable.json"
   },
   "evidence_inline": {
     "compatibility_tests": {
       "status": "pass",
-      "summary": "确定性套件代理口径（contracts/snapshot/ledger/analysis/knowledge/reporting/security/holdout-wiring/e2e/swr/CLI 确定性/宿主 mock）: 类别 deterministic: tests=807 fail=0 error=0 skipped=0 耗时 18.9s；stdlib-only 环境检查随 GATE-05 类别运行。"
+      "summary": "确定性套件代理口径（contracts/snapshot/ledger/analysis/knowledge/reporting/security/holdout-wiring/e2e/swr/CLI 确定性/宿主 mock）: 类别 deterministic: tests=915 fail=0 error=0 skipped=0 耗时 29.3s；stdlib-only 环境检查随 GATE-05 类别运行。"
+    },
+    "gate03_usage": {
+      "source_file": "/root/polyglot-audit/docs/evidence/gate03-usage-unavailable.json",
+      "status": "downgrade_documented",
+      "release_note_required": true,
+      "attempts_total": 26,
+      "availability_distribution": {
+        "unavailable": 26
+      },
+      "conclusion": "real host CLI (this version) does not report per-call token usage in headless mode; hard token budget claims remain unsupported (tasks is the sole enforced dimension), consistent with the honest-degradation requirement",
+      "evaluator_semantics": "downgrade_documented 走 SD §5.2 明确降级分支：评估输出 fail + 发布说明前置 reason，不给 pass；门禁关闭由设计审查决定。"
+    },
+    "gate06_export_boundary": {
+      "status": "pass",
+      "counts": {
+        "passed": 12,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0,
+        "expected_failures": 0,
+        "unexpected_successes": 0,
+        "total": 12
+      },
+      "manual_review": {
+        "status": "pending",
+        "items": [
+          "导出字段敏感性专家评审（REV-10：白名单不证明匿名）",
+          "人工审核责任（维护者）确认",
+          "合成反例与白名单字段的专家评审"
+        ]
+      }
     }
   },
   "steps": [
@@ -339,7 +371,7 @@
       "ok": true,
       "exit_code": 0,
       "status": "ok",
-      "duration_seconds": 363.6
+      "duration_seconds": 377.0
     },
     {
       "step": "evaluate_holdout",
@@ -351,7 +383,7 @@
         "--knowledge",
         "/root/polyglot-audit/skill/knowledge",
         "--out",
-        "/tmp/evidence-holdout-mhs2k94i"
+        "/tmp/evidence-holdout-97b0wf_u"
       ],
       "ok": true,
       "exit_code": 0,
@@ -364,7 +396,7 @@
         "/usr/bin/python3",
         "/root/polyglot-audit/tools/probe_isolation.py",
         "--out",
-        "/tmp/evidence-isolation-g2yzksm6"
+        "/tmp/evidence-isolation-voidfkvs"
       ],
       "ok": true,
       "exit_code": 0,
@@ -384,7 +416,41 @@
       "ok": true,
       "exit_code": 0,
       "status": "ok",
-      "duration_seconds": 92.0
+      "duration_seconds": 91.9
+    },
+    {
+      "step": "gate03_usage_evidence",
+      "ok": true,
+      "status": "downgrade_documented",
+      "source": "/root/polyglot-audit/docs/evidence/gate03-usage-unavailable.json",
+      "error": null,
+      "duration_seconds": 0.0
+    },
+    {
+      "step": "gate06_export_tests",
+      "command": [
+        "/usr/bin/python3",
+        "-m",
+        "unittest",
+        "-v",
+        "tests.security.test_skill_isolation",
+        "tests.reporting.test_reporting",
+        "tests.swr.test_swr_031",
+        "-k",
+        "export",
+        "-k",
+        "whitelist",
+        "-k",
+        "lessons",
+        "-k",
+        "secret",
+        "-k",
+        "mask"
+      ],
+      "ok": true,
+      "exit_code": 0,
+      "status": "ok",
+      "duration_seconds": 0.3
     }
   ],
   "manual_pending": [
@@ -395,7 +461,7 @@
     },
     {
       "gate": "GATE-03",
-      "item": "token/费用最坏上限证据（上游用量完整性）无法离线自动化；或显式发布软预算/任务预算模式",
+      "item": "token/费用最坏上限证据（宿主未提供可验证的单次调用硬限额与可靠上游计量）无法离线自动化；用量遥测不可用已实测归档（gate03-usage-unavailable.json），按 SD §5.2 只能以明确的软预算/任务预算模式发布",
       "status": "unknown"
     },
     {
@@ -405,13 +471,15 @@
     },
     {
       "gate": "GATE-06",
-      "item": "导出字段敏感性与人工审核责任的专家评审及合成反例评审",
+      "item": "导出字段敏感性与人工审核责任的专家评审及合成反例评审（合成反例边界测试已自动化归档于 gate06-export-boundary.json）",
       "status": "unknown"
     }
   ],
   "automation_notes": [
     "每步独立采集：单步失败仅将对应门禁证据记为 error+unknown，不影响其余步骤。",
     "所有无法自动化的项保持 unknown 并列入 manual_pending；本工具不伪造在线评测或专家评审。",
+    "GATE-03 用量遥测不可用已实测归档（协调方证据只读接入）；按 SD §5.2 走明确降级分支，评估结论如实输出 fail + 发布说明前置，不放行为 pass。",
+    "GATE-06 导出边界合成反例测试已自动化归档；导出字段敏感性/人工审核责任的专家评审仍为 manual。",
     "release_blocked 是未完成人工项时的如实结论，不是工具失败。"
   ]
 }

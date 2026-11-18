@@ -9,7 +9,7 @@
     "orchestrator_exit_code": 0,
     "orchestrator_result": "NO FAILURES OR ERRORS (missing/skipped categories remain honestly unclaimed)"
   },
-  "generated_at": "2026-11-16T15:04:26Z",
+  "generated_at": "2026-11-18T13:48:25Z",
   "environment": {
     "python_version": "3.14.4",
     "platform": "Linux-7.0.12-linuxkit-aarch64-with-glibc2.43",
@@ -20,7 +20,7 @@
     "memory_total_bytes": 17007304704
   },
   "status": "pass",
-  "summary": "类别 scale: tests=19 fail=0 error=0 skipped=1 耗时 5.3s（1 项跳过，单列不计入通过分母）",
+  "summary": "类别 scale: tests=19 fail=0 error=0 skipped=1 耗时 5.5s（1 项跳过，单列不计入通过分母）",
   "counts": {
     "tests": 19,
     "fail": 0,
@@ -28,7 +28,7 @@
     "skipped": 1,
     "missing_suites": 0
   },
-  "duration_seconds": 5.3,
+  "duration_seconds": 5.5,
   "skipped_or_missing_suites": [
     {
       "suite": "Performance & Scale",
@@ -44,7 +44,7 @@
       "fail": 0,
       "error": 0,
       "skipped": 1,
-      "duration_seconds": 5.3,
+      "duration_seconds": 5.5,
       "status": "PASS"
     }
   ],

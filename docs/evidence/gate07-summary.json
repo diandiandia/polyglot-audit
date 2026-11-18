@@ -9,7 +9,7 @@
     "orchestrator_exit_code": 0,
     "orchestrator_result": "NO FAILURES OR ERRORS (missing/skipped categories remain honestly unclaimed)"
   },
-  "generated_at": "2026-11-16T15:04:26Z",
+  "generated_at": "2026-11-18T13:48:25Z",
   "environment": {
     "python_version": "3.14.4",
     "platform": "Linux-7.0.12-linuxkit-aarch64-with-glibc2.43",
@@ -20,21 +20,21 @@
     "memory_total_bytes": 17007304704
   },
   "status": "pass",
-  "summary": "类别 deterministic: tests=807 fail=0 error=0 skipped=0 耗时 18.9s",
+  "summary": "类别 deterministic: tests=915 fail=0 error=0 skipped=0 耗时 29.3s",
   "counts": {
-    "tests": 807,
+    "tests": 915,
     "fail": 0,
     "error": 0,
     "skipped": 0,
     "missing_suites": 0
   },
-  "duration_seconds": 18.9,
+  "duration_seconds": 29.3,
   "skipped_or_missing_suites": [],
   "suites": [
     {
       "category": "deterministic",
       "suite": "Contracts & Schemas",
-      "tests": 28,
+      "tests": 31,
       "fail": 0,
       "error": 0,
       "skipped": 0,
@@ -44,7 +44,7 @@
     {
       "category": "deterministic",
       "suite": "Snapshot & Paths",
-      "tests": 69,
+      "tests": 81,
       "fail": 0,
       "error": 0,
       "skipped": 0,
@@ -54,17 +54,17 @@
     {
       "category": "deterministic",
       "suite": "Ledger, Tasks, & Budget",
-      "tests": 30,
+      "tests": 41,
       "fail": 0,
       "error": 0,
       "skipped": 0,
-      "duration_seconds": 0.6,
+      "duration_seconds": 0.8,
       "status": "PASS"
     },
     {
       "category": "deterministic",
       "suite": "Analysis, Verifier, & Rating",
-      "tests": 72,
+      "tests": 118,
       "fail": 0,
       "error": 0,
       "skipped": 0,
@@ -84,11 +84,11 @@
     {
       "category": "deterministic",
       "suite": "Reporting & Coverage",
-      "tests": 35,
+      "tests": 40,
       "fail": 0,
       "error": 0,
       "skipped": 0,
-      "duration_seconds": 0.2,
+      "duration_seconds": 0.3,
       "status": "PASS"
     },
     {
@@ -108,27 +108,27 @@
       "fail": 0,
       "error": 0,
       "skipped": 0,
-      "duration_seconds": 0.0,
+      "duration_seconds": 0.1,
       "status": "PASS"
     },
     {
       "category": "deterministic",
       "suite": "End-to-End Synthetics",
-      "tests": 65,
+      "tests": 81,
       "fail": 0,
       "error": 0,
       "skipped": 0,
-      "duration_seconds": 3.8,
+      "duration_seconds": 4.7,
       "status": "PASS"
     },
     {
       "category": "deterministic",
       "suite": "SWR Acceptance (per-SWR tests/swr)",
-      "tests": 317,
+      "tests": 320,
       "fail": 0,
       "error": 0,
       "skipped": 0,
-      "duration_seconds": 2.0,
+      "duration_seconds": 2.3,
       "status": "PASS"
     },
     {
@@ -144,11 +144,11 @@
     {
       "category": "deterministic",
       "suite": "Host Adapters (mock)",
-      "tests": 91,
+      "tests": 103,
       "fail": 0,
       "error": 0,
       "skipped": 0,
-      "duration_seconds": 5.1,
+      "duration_seconds": 14.2,
       "status": "PASS"
     }
   ],
