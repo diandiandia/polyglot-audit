@@ -117,6 +117,7 @@ from auditkit.analysis.guards import VALID_GUARD_STATUSES, GuardManager, GuardRe
 from auditkit.analysis.hunter import HuntResultParser
 from auditkit.analysis.packets import PacketBuilder
 from auditkit.analysis.triage import StrongSignalTriage
+from auditkit.analysis.rating import RatingEngine
 from auditkit.analysis.verifier import (
     SECOND_OPINION_SEVERITIES,
     Verifier,
@@ -1232,21 +1233,46 @@ class AuditAppService:
 
             Requirements: SWR-008(端点定位) / DSR-027(未解不虚设)
             """
+            import re as _re
             texts: List[str] = []
             if isinstance(endpoint, dict):
-                explicit_path = endpoint.get("path") or ""
+                # Real workers name a location in several shapes (RUN-LESSONS
+                # real-shape series): {path|file, line} singles and
+                # {path|file, lines: "A-B, C-D"} range lists (line values may
+                # arrive as strings). Every candidate range resolves against
+                # the frozen manifest; names that do not resolve contribute
+                # no packet range (honest, SR-025) and fall through to the
+                # free-text token scan below.
+                explicit_path = endpoint.get("path") or endpoint.get("file") or ""
                 explicit_line = endpoint.get("line")
+                if isinstance(explicit_line, str):
+                    m_line = _re.search(r"\d+", explicit_line)
+                    explicit_line = int(m_line.group(0)) if m_line else None
                 if explicit_path and explicit_path in snapshot_paths:
-                    line = int(explicit_line or 1)
-                    rng = {"path": explicit_path,
-                           "line_start": max(1, line - window),
-                           "line_end": line + window}
-                    key = (rng["path"], rng["line_start"], rng["line_end"])
-                    if key not in seen:
-                        seen.add(key)
-                        ranges.append(rng)
+                    parsed_ranges: List[tuple] = []
+                    lines_field = endpoint.get("lines")
+                    if isinstance(lines_field, str) and lines_field.strip():
+                        for m_rng in _re.finditer(r"(\d+)\s*-\s*(\d+)|(\d+)", lines_field):
+                            if m_rng.group(1):
+                                parsed_ranges.append((int(m_rng.group(1)), int(m_rng.group(2))))
+                            else:
+                                single = int(m_rng.group(3))
+                                parsed_ranges.append((single, single))
+                    elif isinstance(explicit_line, int):
+                        parsed_ranges.append((explicit_line, explicit_line))
+                    else:
+                        parsed_ranges.append((1, 1))
+                    for start, end in parsed_ranges:
+                        rng = {"path": explicit_path,
+                               "line_start": max(1, start - window),
+                               "line_end": end + window}
+                        key = (rng["path"], rng["line_start"], rng["line_end"])
+                        if key not in seen:
+                            seen.add(key)
+                            ranges.append(rng)
                     return
-                for field in ("path", "artifact", "validation", "location", "symbol"):
+                for field in ("path", "file", "lines", "description",
+                              "artifact", "validation", "location", "symbol"):
                     v = endpoint.get(field)
                     if isinstance(v, str) and v:
                         texts.append(v)
@@ -1255,7 +1281,6 @@ class AuditAppService:
             else:
                 return
 
-            import re as _re
             tokens = [
                 (m.group(1), m.group(2))
                 for m in _re.finditer(
@@ -2041,13 +2066,19 @@ class AuditAppService:
         verifier = Verifier(enforce_attempt_gate=True)
         queue = TaskQueue(conn)
         store = EventStore(conn)
+        run_row = conn.execute(
+            "SELECT snapshot_id FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        run_snapshot_id = (run_row["snapshot_id"] if run_row else "") or ""
         enqueued: List[Dict[str, Any]] = []
         for cand in candidates:
             cand_id = cand.get("candidate_id", "")
             if not cand_id:
                 continue
             try:
-                spec = self._validated_task_spec(verifier.build_verify_task(cand))
+                spec = self._validated_task_spec(
+                    verifier.build_verify_task(cand, snapshot_id=run_snapshot_id)
+                )
             except InvalidInputError as e:
                 store.append_event(
                     run_id,
@@ -2184,6 +2215,19 @@ class AuditAppService:
                 # the id even when the verdict payload is well-formed
                 # (RUN-LESSONS real-shape series, run-009b/010).
                 finding["finding_id"] = f"F-VERIFY-{claim_hint}-{n}"
+            if not finding.get("evidence_level"):
+                # Program-side bookkeeping stamp (SR-011): evidence level
+                # follows the claim strength of the verdict -- confirmed runs
+                # at E2, every pending/rejected/unverified claim stays at E1.
+                # Absent values are filled here so a verdict can never die on
+                # a field the worker was never asked to emit (RUN-LESSONS:
+                # the gate rejected well-formed verdicts on a None
+                # evidence_level). Worker-supplied values are never
+                # overwritten; an invalid supplied value fails the semantic
+                # gate loudly instead of being silently repaired (SR-025).
+                finding["evidence_level"] = (
+                    "E2" if finding.get("verdict") == "confirmed" else "E1"
+                )
             findings.append(finding)
         return findings
 
@@ -2229,6 +2273,25 @@ class AuditAppService:
                     finding[field] = cand[field]
             if not finding.get("steps") and cand.get("steps"):
                 finding["steps"] = cand["steps"]
+            # SR-011 program-side derivation: needs_validation findings carry
+            # validation_priority (never repair urgency) -- derived from the
+            # observed impact/exploitability numbers when the model supplied
+            # them, so the semantic validator accepts the pending shape.
+            if finding.get("verdict") == "needs_validation":
+                rating = finding.get("rating") or {}
+                if rating and not rating.get("validation_priority"):
+                    try:
+                        from auditkit.contracts.semantic_validator import (
+                            calculate_validation_priority,
+                        )
+                        impact = int(rating.get("impact") or 3)
+                        exploitability = int(rating.get("exploitability") or 3)
+                        rating["validation_priority"] = calculate_validation_priority(
+                            impact, exploitability
+                        )
+                        finding["rating"] = rating
+                    except (ValueError, TypeError):
+                        pass
         stamped: List[Dict[str, Any]] = []
         snapshot_data: Optional[Dict[str, Any]] = None
         for f in findings:
@@ -2249,6 +2312,9 @@ class AuditAppService:
                 if reasons_missing:
                     f["verdict"] = "needs_validation"
                     f["demoted_from"] = "confirmed"
+                    # Demotion linkage (SR-011): a demoted claim no longer
+                    # runs at confirmed strength -- evidence level follows.
+                    f["evidence_level"] = "E1"
                     f.setdefault("blockers", []).extend(
                         f"missing rating factor reason: {k}" for k in reasons_missing
                     )
@@ -2268,6 +2334,26 @@ class AuditAppService:
                         int(rating.get("impact") or 3),
                         int(rating.get("exploitability") or 3),
                     )
+                if f.get("verdict") == "confirmed" and not reasons_missing:
+                    # Worker ratings carry semantic inputs only (impact,
+                    # exploitability, factor reasons -- the verify output
+                    # contract asks for exactly those); the derived fields
+                    # (calculated/final severity+urgency) have one authority,
+                    # RatingEngine (DSR-028). Rebuild from the observed
+                    # numbers and reasons so a verdict never dies on missing
+                    # bookkeeping fields the worker was never asked to
+                    # compute. Invalid semantic input stays untouched and is
+                    # rejected loudly by the semantic gate (SR-025).
+                    try:
+                        f["rating"] = RatingEngine.compute_rating(
+                            int(rating.get("impact")),
+                            int(rating.get("exploitability")),
+                            str(nested.get("impact_why") or rating.get("impact_why") or "").strip(),
+                            str(nested.get("exploitability_why") or rating.get("exploitability_why") or "").strip(),
+                            adjustment=rating.get("adjustment"),
+                        )
+                    except (ValueError, TypeError, InvalidInputError):
+                        pass
             if f.get("verdict") == "confirmed":
                 # DSR-062 is a fixed action for confirmed findings: no config
                 # switch. The snapshot is read lazily and at most once per
@@ -2936,6 +3022,73 @@ class AuditAppService:
         # finish their current task and stop claiming new ones.
         stop_claiming = threading.Event()
 
+        def _report_failure_safe(claim: Dict[str, Any], error: AuditError) -> str:
+            """Report a task failure, tolerating an expired claim lease.
+
+            A failure report arriving after the claim lease expired is not a
+            "late result" (nothing is accepted) -- it is information about WHY
+            the attempt died. DSR-019 already expires+requeues such attempts
+            atomically; record the reason on the ledger and let reclaim do the
+            requeue instead of crashing the driver loop (RUN-LESSONS, real
+            run: a task expired mid-flight and the failure report aborted the
+            loop instead of being recorded).
+
+            PLACEMENT INVARIANT: this helper MUST stay defined at loop scope,
+            a sibling of ``execute_one_task`` -- never nested inside the
+            per-task body. A def statement inserted into a dispatched task's
+            body silently truncates that body at the def line: every step
+            after it (execute, submit, retry bookkeeping) becomes code of the
+            nested function or unreachable dead code, and tasks are left
+            started with a held lease and never submitted (RUN-LESSONS
+            regression: caught by the synthetic-case E2E driver suite, 16
+            dispatch-loop tests red).
+
+            Requirement: DSR-019(过期租约回收), DSR-065(失败隔离)
+            """
+            try:
+                with db_lock:
+                    self.report_host_failure(run_dir, claim, error, max_retries=max_retries)
+                return "recorded"
+            except StaleAttemptError:
+                # Lease already expired: reclaim (expire + requeue) then record
+                # WHY the attempt died, so the ledger keeps the failure reason.
+                conn = self._open_run_db(run_dir)
+                try:
+                    TaskQueue(conn).reclaim_expired_attempts(run_id)
+                except Exception:  # noqa: BLE001 -- best effort
+                    pass
+                EventStore(conn).append_event(
+                    run_id,
+                    "attempt_failure_recorded",
+                    "service",
+                    {
+                        "task_id": claim["task_id"],
+                        "attempt_id": claim["attempt_id"],
+                        "reason": str(error),
+                        "retryable": error.retryable,
+                        "note": "lease expired before failure report; "
+                                "attempt expired+requeued via reclaim",
+                    },
+                )
+                return "recorded_expired"
+            except Exception as report_err:  # noqa: BLE001
+                # Failure reporting itself failed (e.g. run already terminal);
+                # the attempt outcome must still reach the caller -- never
+                # return None, never crash the dispatch loop.
+                EventStore(self._open_run_db(run_dir)).append_event(
+                    run_id,
+                    "attempt_failure_recorded",
+                    "service",
+                    {
+                        "task_id": claim.get("task_id", "?"),
+                        "attempt_id": claim.get("attempt_id", "?"),
+                        "reason": str(error),
+                        "report_error": str(report_err)[:200],
+                        "note": "failure report could not be persisted",
+                    },
+                )
+                return "report_failed"
+
         def execute_one_task(_slot: int) -> tuple:
             """Claim ONE task and drive it through the full pipeline.
 
@@ -3012,16 +3165,14 @@ class AuditAppService:
                 outcome = execute_fn(claim)
             except TerminationUncertainError as e:
                 # Budget is retained, never released (DSR-064).
-                with db_lock:
-                    self.report_host_failure(run_dir, claim, e, max_retries=max_retries)
+                _report_failure_safe(claim, e)
                 with ctrl_lock:
                     ctrl.on_failure()
                     counters["budget_retained"] += 1
                     counters["failed"] += 1
                 return ("retained", claim["task_id"])
             except AuditError as e:
-                with db_lock:
-                    self.report_host_failure(run_dir, claim, e, max_retries=max_retries)
+                _report_failure_safe(claim, e)
                 with ctrl_lock:
                     ctrl.on_failure()
                     counters["failed"] += 1
@@ -3035,16 +3186,13 @@ class AuditAppService:
                 # unexpected internal error must fail THAT task honestly and
                 # never take down the whole audit -- the remaining queued
                 # units stay visible as explicit incomplete coverage.
-                with db_lock:
-                    self.report_host_failure(
-                        run_dir,
-                        claim,
-                        HostFailureError(
-                            f"internal error while processing task: {type(e).__name__}: {e}",
-                            retryable=True,
-                        ),
-                        max_retries=max_retries,
-                    )
+                _report_failure_safe(
+                    claim,
+                    HostFailureError(
+                        f"internal error while processing task: {type(e).__name__}: {e}",
+                        retryable=True,
+                    ),
+                )
                 with ctrl_lock:
                     ctrl.on_failure()
                     counters["failed"] += 1
@@ -3090,16 +3238,13 @@ class AuditAppService:
                 # max_retries the task is quarantined with an explicit
                 # coverage gap. The malformed output is never normalized
                 # into a success (SR-025).
-                with db_lock:
-                    self.report_host_failure(
-                        run_dir,
-                        claim,
-                        HostFailureError(
-                            f"worker output rejected by contract: {e.message}",
-                            retryable=True,
-                        ),
-                        max_retries=max_retries,
-                    )
+                _report_failure_safe(
+                    claim,
+                    HostFailureError(
+                        f"worker output rejected by contract: {e.message}",
+                        retryable=True,
+                    ),
+                )
                 with ctrl_lock:
                     ctrl.on_failure()
                     counters["failed"] += 1
@@ -3112,16 +3257,13 @@ class AuditAppService:
                 # rejected and the task is atomically requeued with a fresh
                 # generation -- surface that as a task-level retryable
                 # failure instead of crashing the whole driver loop.
-                with db_lock:
-                    self.report_host_failure(
-                        run_dir,
-                        claim,
-                        HostFailureError(
-                            f"claim lease expired before submit: {e.message}",
-                            retryable=True,
-                        ),
-                        max_retries=max_retries,
-                    )
+                _report_failure_safe(
+                    claim,
+                    HostFailureError(
+                        f"claim lease expired before submit: {e.message}",
+                        retryable=True,
+                    ),
+                )
                 with ctrl_lock:
                     ctrl.on_failure()
                     counters["failed"] += 1
@@ -3132,6 +3274,9 @@ class AuditAppService:
                 ctrl.on_success()
                 counters["submitted"] += 1
             return ("submitted", claim["task_id"])
+            # Defensive catch-all (RUN-LESSONS: a None return here crashes the
+            # dispatch loop with TypeError at fut.result() unpacking).
+            return ("empty", None)
 
         stop_reason: Optional[str] = None
         drain_seen = False
@@ -3146,7 +3291,11 @@ class AuditAppService:
                 # 1. Reap finished slots (counters/AIMD already updated inside).
                 for fut in [f for f in in_flight if f.done()]:
                     in_flight.discard(fut)
-                    outcome, _task_id = fut.result()
+                    result = fut.result()
+                    if result is None:
+                        outcome, _task_id = "failed", None
+                    else:
+                        outcome, _task_id = result
                     if outcome in ("empty", "stopped"):
                         drain_seen = True
                     elif outcome == "blocked":
@@ -3412,7 +3561,12 @@ class AuditAppService:
             max_retries=max_retries,
         )
 
-    def resume(self, run_id: str, run_dir: str | Path) -> Dict[str, Any]:
+    def resume(
+        self,
+        run_id: str,
+        run_dir: str | Path,
+        force_reclaim: bool = False,
+    ) -> Dict[str, Any]:
         """Verify integrity and resume a paused run (IFC-06 / DSR-072 / DSR-019).
 
         The full gate before a paused run may continue:
@@ -3426,7 +3580,16 @@ class AuditAppService:
         and the run_resumed event appended. Activation back to 'active' stays
         with activate().
 
-        Requirements: SWR-018(恢复校验) / DSR-019(工件完整性), DSR-072(版本检查)
+        ``force_reclaim`` (RUN-LESSONS L-11): when the previous driver process
+        died mid-flight, its attempts keep otherwise-valid claim leases that
+        block finalize and hold budget reservations. With this flag the resume
+        revokes ALL in-flight leases unconditionally (not only expired ones)
+        so the surviving tasks return to the queue. Use only after confirming
+        the previous driver process is dead; every revoked attempt is recorded
+        as an explicit ``attempt_reclaimed`` event with the original expiry
+        for auditability.
+
+        Requirements: SWR-018(恢复校验) / DSR-019(工件完整性), DSR-072(版本检查), DSR-019(租约回收)
         """
         run_path = Path(run_dir)
         conn = self._open_run_db(run_path)
@@ -3442,6 +3605,14 @@ class AuditAppService:
         ArtifactManager(run_path, conn).verify_artifacts(run_id)
         root_hash = self._verify_snapshot_integrity(run_path)
 
+        reclaimed: List[Dict[str, Any]] = []
+        if force_reclaim:
+            # Drain in-flight leases left by a dead driver: without this the
+            # valid-but-orphaned leases block finalize (still-holds-lease
+            # InvalidStateError) and keep their budget reservations hostage.
+            # Events carry forced=True plus the original expiry for audit.
+            reclaimed = TaskQueue(conn).reclaim_expired_attempts(run_id, force=True)
+
         conn.execute("UPDATE runs SET state = 'paused' WHERE run_id = ?", (run_id,))
         EventStore(conn).append_event(
             run_id,
@@ -3451,6 +3622,8 @@ class AuditAppService:
                 "snapshot_root_hash": root_hash,
                 "snapshot_integrity": "verified",
                 "artifact_integrity": "verified",
+                "force_reclaim": bool(force_reclaim),
+                "reclaimed_attempts": len(reclaimed),
             },
         )
         return {
@@ -3458,6 +3631,8 @@ class AuditAppService:
             "state": "paused",
             "verified": True,
             "snapshot_integrity": "verified",
+            "force_reclaim": bool(force_reclaim),
+            "reclaimed_attempts": len(reclaimed),
         }
 
     def _verify_snapshot_integrity(self, run_path: Path) -> str:
@@ -3613,6 +3788,12 @@ class AuditAppService:
         # needs_validation, preserving all verified evidence (RUN-LESSONS
         # real run-011: verified findings lacked rating factors).
         for f in merged_findings.values():
+            # Bookkeeping fill (SR-011): evidence level follows the claim
+            # strength of the verdict. Findings persisted by older
+            # generations may lack the field; absent values are filled,
+            # worker-supplied values are never overwritten (SR-025).
+            if not f.get("evidence_level"):
+                f["evidence_level"] = "E2" if f.get("verdict") == "confirmed" else "E1"
             if f.get("verdict") != "confirmed":
                 continue
             rating = f.get("rating") or {}
@@ -3624,6 +3805,9 @@ class AuditAppService:
             if missing:
                 f["verdict"] = "needs_validation"
                 f["demoted_from"] = "confirmed"
+                # Demotion linkage (SR-011): a demoted claim no longer runs
+                # at confirmed strength -- evidence level follows.
+                f["evidence_level"] = "E1"
                 f.setdefault("blockers", []).extend(
                     f"missing rating factor reason: {k}" for k in missing
                 )

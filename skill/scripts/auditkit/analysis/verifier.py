@@ -202,7 +202,7 @@ class Verifier:
         self.validator = semantic_validator or SemanticValidator()
         self.enforce_attempt_gate = enforce_attempt_gate
 
-    def build_verify_task(self, candidate: Dict[str, Any]) -> Dict[str, Any]:
+    def build_verify_task(self, candidate: Dict[str, Any], snapshot_id: str = "") -> Dict[str, Any]:
         """Build a verify-kind task specification for a candidate (DSR-027).
 
         The returned spec is enqueued through the LED task queue by
@@ -210,7 +210,10 @@ class Verifier:
         task_spec contract before enqueue). The spec declares role ``verify``,
         its output contract, and requires a
         fresh ``verify_attempt_id`` distinct from the hunt attempt for an E2
-        verdict.
+        verdict. ``snapshot_id`` anchors the packet header to the frozen
+        snapshot the hunt ran against (RUN-LESSONS: a verify packet without
+        it rendered an empty snapshot header, leaving the worker to verify
+        against nothing).
 
         Requirements: SWR-008(独立验证任务) / DSR-027(verify规格,新attempt)
         """
@@ -220,8 +223,13 @@ class Verifier:
         if not cand_id:
             raise InvalidInputError("candidate is missing candidate_id")
         hunt_tasks = candidate.get("provenance", {}).get("hunt_tasks", [])
+        resolved_snapshot = (
+            snapshot_id
+            or candidate.get("snapshot_id", "")
+            or candidate.get("provenance", {}).get("snapshot_id", "")
+        )
 
-        return {
+        spec: Dict[str, Any] = {
             "schema_version": "1.0",
             "task_kind": "verify",
             "role": "verify",
@@ -230,7 +238,16 @@ class Verifier:
             "output_contract": (
                 "Return a verdict object (confirmed | needs_validation | rejected | "
                 "unverified) with evidence anchors and provenance; a confirmed verdict "
-                "requires a verify_attempt_id distinct from the hunt attempt."
+                "requires a verify_attempt_id distinct from the hunt attempt. "
+                "RATING FACTOR REASONS ARE MANDATORY FOR CONFIRMED VERDICTS: a "
+                "confirmed record must carry rating = {impact: 1-4, exploitability: "
+                "1-4, factor_reasons: {impact_why: '<concrete code-level reason the "
+                "damage happens>', exploitability_why: '<concrete reason the path is "
+                "reachable under the observed preconditions>'}}. Do NOT invent "
+                "severity/urgency fields -- the program derives them. A confirmed "
+                "verdict with a missing or empty factor reason is demoted to "
+                "needs_validation by the program gate; the reasons must come from "
+                "the verified trace, not from template text."
             ),
             "requires_new_attempt": True,
             "input": {
@@ -238,6 +255,11 @@ class Verifier:
                 "hunt_tasks": list(hunt_tasks),
             },
         }
+        if resolved_snapshot:
+            # Omitted when unknown (honest absence, never an empty-string
+            # claim); the packet renderer falls back to the run's snapshot.
+            spec["snapshot_id"] = resolved_snapshot
+        return spec
 
     def create_finding_from_candidate(
         self,

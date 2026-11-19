@@ -114,6 +114,7 @@ class VerifyTaskSpec(TypedDict, total=False):
     role: str
     verify_task_id: str
     candidate_id: str
+    snapshot_id: str
     output_contract: str
     requires_new_attempt: bool
     input: Dict[str, Any]

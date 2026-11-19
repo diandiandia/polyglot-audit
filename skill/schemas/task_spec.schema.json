@@ -146,6 +146,10 @@
           "type": "string",
           "minLength": 1
         },
+        "snapshot_id": {
+          "type": "string",
+          "description": "Frozen snapshot the candidate refers to; rendered into the verify packet header so verification is anchored to the snapshot the hunt ran against."
+        },
         "output_contract": {
           "type": "string",
           "minLength": 1

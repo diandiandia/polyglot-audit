@@ -22,7 +22,10 @@ class TestPacketRoles(unittest.TestCase):
         self.assertEqual(packet["task_kind"], "hunt")
         self.assertIn("Role: hunt", packet["prompt_text"])
         self.assertIn("Output Contract:", packet["prompt_text"])
-        self.assertIn("Frontier", packet["output_contract"])
+        # Hunt-distinct contract: the three hunt record types plus the
+        # structured source/sink mandate (never plain strings).
+        self.assertIn("candidate|frontier|sink_probe", packet["output_contract"])
+        self.assertIn("source and sink MUST be objects", packet["output_contract"])
 
     def test_verify_role_declared_in_header(self):
         packet, _, _ = PacketBuilder().build_packet("verify", "snp-1", UNIT, CONTENTS)

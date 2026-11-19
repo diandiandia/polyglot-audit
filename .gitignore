@@ -14,5 +14,9 @@ tests/model_eval/records/
 events.db
 .scratch-*/
 
-# 运行侧禁用词清单（SR-016）：目标项目名称不入库
+# 运行侧禁用词清单（SR-016）：目标项目名称不入库。
+# 审计目标与诊断工作区一律放在仓库之外；这里只保留通用的临时模式，
+# 不携带任何目标派生标识符（RUN-LESSONS 泄漏清查红线）。
 tests/model_eval/forbidden_tokens.local.json
+poc-task-*
+audit-target-*/

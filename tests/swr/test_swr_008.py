@@ -244,6 +244,32 @@ class TestSWR008(unittest.TestCase):
         self.assertEqual(task["input"]["candidate"]["candidate_id"], "cand-v-1")
         self.assertEqual(task["input"]["hunt_tasks"], ["task-hunt-1"])
 
+    def test_verify_task_contract_mandates_rating_factor_reasons(self):
+        """RUN-LESSONS: a confirmed verdict was demoted on fields the verify
+        contract never asked the worker to provide. The contract text must
+        carry the mandatory rating shape (impact / exploitability /
+        factor_reasons) and the derivation boundary (severity/urgency fields
+        are program-side, never invented by the worker)."""
+        task = self.verifier.build_verify_task(_anchored_candidate())
+        contract = task["output_contract"]
+        self.assertIn("factor_reasons", contract)
+        self.assertIn("impact_why", contract)
+        self.assertIn("exploitability_why", contract)
+        self.assertIn("Do NOT invent", contract)
+
+    def test_verify_task_carries_snapshot_anchor(self):
+        """RUN-LESSONS: a verify packet without a snapshot header leaves the
+        worker verifying against nothing. The spec anchors the frozen
+        snapshot -- explicit argument wins, then the candidate record, and
+        stays honestly absent when neither carries it."""
+        cand = _anchored_candidate()
+        explicit = self.verifier.build_verify_task(cand, snapshot_id="snp-example-1")
+        self.assertEqual(explicit["snapshot_id"], "snp-example-1")
+        carried = self.verifier.build_verify_task({**cand, "snapshot_id": "snp-example-2"})
+        self.assertEqual(carried["snapshot_id"], "snp-example-2")
+        absent = self.verifier.build_verify_task(cand)
+        self.assertNotIn("snapshot_id", absent)
+
     def test_four_dispositions_have_distinguishable_shapes(self):
         cand = _anchored_candidate()
         confirmed = self.verifier.create_finding_from_candidate(

@@ -1141,6 +1141,56 @@ class TestPauseResumeContract(PipelineClosureBase):
         with self.assertRaises(CorruptRunError):
             self.app.resume(self.run_id, self.run_dir)
 
+    def test_resume_force_reclaim_drains_orphaned_leases(self):
+        """RUN-LESSONS L-11: a driver that died mid-flight leaves otherwise
+        valid claim leases behind -- they block finalize (still-holds-lease)
+        and hold budget reservations. Plain resume reports them honestly but
+        revokes nothing; resume with force_reclaim=True drains them, returns
+        the tasks to the queue, and records each revocation auditable."""
+        self.prepared_pyapp()
+        claim = self.app.next(self.run_id, self.run_dir, batch_size=1)[0]
+
+        # Pausing stops dispatch but leaves the held lease intact (IFC-06).
+        self.app.pause(self.run_id, self.run_dir)
+
+        # Plain resume: the orphaned lease survives untouched.
+        res_plain = self.app.resume(self.run_id, self.run_dir)
+        self.assertEqual(res_plain.get("reclaimed_attempts"), 0)
+        conn = get_db_connection(self.run_dir / "events.db")
+        try:
+            state = conn.execute(
+                "SELECT state FROM tasks WHERE task_id = ?", (claim["task_id"],)
+            ).fetchone()["state"]
+            self.assertEqual(state, "claimed")
+        finally:
+            conn.close()
+
+        # Pause again, then force-reclaim drains the lease on resume.
+        self.app.pause(self.run_id, self.run_dir)
+        res = self.app.resume(self.run_id, self.run_dir, force_reclaim=True)
+        self.assertTrue(res["force_reclaim"])
+        self.assertGreaterEqual(res["reclaimed_attempts"], 1)
+        conn = get_db_connection(self.run_dir / "events.db")
+        try:
+            task_state = conn.execute(
+                "SELECT state FROM tasks WHERE task_id = ?", (claim["task_id"],)
+            ).fetchone()["state"]
+            att_state = conn.execute(
+                "SELECT status FROM attempts WHERE attempt_id = ?",
+                (claim["attempt_id"],),
+            ).fetchone()["status"]
+        finally:
+            conn.close()
+        # The task is back in the queue and re-claimable; the revoked
+        # attempt is no longer active.
+        self.assertEqual(task_state, "queued")
+        self.assertEqual(att_state, "expired")
+        expired_events = self.events("attempt_expired")
+        self.assertTrue(
+            any(e.get("forced") and e.get("task_id") == claim["task_id"]
+                for e in expired_events)
+        )
+
 
 class TestVariantSearchClosure(PipelineClosureBase):
     """Fix 11: DSR-062 bounded variant search wired into the verify path.

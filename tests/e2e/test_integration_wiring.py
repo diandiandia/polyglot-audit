@@ -372,6 +372,156 @@ class TestIntegrationWiring(unittest.TestCase):
         self.assertEqual(tasks_budget["settled"], len(all_claims) + 2)
 
     # ------------------------------------------------------------------
+    # 1b. verify worker semantics: the spec anchors the frozen snapshot and
+    #     mandates rating factor reasons; semantic-input-only ratings survive
+    #     the store; missing factor reasons demote with the E1 linkage.
+    # ------------------------------------------------------------------
+    def _drive_to_pending_verify(self, config):
+        """Prepare a run and submit recon+hunt, leaving one candidate whose
+        verify task is enqueued. Returns (prep, run_id, run_dir, claims,
+        hunt_claim, candidate)."""
+        prep = self._prepared(config)
+        run_id, run_dir = prep["run_id"], Path(config["run_dir"])
+        all_claims = self.app.next(run_id, run_dir, batch_size=10)
+        recon_claim = next(c for c in all_claims if self._is_recon(c))
+        self.app.start(run_dir, recon_claim)
+        self.app.submit(
+            run_dir, recon_claim, self._recon_result(recon_claim, [self._recon_guard()]),
+            "digest-recon-r1",
+        )
+        hunt_claim = next(c for c in all_claims if not self._is_recon(c))
+        self.app.start(run_dir, hunt_claim)
+        candidate = self._candidate_record(hunt_claim)
+        self.app.submit(
+            run_dir, hunt_claim,
+            self._hunt_result(hunt_claim, prep["snapshot_id"], [candidate]),
+            "digest-hunt-r1",
+        )
+        return prep, run_id, run_dir, all_claims, hunt_claim, candidate
+
+    def test_verify_spec_carries_snapshot_and_rating_contract(self):
+        config = self._make_config(FIXTURES_DIR / "pyapp")
+        prep, run_id, run_dir, _claims, _hunt, _cand = self._drive_to_pending_verify(config)
+        verify_claim = self.app.next(run_id, run_dir, batch_size=5)[0]
+        spec = verify_claim["spec"]
+        # Snapshot anchor: the verify packet renders against the frozen
+        # snapshot the hunt ran against -- never an empty header (the worker
+        # would otherwise verify against nothing).
+        self.assertEqual(spec.get("snapshot_id"), prep["snapshot_id"])
+        # The output contract mandates the rating factor reasons for a
+        # confirmed verdict, so a well-formed submission cannot be demoted
+        # for fields it was never told to provide.
+        self.assertIn("factor_reasons", spec["output_contract"])
+        self.assertIn("impact_why", spec["output_contract"])
+        self.assertIn("exploitability_why", spec["output_contract"])
+
+    def test_verify_raw_record_semantic_rating_stays_confirmed(self):
+        """A raw worker record supplies semantic inputs only (impact,
+        exploitability, factor reasons) and no evidence_level: the program
+        derives the severity fields (single authority: RatingEngine) and
+        stamps the claim-strength evidence level, so the confirmed verdict
+        survives the store without dying on bookkeeping fields the worker
+        was never asked to compute."""
+        config = self._make_config(FIXTURES_DIR / "pyapp")
+        prep, run_id, run_dir, _claims, hunt_claim, candidate = (
+            self._drive_to_pending_verify(config)
+        )
+        verify_claim = self.app.next(run_id, run_dir, batch_size=5)[0]
+        self.app.start(run_dir, verify_claim)
+        record = {
+            "schema_version": "1.0",
+            "verdict": "confirmed",
+            "finding_id": "F-VERIFY-t1-0",
+            "title": "Untrusted data reaches object restoration",
+            "issue": "py-01",
+            "languages": ["python"],
+            "source": candidate["source"],
+            "sink": candidate["sink"],
+            "steps": candidate["steps"],
+            "remediation": {"summary": "constrain types before restore"},
+            "rating": {
+                "impact": 4,
+                "exploitability": 3,
+                "factor_reasons": {
+                    "impact_why": "restored object executes attacker-chosen code",
+                    "exploitability_why": "endpoint accepts unauthenticated bodies",
+                },
+            },
+            "provenance": {
+                "candidates": ["cand-wired-01"],
+                "hunt_tasks": [hunt_claim["task_id"]],
+                "verify_tasks": [verify_claim["task_id"]],
+                "verify_attempt_id": verify_claim["attempt_id"],
+                "hunt_attempt_id": hunt_claim["attempt_id"],
+            },
+        }
+        self.app.submit(
+            run_dir, verify_claim,
+            self._hunt_result(verify_claim, prep["snapshot_id"], [record]),
+            "digest-verify-r1",
+        )
+        stored_files = sorted(run_dir.glob("findings/verified-*.json"))
+        self.assertEqual(len(stored_files), 1)
+        stored = json.loads(stored_files[0].read_text(encoding="utf-8"))[0]
+        self.assertEqual(stored["verdict"], "confirmed")
+        self.assertEqual(stored["evidence_level"], "E2")
+        self.assertEqual(stored["rating"]["calculated_severity"], "High")
+        self.assertEqual(
+            stored["rating"]["final_severity"], stored["rating"]["calculated_severity"]
+        )
+        self.assertTrue(stored["rating"]["final_urgency"])
+        self.assertEqual(
+            stored["rating"]["factor_reasons"]["impact_why"],
+            "restored object executes attacker-chosen code",
+        )
+
+    def test_verify_raw_record_missing_reasons_demotes_with_e1(self):
+        """A confirmed claim whose rating lacks factor reasons is demoted on
+        the store path with the linkage recorded: needs_validation, E1,
+        demoted_from, and the concrete per-factor blockers."""
+        config = self._make_config(FIXTURES_DIR / "pyapp")
+        prep, run_id, run_dir, _claims, hunt_claim, candidate = (
+            self._drive_to_pending_verify(config)
+        )
+        verify_claim = self.app.next(run_id, run_dir, batch_size=5)[0]
+        self.app.start(run_dir, verify_claim)
+        record = {
+            "schema_version": "1.0",
+            "verdict": "confirmed",
+            "finding_id": "F-VERIFY-t2-0",
+            "title": "Untrusted data reaches object restoration",
+            "issue": "py-01",
+            "languages": ["python"],
+            "source": candidate["source"],
+            "sink": candidate["sink"],
+            "steps": candidate["steps"],
+            "remediation": {"summary": "constrain types before restore"},
+            "rating": {"impact": 4, "exploitability": 3},
+            "provenance": {
+                "candidates": ["cand-wired-01"],
+                "hunt_tasks": [hunt_claim["task_id"]],
+                "verify_tasks": [verify_claim["task_id"]],
+                "verify_attempt_id": verify_claim["attempt_id"],
+                "hunt_attempt_id": hunt_claim["attempt_id"],
+            },
+        }
+        self.app.submit(
+            run_dir, verify_claim,
+            self._hunt_result(verify_claim, prep["snapshot_id"], [record]),
+            "digest-verify-r2",
+        )
+        stored_files = sorted(run_dir.glob("findings/verified-*.json"))
+        self.assertEqual(len(stored_files), 1)
+        stored = json.loads(stored_files[0].read_text(encoding="utf-8"))[0]
+        self.assertEqual(stored["verdict"], "needs_validation")
+        self.assertEqual(stored["evidence_level"], "E1")
+        self.assertEqual(stored["demoted_from"], "confirmed")
+        self.assertIn("missing rating factor reason: impact_why", stored["blockers"])
+        self.assertIn(
+            "missing rating factor reason: exploitability_why", stored["blockers"]
+        )
+
+    # ------------------------------------------------------------------
     # 2. usage settlement: unavailable usage is recorded with a reason and
     #    keeps the reservation consumed
     # ------------------------------------------------------------------
@@ -853,6 +1003,76 @@ class TestTaskSpecEnqueueGate(unittest.TestCase):
             self.assertEqual(remaining, 0)
         finally:
             conn.close()
+
+
+class TestVerifyUnitEndpointShapes(unittest.TestCase):
+    """Packet-context synthesis from real worker endpoint shapes (SR-008).
+
+    Workers name locations in several shapes; a verify packet that fails to
+    resolve them renders an empty 'Target Code under Review' section and the
+    worker verifies blind. Resolution stays snapshot-anchored: names that do
+    not resolve contribute NO range (honest absence, never a guess)."""
+
+    def test_file_lines_shapes_resolve_to_packet_ranges(self):
+        spec = {
+            "schema_version": "1.0",
+            "task_kind": "verify",
+            "input": {
+                "candidate": {
+                    "candidate_id": "cand-shape-1",
+                    "source": {
+                        "description": "untrusted header parsed in src/example_app/handlers.py",
+                        "file": "src/example_app/handlers.py",
+                        "lines": "261-265, 307, 360",
+                    },
+                    "sink": {
+                        "file": "src/example_app/upstream.py",
+                        "line": "615",
+                    },
+                }
+            },
+        }
+        snapshot_paths = ["src/example_app/handlers.py", "src/example_app/upstream.py"]
+        unit = AuditAppService._verify_unit_from_spec(spec, snapshot_paths=snapshot_paths)
+        ranges = unit["ranges"]
+        by_path = {}
+        for r in ranges:
+            by_path.setdefault(r["path"], []).append(r)
+        # Both endpoints resolved; nothing was silently dropped.
+        self.assertIn("src/example_app/handlers.py", by_path)
+        self.assertIn("src/example_app/upstream.py", by_path)
+        # Multi-segment 'lines' yields one range per segment (windowed).
+        handler_ranges = by_path["src/example_app/handlers.py"]
+
+        def covers(rs, line):
+            return any(r["line_start"] <= line <= r["line_end"] for r in rs)
+
+        for line in (261, 265, 307, 360):
+            self.assertTrue(covers(handler_ranges, line), f"range missing line {line}")
+        # String 'line' values parse; the sink range covers its line.
+        self.assertTrue(covers(by_path["src/example_app/upstream.py"], 615))
+
+    def test_unresolvable_endpoint_names_contribute_no_range(self):
+        spec = {
+            "schema_version": "1.0",
+            "task_kind": "verify",
+            "input": {
+                "candidate": {
+                    "candidate_id": "cand-shape-2",
+                    "source": {"file": "not_in_manifest/example.py", "line": 3},
+                    "sink": {"file": "also_missing/example.py", "lines": "10-20"},
+                }
+            },
+        }
+        snapshot_paths = ["real/example.py"]
+        unit = AuditAppService._verify_unit_from_spec(spec, snapshot_paths=snapshot_paths)
+        paths = {r["path"] for r in unit["ranges"]}
+        self.assertNotIn("not_in_manifest/example.py", paths)
+        self.assertNotIn("also_missing/example.py", paths)
+        # No fabricated ranges for names outside the frozen manifest.
+        self.assertEqual(
+            [r for r in unit["ranges"] if r["path"].endswith("example.py")], []
+        )
 
 
 if __name__ == "__main__":

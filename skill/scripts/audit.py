@@ -822,6 +822,13 @@ def main() -> int:
     # resume
     p_res = subparsers.add_parser("resume", help="Verify integrity and resume paused run")
     p_res.add_argument("--run-dir", required=True, help="Run directory")
+    p_res.add_argument(
+        "--force-reclaim",
+        action="store_true",
+        help="Revoke ALL in-flight claim leases on resume (use only after "
+             "confirming the previous driver process is dead; e.g. after a "
+             "crash, orphaned leases block finalize and hold reservations)",
+    )
     p_res.add_argument("--json", action="store_true", default=True)
     _add_format_argument(p_res)
 
@@ -1067,7 +1074,9 @@ def main() -> int:
             run_row = conn.execute("SELECT run_id FROM runs LIMIT 1").fetchone()
             if not run_row:
                 raise InvalidInputError("No run found in database")
-            res = app.resume(run_row["run_id"], args.run_dir)
+            res = app.resume(
+                run_row["run_id"], args.run_dir, force_reclaim=args.force_reclaim
+            )
             emit_result(res, args.format, args.subcommand)
             return 0
 
