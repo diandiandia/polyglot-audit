@@ -63,7 +63,8 @@
 | 影响 | `audit run --host claude` 在脚本重定向/非交互管道驱动下可能挂起或污染 runner 的 stdin；两宿主实现违反 SR-022 的引擎等价语义（同一 claim 协议下行为应一致）。 |
 | 补救决策 | ① 两宿主适配器统一 `stdin=subprocess.DEVNULL` 并加同源注释；② IFC-04 回填明文一句（worker 进程不得继承 runner 的标准输入流）；③ real_cli 探测测试增加"调用形态错误≠合法 unknown"的区分断言（与 DA-02 的探针修正配套）。 |
 | 代码位置 | `skill/scripts/auditkit/hosts/claude_adapter.py`（Popen stdin=DEVNULL）、`hosts/codex_adapter.py`（既有，同步注释）、`hosts/probes.py`、`tests/hosts/fake_hosts.py`、`tests/hosts/test_real_hosts.py`。 |
-| 回填状态 | 已回填主文档：IFC-04（无头 worker 流契约句，[DA-05] 标注）。 |
+| 回填状态 | 已回填主文档：IFC-04（无头 worker 流契约句，[DA-05] 标注）。修订句已回填（见下行）。 |
+| 修订（大载荷传递路径） | 实跑发现大体积 review 包（完整单元源码 + 审计上下文）经命令行参数传递触达 OS 单参数长度上限，两宿主适配器的 worker 路径改为 `stdin=subprocess.PIPE`：prompt 由 runner 独占写入、`communicate()` 写完即关——worker 不继承 runner 交互 stdin、不阻塞、不吞入 runner 输入，IFC-04 不变量保持；原决策记录的"DEVNULL 绑定"从唯一手段降级为两个合法绑定方式之一（不传 stdin 的调用形态仍可 DEVNULL）。探测路径（probes）prompt 极小，保留位置参数形态，两种形态均为真实 CLI 语法。配套：`tests/hosts/fake_hosts.py` 同步记录 `<name>.stdin.log` 并同时建模两种形态；适配器测试改为断言"argv 不含 prompt + stdin 收到完整 prompt"；packet 预算 `max_chars` 恢复 16000（临时减半仅为 argv 限制缓解，stdin 化后前提消失；溢出仍以 packet_overflow 事件如实记账）。 |
 | 待设计审查确认 | ① stdout/stderr 是否也需要明文契约（当前实现两侧均为 PIPE 捕获，未见分歧，暂不入条款）；② 超时取消时的流关闭顺序（killpg 与管道 EOF 的竞态）是否需要 DDS-06 增补。 |
 
 ### DA-06 DSR-066/DSR-020 定义了验证预算保留，但未定义停止序列的任务维度感知语义

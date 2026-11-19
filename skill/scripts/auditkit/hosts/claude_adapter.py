@@ -153,24 +153,28 @@ class ClaudeDriverAdapter:
         effective_timeout: int,
     ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
         """Run one Claude headless invocation and classify its outcome. Requirements: SWR-023(support) / DSR-029(单次分类), DSR-064(超时终止)"""
-        cmd = [self.claude_binary, "--print", prompt]
+        # Stream contract (IFC-04 / DA-05): the worker process must never
+        # inherit the runner's interactive stdin. stdin=PIPE binds a
+        # runner-owned pipe instead: the prompt is written once and the pipe
+        # closed (claude --print reads it), so the runner's own stdin is
+        # untouched -- no blocking, no swallowed input. Prompt-via-pipe also
+        # removes the OS single-argument length ceiling that large review
+        # packets would otherwise hit on the argv path.
+        cmd = [self.claude_binary, "--print"]
 
         proc = None
         try:
             # Start process in new process group to allow reliable cancellation.
-            # stdin is bound to DEVNULL: a headless worker must neither block
-            # on nor ingest the runner's input stream (same contract as the
-            # Codex adapter; IFC-04 / DA-05).
             proc = subprocess.Popen(
                 cmd,
-                stdin=subprocess.DEVNULL,
+                stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 preexec_fn=os.setsid if hasattr(os, "setsid") else None,
             )
 
-            stdout, stderr = proc.communicate(timeout=effective_timeout)
+            stdout, stderr = proc.communicate(input=prompt, timeout=effective_timeout)
             ret_code = proc.returncode
 
             if ret_code != 0:

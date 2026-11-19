@@ -88,7 +88,7 @@
 
 CLI 是应用服务的包装；命令清单（以 IFC-06 表为准）：`doctor`, `prepare`, `run`, `next`, `start`, `submit`, `status`, `pause`, `resume`, `finalize`, `report`, `mcp`, `guide`, `host-fail`。具体标志名须在 CON 冻结后实现，禁止各引擎自行解释同名参数。对于 `submit`，输入从 stdin 读取含 claim 的 JSON，请勿把 token 放在进程参数。stdout 输出单个机器对象或明确选择的人类格式，进度和诊断走 stderr；非零退出码表示失败，不依赖文本判定。默认不自动运行目标代码；无强制安全能力须显式批准或停止。
 
-driver 拉起的无头 worker 进程不得继承 runner 的标准输入流（stdin 以 DEVNULL 绑定），避免阻塞或吞入 runner 输入；两宿主适配器同契约。**[DA-05]** in-session 的逻辑顺序为 `activate → next → start → 执行 → submit`；driver 走相同服务接口并管理本地进程。子 agent 不可用时可主会话有限顺序运行并披露差异。MCP 是可选适配，初版目标四个工具 `next`, `submit`, `status`, `read_artifact`；若宿主不支持限制 caller/读取权限，应禁止该部署组合或经用户确认风险，不能声称工具数构成安全隔离。MCP 版本、初始化、取消、帧协议和连接安全由 P0 验证；能力不足时可不支持该组合，不能声称 MCP 已完成。
+driver 拉起的无头 worker 进程不得继承 runner 的标准输入流：stdin 必须由 runner 显式绑定——要么 `DEVNULL`（不传递 stdin 的调用形态），要么由 runner 独占写入、写完即关的管道（承载 prompt 等大载荷的调用形态），禁止把 runner 自身的交互 stdin 原样交给 worker，避免阻塞或吞入 runner 输入；两宿主适配器同契约。**[DA-05]** in-session 的逻辑顺序为 `activate → next → start → 执行 → submit`；driver 走相同服务接口并管理本地进程。子 agent 不可用时可主会话有限顺序运行并披露差异。MCP 是可选适配，初版目标四个工具 `next`, `submit`, `status`, `read_artifact`；若宿主不支持限制 caller/读取权限，应禁止该部署组合或经用户确认风险，不能声称工具数构成安全隔离。MCP 版本、初始化、取消、帧协议和连接安全由 P0 验证；能力不足时可不支持该组合，不能声称 MCP 已完成。
 
 ## 5. IFC-05 生命周期与事件投影
 

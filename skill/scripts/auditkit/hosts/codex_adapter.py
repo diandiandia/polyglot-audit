@@ -165,28 +165,33 @@ class CodexDriverAdapter:
         #   user's safety acceptance (SR-015), not from codex's interactive
         #   trust convenience, so the gate is disabled to keep non-Git targets
         #   equally auditable.
-        # stdin is detached: codex exec additionally reads stdin when it is not
-        # a TTY, and a headless worker must neither block on nor ingest the
-        # runner's input stream.
+        # Stream contract (IFC-04 / DA-05): the worker process must never
+        # inherit the runner's interactive stdin. stdin=PIPE binds a
+        # runner-owned pipe instead: the prompt is written once and the pipe
+        # closed, so codex exec (which reads its prompt from stdin when no
+        # positional prompt is given) receives exactly this payload and the
+        # runner's own stdin is untouched -- no blocking, no swallowed input.
+        # Prompt-via-pipe also removes the OS single-argument length ceiling
+        # that large review packets would otherwise hit on the argv path
+        # (probes keep the positional form: their prompts are tiny).
         cmd = [
             self.codex_binary,
             "exec",
             "--skip-git-repo-check",
-            prompt,
         ]
 
         proc = None
         try:
             proc = subprocess.Popen(
                 cmd,
-                stdin=subprocess.DEVNULL,
+                stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 preexec_fn=os.setsid if hasattr(os, "setsid") else None,
             )
 
-            stdout, stderr = proc.communicate(timeout=effective_timeout)
+            stdout, stderr = proc.communicate(input=prompt + '\n', timeout=effective_timeout)
             if proc.returncode != 0:
                 self.consecutive_failures += 1
                 category, retryable = classify_exit_failure(stderr, proc.returncode)

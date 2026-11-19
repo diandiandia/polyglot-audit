@@ -95,11 +95,16 @@ class TestExitClassification(unittest.TestCase, RetryTestMixin):
         self.assertIn("exited with code 7", str(ctx.exception))
         self.assertFalse(ctx.exception.retryable)
 
-    def test_codex_prompt_is_positional_argument(self):
-        """P0-1: the prompt is passed as a POSITIONAL argument of
-        `codex exec [OPTIONS] [PROMPT]` — never as a `--prompt` flag, which the
-        real CLI rejects with the clap error and exit code 2. The real
-        `--skip-git-repo-check` option is passed so non-Git targets work."""
+    def test_codex_prompt_is_delivered_on_stdin(self):
+        """P0-1 (revised for large-payload delivery): the prompt reaches the
+        CLI without touching argv, so payload size is bounded by the pipe and
+        not by the OS single-argument length limit. The fake's grammar stays
+        strict: argv carries only the subcommand and real options (never a
+        `--prompt` flag, which the real CLI rejects with the clap error and
+        exit code 2), the real `--skip-git-repo-check` option is passed so
+        non-Git targets work, and the prompt itself arrives complete on the
+        runner-owned stdin pipe (IFC-04/DA-05: the worker never inherits the
+        runner's interactive stdin)."""
         binary = fake_hosts.create_fake_host(
             self.temp_dir, "codex", headless_stdout='{"ok": true}'
         )
@@ -107,7 +112,10 @@ class TestExitClassification(unittest.TestCase, RetryTestMixin):
         result, _usage = adapter.execute_worker("reply with OK", "t1")
         self.assertEqual(result["ok"], True)
         invoked = fake_hosts.last_invoked_args(self.temp_dir, "codex")
-        self.assertEqual(invoked, ["exec", "--skip-git-repo-check", "reply with OK"])
+        self.assertEqual(invoked, ["exec", "--skip-git-repo-check"])
+        self.assertNotIn("reply with OK", invoked)
+        stdin_text = fake_hosts.last_stdin(self.temp_dir, "codex")
+        self.assertIn("reply with OK", stdin_text)
 
     def test_codex_non_git_target_is_usable(self):
         """P0-1 (SR-017): the adapter must not depend on codex's git trust
@@ -424,14 +432,16 @@ class TestUsageExtraction(unittest.TestCase, RetryTestMixin):
         captured for their OWN invocation. Under the removed shared
         last_usage slot, overlapping completions swapped attribution; with
         the per-task envelope each return carries its own task's values."""
-        # The fake host inspects the prompt (argv[2]) for the task marker and
-        # emits the matching payload, so ONE shared adapter serves both tasks
-        # with distinct usage through genuinely concurrent invocations.
+        # The fake host inspects the prompt (delivered on stdin, matching the
+        # adapters' stream contract) for the task marker and emits the
+        # matching payload, so ONE shared adapter serves both tasks with
+        # distinct usage through genuinely concurrent invocations.
         script = (
             "#!/bin/sh\n"
             "if [ \"$1\" = \"--version\" ]; then echo 'fake-host version 9.9.9'; exit 0; fi\n"
             "sleep 0.2\n"
-            "case \"$2\" in\n"
+            "prompt=$(cat)\n"
+            "case \"$prompt\" in\n"
             "  *TASK-A*) echo '{\"ok\": true, \"task\": \"TASK-A\", "
             "\"usage\": {\"total_tokens\": 150, \"availability\": \"exact\"}}';;\n"
             "  *TASK-B*) echo '{\"ok\": true, \"task\": \"TASK-B\", "

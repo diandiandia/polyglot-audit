@@ -58,8 +58,14 @@ _WORKER_ENVELOPE_CONTRACT = (
 
 ROLE_OUTPUT_CONTRACTS: Dict[str, str] = {
     "hunt": (
-        "Emit Candidate / Frontier / SinkProbe records plus an overflow array; "
-        "never truncate silently; every record carries anchors and provenance. "
+        "Emit records: [{record_type: \"candidate|frontier|sink_probe\", "
+        "candidate_id or frontier_id or probe_id, "
+        "source: {path, line, symbol} (candidate/frontier only), "
+        "sink: {path, line, symbol} (candidate/sink_probe only), "
+        "steps: [\"path:LINE explanation\"], impact_claim, "
+        "confidence: \"high|medium|low\"}]. "
+        "source and sink MUST be objects with path and line -- never plain strings. "
+        "Never truncate silently; every record carries anchors and provenance. "
         + _WORKER_ENVELOPE_CONTRACT
     ),
     "verify": (
@@ -227,6 +233,13 @@ class PacketBuilder:
     """Builds bounded prompt packets for worker execution."""
 
     def __init__(self, max_chars: int = 16000) -> None:
+        # 16000 is the packet body budget (RUN-LESSONS: the value is a
+        # context-size knob, NOT a transport limit -- prompts travel on the
+        # runner-owned stdin pipe, which has no OS arg-length ceiling; the
+        # temporary halving to 8000 existed only to mitigate argv limits and
+        # was reverted once prompt delivery moved to stdin). Ranges that do
+        # not fit are dropped and counted as explicit packet_overflow
+        # events -- never truncated silently.
         self.max_chars = max_chars
 
     def build_packet(

@@ -5,13 +5,16 @@ with fixed, test-controlled behaviour (version output, exit codes, stderr
 patterns, headless output, delays, attempt counters). Tests inject the
 directory via PATH or pass the script path directly as the adapter binary.
 
-The fake `codex` models the REAL CLI argument grammar: `codex exec` takes the
-prompt as a POSITIONAL argument, any occurrence of `--prompt` in argv is
-rejected with the clap error and exit code 2 (P0-1), and the real
-`--skip-git-repo-check` option is accepted. It also records the last
-invocation's arguments into `<name>.argv.log` so tests can assert exactly how
-the prompt was transmitted. This keeps the fake from masking an adapter that
-passes `--prompt` — the defect class that once hid behind permissive fakes.
+The fake `codex` models the REAL CLI grammar: `codex exec` takes the prompt
+either as a positional argument or (when no positional prompt is given) from
+stdin; any occurrence of `--prompt` in argv is rejected with the clap error
+and exit code 2 (P0-1), and the real `--skip-git-repo-check` option is
+accepted. It records the last invocation's arguments into `<name>.argv.log`
+and the consumed stdin into `<name>.stdin.log`, so tests can assert exactly
+HOW the prompt was transmitted (argv vs stdin) and that argv stays within
+OS arg-length limits for large payloads. This keeps the fake from masking an
+adapter that passes `--prompt` — the defect class that once hid behind
+permissive fakes.
 
 Standard library only; no test framework dependency (usable from unittest).
 """
@@ -32,6 +35,7 @@ fi
 # Record the arguments of the current (headless) invocation; overwritten each
 # call so readers always observe the LAST invocation only.
 printf '%s\\n' "$@" > '@@ARGV_LOG_PATH@@'
+@@STDIN_CAPTURE@@
 @@PRE_HEADLESS@@
 if [ "@@SLEEP_SECONDS@@" -gt 0 ] 2>/dev/null; then
   sleep @@SLEEP_SECONDS@@
@@ -106,7 +110,20 @@ def _render(
     counter_block: str = "",
     codex_arg_guard: str = "",
     argv_log_path: str = "/dev/null",
+    stdin_log_path: str = "/dev/null",
 ) -> str:
+    if stdin_log_path != "/dev/null":
+        # Capture the consumed stdin so tests can assert prompt delivery.
+        # Guarded on stdin not being a TTY: the adapter always supplies a
+        # pipe (prompt written then closed); an interactive caller is left
+        # alone instead of blocking on `cat`.
+        stdin_capture = (
+            "if [ ! -t 0 ]; then\n"
+            f"  cat > '{stdin_log_path}'\n"
+            "fi\n"
+        )
+    else:
+        stdin_capture = ""
     script = _SCRIPT_TEMPLATE
     replacements = {
         "@@VERSION_OUTPUT@@": version_output,
@@ -119,6 +136,7 @@ def _render(
         "@@PRE_HEADLESS@@": "",
         "@@CODEX_ARG_GUARD@@": codex_arg_guard,
         "@@ARGV_LOG_PATH@@": argv_log_path,
+        "@@STDIN_CAPTURE@@": stdin_capture,
     }
     for token, value in replacements.items():
         script = script.replace(token, value)
@@ -155,6 +173,7 @@ def create_fake_host(
     """
     codex_guard = _CODEX_ARG_GUARD if _models_real_codex(name) else ""
     argv_log = os.path.join(directory, f"{name}.argv.log") if codex_guard else "/dev/null"
+    stdin_log = os.path.join(directory, f"{name}.stdin.log") if codex_guard else "/dev/null"
     script = _render(
         version_output,
         version_exit,
@@ -164,6 +183,7 @@ def create_fake_host(
         sleep_seconds,
         codex_arg_guard=codex_guard,
         argv_log_path=argv_log,
+        stdin_log_path=stdin_log,
     )
     return _write_executable(os.path.join(directory, name), script)
 
@@ -179,6 +199,19 @@ def last_invoked_args(directory: str, name: str) -> list:
         return []
     with open(log, encoding="utf-8") as f:
         return [line for line in f.read().split("\n") if line != ""]
+
+
+def last_stdin(directory: str, name: str) -> str:
+    """Return the stdin the fake host's last (headless) invocation consumed.
+
+    Only meaningful for fakes that capture stdin (`<name>.stdin.log`); other
+    fakes leave the capture disabled and return "".
+    """
+    log = os.path.join(directory, f"{name}.stdin.log")
+    if not os.path.exists(log):
+        return ""
+    with open(log, encoding="utf-8") as f:
+        return f.read()
 
 
 def create_rate_limited_fake_host(
@@ -202,6 +235,7 @@ def create_rate_limited_fake_host(
     )
     codex_guard = _CODEX_ARG_GUARD if _models_real_codex(name) else ""
     argv_log = os.path.join(directory, f"{name}.argv.log") if codex_guard else "/dev/null"
+    stdin_log = os.path.join(directory, f"{name}.stdin.log") if codex_guard else "/dev/null"
     script = _render(
         version_output,
         0,
@@ -211,6 +245,7 @@ def create_rate_limited_fake_host(
         counter_block=counter_block,
         codex_arg_guard=codex_guard,
         argv_log_path=argv_log,
+        stdin_log_path=stdin_log,
     )
     return _write_executable(os.path.join(directory, name), script)
 
