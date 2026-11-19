@@ -140,22 +140,36 @@ class SelfReviewCollector:
         """
         cov = (stats or {}).get("coverage_summary") if stats else None
         if stats is None or cov is None:
-            return [self._unknown("coverage", "coverage_summary")]
-        out: List[Dict[str, Any]] = []
-        if cov.get("unknown"):
+            out = [self._unknown("coverage", "coverage_summary")]
+        else:
+            out = []
+            if cov.get("unknown"):
+                out.append(self._anomaly(
+                    "coverage",
+                    f"coverage summary flagged unknown: {cov.get('unknown_reason')}",
+                    "coverage claims cannot be substantiated for this run",
+                    "fix snapshot/interval accounting so coverage is computable",
+                ))
+            gaps = cov.get("coverage_gaps") or stats.get("coverage_gaps") or []
+            if gaps:
+                out.append(self._anomaly(
+                    "coverage",
+                    f"{len(gaps)} coverage gaps recorded",
+                    "parts of the inventory were never covered by any dimension",
+                    "plan follow-up units for the gap regions before declaring completion",
+                ))
+        # Stats-level check: runs even when the summary section is missing
+        # (缺失容忍 -- a partial stats dict must not hide this shape).
+        unreported = (stats or {}).get("coverage_unreported_count")
+        if unreported:
             out.append(self._anomaly(
                 "coverage",
-                f"coverage summary flagged unknown: {cov.get('unknown_reason')}",
-                "coverage claims cannot be substantiated for this run",
-                "fix snapshot/interval accounting so coverage is computable",
-            ))
-        gaps = cov.get("coverage_gaps") or stats.get("coverage_gaps") or []
-        if gaps:
-            out.append(self._anomaly(
-                "coverage",
-                f"{len(gaps)} coverage gaps recorded",
-                "parts of the inventory were never covered by any dimension",
-                "plan follow-up units for the gap regions before declaring completion",
+                f"{unreported} submitted results carried no coverage block",
+                "the ledger cannot claim observed_read for those units even though "
+                "the work ran (RUN-LESSONS: every result of a real run arrived "
+                "coverage-empty and the absence passed silently)",
+                "enforce the coverage contract at worker output acceptance and "
+                "re-run the affected units if their review claims matter",
             ))
         return out
 
@@ -166,24 +180,54 @@ class SelfReviewCollector:
         """
         cost = (stats or {}).get("cost_metrics") if stats else None
         if stats is None or cost is None:
-            return [self._unknown("cost", "cost_metrics")]
-        out: List[Dict[str, Any]] = []
-        if cost.get("token_availability") != "exact":
+            out = [self._unknown("cost", "cost_metrics")]
+        else:
+            out = []
+            if cost.get("token_availability") != "exact":
+                out.append(self._anomaly(
+                    "cost",
+                    f"token_availability={cost.get('token_availability')} reason={cost.get('unavailable_reason')}",
+                    "cost-per-work metrics are unavailable; budget discipline cannot be reviewed",
+                    "wire host-supplied token usage into the usage ledger",
+                    unknown_note=cost.get("unavailable_reason"),
+                ))
+            if cost.get("tasks_per_kloc") is None:
+                out.append(self._anomaly(
+                    "cost",
+                    "tasks_per_kloc is non-computable",
+                    "normalized cost rate missing",
+                    "record audited line totals so the kLOC denominator exists",
+                    unknown_note=str(cost.get("tasks_per_kloc_reason") or "no denominator"),
+                ))
+        # Stats-level checks: budget-plan adequacy and estimate calibration
+        # run even when the cost_metrics section is missing (缺失容忍).
+        forecast = (stats or {}).get("budget_coverage_forecast")
+        if forecast is not None and forecast < 0.5:
             out.append(self._anomaly(
                 "cost",
-                f"token_availability={cost.get('token_availability')} reason={cost.get('unavailable_reason')}",
-                "cost-per-work metrics are unavailable; budget discipline cannot be reviewed",
-                "wire host-supplied token usage into the usage ledger",
-                unknown_note=cost.get("unavailable_reason"),
+                f"budget_coverage_forecast={forecast}: the task budget cannot "
+                "cover the planned hunt units",
+                "the run finalizes at partial coverage by construction "
+                "(RUN-LESSONS: a real run executed a few percent of its planned "
+                "hunt units and finalized without a decision point)",
+                "renegotiate the budget, shrink scope via include rules, or "
+                "accept the sampled coverage explicitly before running",
             ))
-        if cost.get("tasks_per_kloc") is None:
-            out.append(self._anomaly(
-                "cost",
-                "tasks_per_kloc is non-computable",
-                "normalized cost rate missing",
-                "record audited line totals so the kLOC denominator exists",
-                unknown_note=str(cost.get("tasks_per_kloc_reason") or "no denominator"),
-            ))
+        calibration = (stats or {}).get("calibration") or {}
+        observed_rate = calibration.get("observed_candidates_per_hunt_unit")
+        configured = calibration.get("configured_candidate_rate_estimate")
+        if observed_rate is not None and configured:
+            deviation = abs(observed_rate - configured) / configured
+            if deviation >= 0.5:
+                out.append(self._anomaly(
+                    "cost",
+                    f"calibration: observed candidates/unit={observed_rate} vs "
+                    f"configured estimate={configured} (deviation {round(deviation * 100)}%)",
+                    "the verify-reserve sizing assumption drifted from the "
+                    "observed candidate rate",
+                    "recalibrate the per-unit candidate estimate for the next "
+                    "run's verification reserve (SYSTEM_DESIGN §预算: 首批任务后校准)",
+                ))
         return out
 
     def detect_verification(self, stats: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:

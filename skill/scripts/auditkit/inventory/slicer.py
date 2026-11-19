@@ -117,6 +117,26 @@ class UnitPlanner:
             raise ValueError(f"Unknown profile: {profile!r}")
         self.snapshot_id = snapshot_id
         self.profile = profile
+        self.binary_files_skipped = 0
+
+    @staticmethod
+    def _is_test_path(path: str) -> bool:
+        """Generic test-file detection across language families.
+
+        Matches common naming conventions only: a test marker segment in the
+        basename (``test_foo.py``, ``test_main.rs``, ``foo_test.go``,
+        ``foo.test.js``, ``foo.spec.ts`` ...). Never inspects file content or
+        target-specific directory layout (SR-003/SR-016: no target-derived
+        knowledge in the planner).
+        """
+        import re as _re
+
+        basename = path.rsplit("/", 1)[-1]
+        return bool(
+            _re.match(r"^test[-_.]", basename)
+            or _re.search(r"[-_.](?:test|spec)\.[A-Za-z]", basename)
+            or basename.endswith("_test.go")
+        )
 
     def create_units(
         self,
@@ -137,12 +157,21 @@ class UnitPlanner:
         """
         units: List[Dict[str, Any]] = []
         boundary_files = {b["path"] for b in boundaries}
+        self.binary_files_skipped = 0
 
         # Deterministic sorting
         sorted_files = sorted(files, key=lambda f: f["path"])
 
         for f in sorted_files:
             path = f["path"]
+            # RUN-LESSONS: two real-target run series inventoried compiled
+            # binaries as plan units (every run ~200 decode-failure files);
+            # one binary even exhausted a signal-scan cap on its own. Binary
+            # payloads are never hunt units -- they stay in the manifest
+            # (honest inventory) but plan no work.
+            if f.get("encoding") == "binary":
+                self.binary_files_skipped += 1
+                continue
             line_count = f.get("line_count", 0)
             lang = f.get("language", "unknown")
             comp = f.get("component", "default")
@@ -150,6 +179,16 @@ class UnitPlanner:
             has_b = path in boundary_files
 
             tier, factors = calculate_risk_tier(signals, has_b)
+
+            # RUN-LESSONS: test files reached T1 on their own signal hits and
+            # consumed top-priority hunt slots in a budget-starved real run
+            # (one slot yielded a test-only hygiene finding). Test files cap
+            # at T2: they are real scope (unpinned behavior is evidence) but
+            # never outrank production source when the budget cannot cover
+            # everything.
+            if tier == "T1" and self._is_test_path(path):
+                tier = "T2"
+                factors.append("Test file (tier capped from T1)")
 
             # DSR-056 disposition mapping
             if tier in ("T1", "T2"):

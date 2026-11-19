@@ -363,6 +363,7 @@ class PacketBuilder:
         noted_entries = 0
         total_entries = len(range_entries)
         current_len = sum(len(s) for s in sections)
+        leftover_entries: List[Dict[str, Any]] = []
 
         for position, entry in enumerate(range_entries, start=1):
             block, note = _render_range_entry(entry, contents, position)
@@ -376,12 +377,20 @@ class PacketBuilder:
             assert block is not None
 
             if current_len + len(block) > self.max_chars:
+                # Leftover ranges travel with the overflow record so the
+                # caller can enqueue continuation work for them (RUN-LESSONS:
+                # two real-target run series recorded packet_overflow whose
+                # dropped tail was never re-supplied -- the unit stayed
+                # under-covered with no follow-up path). The ranges are
+                # caller data, not event payload.
+                leftover_entries = range_entries[position - 1:]
                 overflow = {
                     "dimension": "packet_capacity",
                     "estimated_count": total_entries
                     - len(code_blocks)
                     - noted_entries,
                     "reason": f"Unit ranges exceeded maximum packet character budget of {self.max_chars}",
+                    "leftover_ranges": leftover_entries,
                 }
                 break
 

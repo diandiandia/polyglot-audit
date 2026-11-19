@@ -170,13 +170,14 @@ class ExclusionRules:
                 return True, "Outside user include scope"
             # Matched an include: fall through — the exclusion chain below
             # still applies (an include is not an exemption).
-        elif self.user_includes == self.UNIVERSAL_INCLUDE:
-            # Legacy universal include: ["*"] historically matched every file
-            # and short-circuited straight to "included" ahead of all other
-            # rules. That exact semantics is preserved (existing configs and
-            # tests depend on it); the universal list is NOT a narrowing
-            # filter, it is the explicit "everything is in scope" spelling.
-            return False, "Matched user include rule"
+        # ``user_includes == ["*"]`` is the explicit "everything is in scope"
+        # spelling: it narrows nothing and the file walks the exclusion chain
+        # below like any other file. (RUN-LESSONS: two real-target run series
+        # ran with the universal include while it still short-circuited past
+        # this chain -- VCS internals and compiled binaries shipped into the
+        # inventory (~200 decode-failure gaps per run), poisoned signal caps,
+        # and spawned junk units. Hygiene exclusions are not content
+        # preferences; include scope never overrides them.)
 
         # 2. User exclude rule
         for pattern in self.user_excludes:

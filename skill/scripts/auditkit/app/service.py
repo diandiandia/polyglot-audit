@@ -632,7 +632,37 @@ class AuditAppService:
                 "roots": component_root_records,
                 "default_component_files": default_component_files,
             },
+            # RUN-LESSONS: a plan whose hunt units outnumber the task budget
+            # used to finalize silently at single-digit percent coverage --
+            # the shortfall was visible only in the coverage report after the
+            # budget drained. The forecast is recorded here, before any work
+            # starts, so the mismatch is a visible decision point (the
+            # self-review flags low forecasts; the user can renegotiate the
+            # budget or accept a sampled audit deliberately).
+            "binary_files_skipped": getattr(planner, "binary_files_skipped", 0),
         }
+        tasks_budget_limit = next(
+            (
+                int(b.get("limit", 0))
+                for b in (config.get("budgets") or [])
+                if b.get("dimension") == "tasks"
+            ),
+            None,
+        )
+        if tasks_budget_limit:
+            hunt_plan_units = max(1, len(analyze_units))
+            coverage_forecast = round(min(1.0, tasks_budget_limit / hunt_plan_units), 4)
+            plan_summary["budget_coverage_forecast"] = coverage_forecast
+            event_store.append_event(
+                run_id,
+                "budget_plan_forecast",
+                "service",
+                {
+                    "tasks_budget_limit": tasks_budget_limit,
+                    "hunt_units": len(analyze_units),
+                    "coverage_forecast": coverage_forecast,
+                },
+            )
         # Save the plan artifact at its §10.1 location (plan/plan.json), hashed
         # into the artifact ledger. finalize reads it back with a read-only
         # fallback to the legacy flat plan.json for old dossiers (DSR-072: old
@@ -1154,6 +1184,15 @@ class AuditAppService:
                     "reason": overflow.get("reason", ""),
                 },
             )
+            leftover = overflow.get("leftover_ranges") or []
+            if leftover and kind in ("hunt", "recon"):
+                # RUN-LESSONS: the dropped tail used to stay under-covered
+                # forever -- the overflow event recorded it but no follow-up
+                # work existed. The continuation carries the leftover ranges
+                # as real queued work (consuming task budget honestly).
+                self._enqueue_packet_continuation(
+                    conn, run_id, claim, spec, kind, unit, leftover
+                )
 
         # Coverage wiring: the ranges supplied in the packet are recorded in the
         # context_supplied dimension (DSR-034), sourced from the packet itself.
@@ -1177,6 +1216,117 @@ class AuditAppService:
                 ),
             )
         return receipt
+
+    # Packet-continuation bounds (RUN-LESSONS B12): a continuation hop is
+    # strictly smaller than its origin (oversized ranges are chunked by
+    # lines), and the depth cap bounds the chain -- beyond it the dropped
+    # tail stays honestly uncovered via packet_overflow events.
+    PACKET_CONTINUATION_MAX_DEPTH = 3
+    PACKET_CONTINUATION_CHUNK_LINES = 1500
+
+    def _enqueue_packet_continuation(
+        self,
+        conn: Any,
+        run_id: str,
+        claim: Dict[str, Any],
+        spec: Dict[str, Any],
+        kind: str,
+        unit: Dict[str, Any],
+        leftover_ranges: List[Dict[str, Any]],
+    ) -> None:
+        """Enqueue follow-up work for the ranges a packet dropped (RUN-LESSONS B12).
+
+        Two real-target run series recorded packet_overflow whose dropped
+        ranges were never re-supplied: the unit's tail stayed under-covered
+        with no follow-up path. The continuation is a fresh task of the same
+        kind and priority carrying exactly the leftover ranges; oversized
+        ranges are chunked by lines so each hop strictly shrinks the
+        remaining work. Depth is capped -- past the cap the drop stays
+        honest (a packet_overflow event names the uncovered tail) instead of
+        looping.
+
+        Requirements: SWR-006(support), SWR-007(上下文供给) / DSR-059(溢出留痕), DSR-034(覆盖登记)
+        """
+        try:
+            orig_row = conn.execute(
+                "SELECT priority FROM tasks WHERE task_id = ?", (claim["task_id"],)
+            ).fetchone()
+            priority = orig_row["priority"] if orig_row else 10
+            orig_unit_id = str(unit.get("unit_id", "default"))
+            depth = 1
+            if "-cont" in orig_unit_id:
+                try:
+                    depth = int(orig_unit_id.rsplit("-cont", 1)[1]) + 1
+                except ValueError:
+                    depth = 2
+            if depth > self.PACKET_CONTINUATION_MAX_DEPTH:
+                EventStore(conn).append_event(
+                    run_id,
+                    "packet_overflow",
+                    "service",
+                    {
+                        "task_id": claim["task_id"],
+                        "attempt_id": claim["attempt_id"],
+                        "dimension": "packet_capacity",
+                        "estimated_count": len(leftover_ranges),
+                        "reason": (
+                            f"continuation depth cap {self.PACKET_CONTINUATION_MAX_DEPTH} "
+                            "reached; the remaining ranges stay explicitly uncovered"
+                        ),
+                    },
+                )
+                return
+            chunked: List[Dict[str, Any]] = []
+            for rng in leftover_ranges:
+                start = int(rng.get("line_start", 1))
+                end = int(rng.get("line_end", start))
+                if end - start + 1 <= self.PACKET_CONTINUATION_CHUNK_LINES:
+                    chunked.append(dict(rng))
+                    continue
+                cursor = start
+                while cursor <= end:
+                    stop = min(end, cursor + self.PACKET_CONTINUATION_CHUNK_LINES - 1)
+                    piece = dict(rng)
+                    piece["line_start"] = cursor
+                    piece["line_end"] = stop
+                    chunked.append(piece)
+                    cursor = stop + 1
+            cont_unit = dict(unit)
+            cont_unit["unit_id"] = f"{orig_unit_id}-cont{depth}"
+            cont_unit["ranges"] = chunked
+            cont_spec = dict(spec)
+            cont_spec["unit"] = cont_unit
+            cont_spec["unit_id"] = cont_unit["unit_id"]
+            task_id = TaskQueue(conn).enqueue(
+                run_id=run_id,
+                task_key=f"cont:{kind}:{claim['task_id']}:{depth}",
+                kind=kind,
+                spec=cont_spec,
+                priority=priority,
+            )
+            EventStore(conn).append_event(
+                run_id,
+                "packet_continuation_enqueued",
+                "service",
+                {
+                    "origin_task_id": claim["task_id"],
+                    "task_id": task_id,
+                    "unit_id": cont_unit["unit_id"],
+                    "ranges": len(chunked),
+                    "depth": depth,
+                },
+            )
+        except Exception as cont_err:  # noqa: BLE001 -- best effort: the
+            # packet_overflow event above already records the drop honestly.
+            EventStore(conn).append_event(
+                run_id,
+                "packet_continuation_failed",
+                "service",
+                {
+                    "origin_task_id": claim["task_id"],
+                    "reason": str(cont_err)[:200],
+                },
+            )
 
     @staticmethod
     def _snapshot_paths(run_path: Path) -> List[str]:
@@ -1468,6 +1618,35 @@ class AuditAppService:
                         cov.get("confidence", "exact"),
                     ),
                 )
+
+        # RUN-LESSONS: a real run's worker results all came back with empty
+        # coverage blocks; the contract mandates them ("coverage entries MUST
+        # carry ...") but nothing recorded the absence, so the review-based
+        # coverage dimensions stayed at zero while the work demonstrably
+        # happened. The absence is now an explicit ledger event (honest gap,
+        # never a silent zero -- design principle 8 / SR-025). Recorded once
+        # per attempt: idempotent replays must not duplicate the event.
+        claim_unit_id = ((claim.get("spec") or {}).get("unit") or {}).get("unit_id", "")
+        if (
+            not receipt.get("replayed", False)
+            and not worker_result.get("coverage")
+            and claim_unit_id
+        ):
+            EventStore(conn).append_event(
+                claim["run_id"],
+                "coverage_unreported",
+                "service",
+                {
+                    "task_id": claim["task_id"],
+                    "attempt_id": claim["attempt_id"],
+                    "unit_id": claim_unit_id,
+                    "note": (
+                        "worker result carried no coverage block; observed_read "
+                        "cannot be claimed for this unit (recorded as a gap, "
+                        "not as zero coverage of done work)"
+                    ),
+                },
+            )
 
         # Cross-domain wiring only runs once per attempt: idempotent replays of
         # the same submission return the original receipt and must not enqueue
@@ -4470,6 +4649,29 @@ class AuditAppService:
 
         error_events = sum(1 for e in events if e["event_type"] in ERROR_EVENT_TYPES)
 
+        coverage_unreported = sum(
+            1 for e in events if e["event_type"] == "coverage_unreported"
+        )
+
+        # RUN-LESSONS (SYSTEM_DESIGN §预算): the per-unit candidate estimate
+        # (0.2) is calibrated against the observed rate at finalize; the
+        # deviation is written into the self-review instead of silently
+        # keeping the design-time guess as if it were measured.
+        hunt_done = conn.execute(
+            "SELECT count(*) AS cnt FROM tasks WHERE run_id = ? AND kind = 'hunt' AND state = 'done'",
+            (run_id,),
+        ).fetchone()["cnt"]
+        candidate_count = len(self._collect_final_candidates(conn, run_id))
+        observed_rate = (
+            round(candidate_count / hunt_done, 4) if hunt_done else None
+        )
+        calibration = {
+            "configured_candidate_rate_estimate": 0.2,
+            "observed_candidates_per_hunt_unit": observed_rate,
+            "hunt_units_executed": hunt_done,
+            "candidates": candidate_count,
+        }
+
         return {
             "total_tasks": total_tasks,
             "stage_tasks": stage_tasks,
@@ -4490,6 +4692,9 @@ class AuditAppService:
             "uncovered_languages": uncovered_languages,
             "error_events": error_events,
             "usage_missing_count": int(usage_missing_rows),
+            "coverage_unreported_count": coverage_unreported,
+            "budget_coverage_forecast": plan_dict.get("budget_coverage_forecast"),
+            "calibration": calibration,
             "plan_hunt_units": plan_dict.get("hunt_units"),
             "total_inventoried_files": len(manifest_dict.get("files", [])),
         }

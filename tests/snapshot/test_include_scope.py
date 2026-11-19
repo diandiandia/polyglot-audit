@@ -140,21 +140,37 @@ class TestIncludeScopeRules(unittest.TestCase):
         self.assertEqual(rules.evaluate("src/test_main.py"), (False, ""))
 
     def test_star_include_semantics_unchanged(self):
-        # ["*"] is the universal include: everything short-circuits straight
-        # to included ahead of ALL other rules (historical behavior kept so
-        # existing configs are unaffected).
+        # ["*"] is the universal include: it narrows nothing -- regular source
+        # still walks the default exclusion chain and stays included.
+        # (RUN-LESSONS revision: the old short-circuit past the chain shipped
+        # VCS internals and compiled binaries into the inventory across two
+        # real-target run series; hygiene exclusions are not content
+        # preferences, so include scope never overrides them.)
         rules = ExclusionRules(
             user_includes=["*"],
             user_excludes=["node_modules/**"],
             include_tests=False,
         )
 
-        for rel in ["app/main.py", "node_modules/dep/index.js", "tests/test_app.py", "logo.png"]:
-            self.assertEqual(
-                rules.evaluate(rel),
-                (False, "Matched user include rule"),
-                f"{rel} must keep the universal-include behavior",
-            )
+        self.assertEqual(rules.evaluate("app/main.py"), (False, ""))
+        self.assertEqual(
+            rules.evaluate("node_modules/dep/index.js"),
+            (True, "Matched user exclude pattern: node_modules/**"),
+        )
+        self.assertEqual(
+            rules.evaluate("tests/test_app.py"),
+            (True, "Default excluded test directory: tests"),
+        )
+        self.assertEqual(
+            rules.evaluate("logo.png"),
+            (True, "Excluded binary/media extension: .png"),
+        )
+
+        # VCS internals never pass, regardless of include scope.
+        self.assertEqual(
+            rules.evaluate(".git/objects/ab/cdef"),
+            (True, "Inside excluded directory: .git"),
+        )
 
     def test_empty_include_semantics_unchanged(self):
         # No include list: everything walks the default exclusion chain.

@@ -93,6 +93,17 @@
 | 回填状态 | 待回填主文档：SD §10.1 增补 run.json 字段清单与 dossier_version 语义；§9.3 报告集表格移出 SKILL-REVIEW.md（与 §10.1 的自相矛盾需设计裁决）；§11.4 可移植部分文件名（设计写 skill-review.json，实现为 skill-review/portable.json）。 |
 | 待设计审查确认 | ① 形态差异是否需要版本化（dossier_version）处理更老的布局：当前 run.json 记录 dossier_version="1.0" 只标识新布局，旧扁平布局无版本标记、依赖读取点回退（plan.json 回退已实现）——是否需要给旧布局定义显式版本值或提供一次性受控迁移工具；② report/ 与 skill-review/ 的边界：§9.3 把 SKILL-REVIEW.md 列入报告集而 §10.1 将自审独立成目录——**实现决议：自审归 skill-review/（按 SYSTEM_DESIGN §10.1），report/ 七件套不含自审**；SYSTEM_DESIGN §9.3 历史正文的处置（改写或标注）待设计审查，本轮不改历史文档正文；③ §10.1 tasks/<task-id>/ 中的"工具调用摘要"（工具名/路径/行范围）目前无宿主数据源，卷宗中如实缺席——需要设计定义宿主上报契约；④ run.json 中 skill_payload_sha256 的口径（本实现：资产树逐文件内容摘要、排序拼接、排除生成字节码缓存）是否需要升格为契约。 |
 
+### DA-08 SR-028 准入备案：机制批修复的两次独立运行佐证（包溢出跟进、快照卫生、预算-计划前瞻、coverage 空缺记账、候选率校准、测试文件分层）
+
+| 项 | 内容 |
+|---|---|
+| 设计出处 | SYSTEM_REQUIREMENTS.md SR-028（机制级修复需两次独立运行佐证或记录在案的阻断性例外）；SYSTEM_DESIGN.md §预算（预留量按实测校准、预算预估首批任务后校准）；SOFTWARE_DESIGN_REVIEW.md SR-005（大文件/跨单元区间待实测）；DSR-059（溢出留痕）、DSR-056（tier 策略）、DSR-034（覆盖登记）、设计原则 8（能观测的不靠声明）。 |
+| 佐证来源 | 两个相互独立的目标运行系列的账本（事件库只读复核；目标名称按 SR-016 不记录）：运行系列 A 含 11 次 run，运行系列 B 为 1 次 run。以下失败形态在**两个系列中均出现**，构成 SR-028 意义上的机制级佐证：① packet_overflow 且溢出范围无任何后续供给（系列 A 多数 run 1~84 起，系列 B 5 起）——unit 尾部永久欠覆盖；② 清单收录二进制负载（系列 A 每 run 约 200 个 decode_failure gap，系列 B 1076 个），二进制独自耗尽信号扫描 cap 并派生垃圾单元；③ 任务预算远小于计划单元仍照常 finalize（系列 A run-009b 5 起 budget_exhausted，系列 B 33 起阻塞同一任务，覆盖率收于个位数百分比）；④ worker 结果 coverage 块全空且无任何受理点记账（系列 B 全部结果为空数组，review 维度全零）；⑤ per-unit 候选率与设计估算（0.2）显著偏离且无处记录偏差。 |
+| 补救决策 | 全部为通用机制，不携带目标信息：① packet 溢出记录遗留范围并自动入队 continuation 任务（行分块保证每跳严格收缩、深度封顶，超限如实记 packet_overflow 不循环）；② 清单层面二进制负载不生成计划单元（留清单、不留工作项）；universal include 不再短路绕过卫生排除链（VCS 内部目录/二进制扩展名永不因 include 范围豁免）；③ prepare 记录 budget_coverage_forecast（预算/计划单元比），自审对 <0.5 显著预警——决策点前置到开工前；④ submit 对空 coverage 块记 coverage_unreported 事件（一次每 attempt，幂等防重），自审显式呈现"工作已发生但无法主张 observed_read"的缺口；⑤ finalize 以观测候选率对设计估算做校准记录，偏差 ≥50% 写入自审（SYSTEM_DESIGN §预算"首批任务后校准"的第一期落地）；⑥ 测试文件 tier 封顶 T2（通用命名约定检测，不检内容/不携带目标布局知识）。 |
+| 代码位置 | `analysis/packets.py`（溢出遗留范围）、`app/service.py`（continuation 入队、forecast、coverage_unreported、校准）、`inventory/rules.py`（universal include 语义修订）、`inventory/slicer.py`（二进制跳过、测试文件封顶）、`reporting/self_review.py`（三个 stats 级检测）。测试：`tests/e2e/test_run_lessons_mechanisms.py`（新增，9 用例全合成 fixture）、`tests/snapshot/test_include_scope.py`（语义修订）。 |
+| 回填状态 | 已实现并全量测试通过（1008+9）；本条目即 SR-028 备案记录。系列 A/B 的逐 run 账本复核数据在运行侧 RUN-LESSONS 归档，不入 skill 仓库。 |
+| 待设计审查确认 | ① continuation 的任务预算语义（当前如实消耗 tasks 预算——溢出 unit 的完整覆盖因此是"花预算买覆盖"的显式权衡）是否需要独立的预算维度；② coverage 契约的受理点强制（当前只记缺口事件，不拒收结果）是否应升级为 DSR-018 有界修正路径；③ 测试文件检测的命名约定集合是否需要按语言卡片扩展。 |
+
 ## 与并行工作流的接口确认（本文件随实现更新）
 
 | 接口 | 变更 | 消费方 |
