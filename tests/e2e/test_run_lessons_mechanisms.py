@@ -388,5 +388,27 @@ class TestCalibrationSelfReviewCollector(unittest.TestCase):
         )
 
 
+class TestTriageCapScaling(unittest.TestCase):
+    """RUN-LESSONS: a fixed triage cap left the overwhelming majority of
+    strong signals undispositioned in a real run. The effective cap scales
+    with the observed volume up to an absolute ceiling; whatever lies beyond
+    stays explicitly counted."""
+
+    def _hits(self, n):
+        return [
+            {"path": f"pkg/mod_{i}.py", "line": i + 1, "kind": "sink", "strength": 3}
+            for i in range(n)
+        ]
+
+    def test_small_volume_keeps_the_design_cap(self):
+        from auditkit.app.service import _effective_triage_cap
+        self.assertEqual(_effective_triage_cap(10), 50)
+
+    def test_large_volume_scales_to_a_bounded_ceiling(self):
+        from auditkit.app.service import _effective_triage_cap
+        self.assertEqual(_effective_triage_cap(200), 200)
+        self.assertEqual(_effective_triage_cap(5000), 500)
+
+
 if __name__ == "__main__":
     unittest.main()

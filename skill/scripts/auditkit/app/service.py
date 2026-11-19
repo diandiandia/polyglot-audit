@@ -190,6 +190,18 @@ CONNECTOR_EVALUATION_CAP = 200
 TRIAGE_STRONG_KINDS = ("source", "sink")
 TRIAGE_STRONG_MIN_STRENGTH = 3
 TRIAGE_MAX_RECORDS = 50
+# RUN-LESSONS: a fixed cap of 50 left the overwhelming majority of strong
+# signals undispositioned in a real run (over a thousand strong hits, a few
+# dozen dispositioned) -- the sparsity mechanism became the bottleneck. The
+# effective cap scales with the observed strong-signal volume up to an
+# absolute ceiling: output stays bounded (DSR-060) and whatever lies beyond
+# the ceiling stays explicitly counted as analysis_gap.
+TRIAGE_MAX_RECORDS_CEILING = 500
+
+
+def _effective_triage_cap(strong_hit_count: int) -> int:
+    return max(TRIAGE_MAX_RECORDS, min(strong_hit_count, TRIAGE_MAX_RECORDS_CEILING))
+
 # Event types that account for coverage blind spots and capped work. They are
 # surfaced through finalize's coverage_gaps; only "coverage_gap" (lost or
 # quarantined dispatched work) forces an incomplete terminal state, keeping
@@ -542,7 +554,9 @@ class AuditAppService:
                     and h.get("strength", 0) >= TRIAGE_STRONG_MIN_STRENGTH
                 ):
                     strong_hits.append(h)
-        triage_result = StrongSignalTriage(max_records=TRIAGE_MAX_RECORDS).triage_signals(strong_hits)
+        triage_result = StrongSignalTriage(
+            max_records=_effective_triage_cap(len(strong_hits))
+        ).triage_signals(strong_hits)
         event_store.append_event(
             run_id,
             "triage_recorded",
