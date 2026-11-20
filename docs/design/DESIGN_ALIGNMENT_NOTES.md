@@ -76,8 +76,8 @@
 | 影响 | 有界审计（budget 优先用于 hunt）必然以"验证任务全部未执行"收场，所有候选只能进 unverified/NEEDS-VALIDATION——与 SR-008"独立验证"的核心承诺矛盾。 |
 | 补救决策 | ① run_dispatch_loop 的停止序列改维度感知：hunt 领取被 BudgetExhausted 阻断后，仍继续领取 verify/second-opinion 任务（消费验证保留底座），直至验证预算也耗尽或队列清空；② stop_reason 细分 budget_exhausted（hunt 侧）/verification_complete 或 verification_reserve_exhausted；③ max_tasks 计数仅约束 hunt 派发，验证任务不受其限制（验证是 SR-008 的必要闭环）。 |
 | 代码位置 | `skill/scripts/auditkit/app/service.py` run_dispatch_loop（维度感知 claim 与停止判定）；`audit.py` run 子命令透传。 |
-| 回填状态 | 已回填主文档：DDS-03 §3.2（维度感知派发停止序列句，`[DA-06]` 标注）。回填句采用实现实际 stop_reason 词表（`budget_exhausted`/`verification_reserve_exhausted`/`queue_drained`/`paused_or_blocked`）：补救决策②中的 `verification_complete` 对应实现的 `queue_drained`（队列清空）。注意：补救决策③（max_tasks 计数仅约束 hunt 派发）**未按此实现**——`run_dispatch_loop` 的 caller cap（`max_batches`）按派发轮次计数，hunt 与 verify 共用同一计数（维度感知 verify 派发同样计入）；该差异与待设计审查项②一并留待设计审查裁决。DDS-06 门禁公式段未改动（停止序列语义落在 DDS-03 §3.2）。 |
-| 待设计审查确认 | ① 验证保留底座耗尽后是否允许验证任务降级使用剩余 hunt 额度（当前决策：不允许，如实 incomplete）；② max_tasks 是否需要对 verify 单独设置上限。 |
+| 回填状态 | 已回填主文档：DDS-03 §3.2（维度感知派发停止序列句，`[DA-06]` 标注）。回填句采用实现实际 stop_reason 词表（`budget_exhausted`/`verification_reserve_exhausted`/`queue_drained`/`paused_or_blocked`）：补救决策②中的 `verification_complete` 对应实现的 `queue_drained`（队列清空）。**修订（2026-11-20）**：补救决策③已实现——`run_dispatch_loop` 的 `max_batches` 现仅约束计划侧（hunt/recon）派发；verify（含 second-opinion）豁免于该 cap 继续派发（peek-then-claim 按 claim 排序判族、竞态由领取后守卫释放回队，预算安全）；stop_reason 归因修正（cap 生效且队列仍有剩余工作时归因为调用方上限而非管道原因）。待设计审查项②已回答：新增 `max_verify_batches`（CLI `--max-verify-tasks`），**默认不设限**（决策③原意：验证是 SR-008 的必要闭环），需要会话上界的调用方显式设置。返回契约新增 `dispatched_plan`/`dispatched_verify` 族计数（`batches` 仍为两族总数）。测试：`tests/e2e/test_concurrent_dispatch.py`（cap 语义改写 + 两个决策③回归）。DDS-06 门禁公式段未改动（停止序列语义落在 DDS-03 §3.2）。 |
+| 待设计审查确认 | ① 验证保留底座耗尽后是否允许验证任务降级使用剩余 hunt 额度（当前决策：不允许，如实 incomplete）；② ~~max_tasks 是否需要对 verify 单独设置上限~~ 已回答：`max_verify_batches` 默认不设限，可显式收緊。 |
 
 ## 2026-11-17 run 卷宗目录形态对齐（路径 B）
 
@@ -103,6 +103,17 @@
 | 代码位置 | `analysis/packets.py`（溢出遗留范围）、`app/service.py`（continuation 入队、forecast、coverage_unreported、校准）、`inventory/rules.py`（universal include 语义修订）、`inventory/slicer.py`（二进制跳过、测试文件封顶）、`reporting/self_review.py`（三个 stats 级检测）。测试：`tests/e2e/test_run_lessons_mechanisms.py`（新增，9 用例全合成 fixture）、`tests/snapshot/test_include_scope.py`（语义修订）。 |
 | 回填状态 | 已实现并全量测试通过（1008+9）；本条目即 SR-028 备案记录。系列 A/B 的逐 run 账本复核数据在运行侧 RUN-LESSONS 归档，不入 skill 仓库。 |
 | 待设计审查确认 | ① continuation 的任务预算语义（当前如实消耗 tasks 预算——溢出 unit 的完整覆盖因此是"花预算买覆盖"的显式权衡）是否需要独立的预算维度；② coverage 契约的受理点强制（当前只记缺口事件，不拒收结果）是否应升级为 DSR-018 有界修正路径；③ 测试文件检测的命名约定集合是否需要按语言卡片扩展。 |
+
+### DA-09 跨单元连接器的假设边配对过松（RUN-LESSONS O-06：双向子串匹配）
+
+| 项 | 内容 |
+|---|---|
+| 设计出处 | SOFTWARE_DESIGN.md SD-04（"机械连接使用具名符号、参数、边界元数据生成假设边"）；RUN-LESSONS O-06（"`lib.encrypt` ~ `encrypt` 即配对，可能误配"，收紧策略原记为待设计审查）。 |
+| 缺口描述 | connector 的亲和判定是双向原始子串包含：boundary 或 symbol 任一字段 `a in b or b in a` 即生成假设边并合成联动候选，消耗独立验证预算。真实运行表明共享一个宽松词元（`encrypt` 内含于 `encryption_utils`、`lib.encrypt` 含 `encrypt`）即可配对，误配率在大仓库不可控。 |
+| 补救决策 | 亲和判定改为**词元感知**三级：`exact`（全名相等）、`component`（两侧共享至少一个完整分隔词元，分隔符为非字母数字/下划线序列）、`None`（原始子串不再构成任何因子）。成边充分条件：任一字段 `exact`，或 boundary 与 symbol **同时** `component`（双独立因子互证）；单一宽松 component 因子不配对，记录留在 unresolved 并附原因。签名/参数 arity 兼容层不变（DSR-026），配对上限与预算记账不变。 |
+| 代码位置 | `analysis/connector.py`（`_name_affinity` + 成边判定）；测试：`tests/analysis/test_analysis.py`、`tests/analysis/test_connector_disposition.py`（既有 exact-fixture 全部兼容）。 |
+| 回填状态 | 已实现；本条目即 O-06 收紧的实现备案。误配率的真实数据量化仍待下一次真实运行的自审统计（OPEN）。 |
+| 待设计审查确认 | ① component 词元的最低长度/停用词策略（当前不过滤短词元，靠双因子门槛兜底）；② 双 component 因子成边是否需要再要求路径同目录或同包前缀。 |
 
 ## 与并行工作流的接口确认（本文件随实现更新）
 

@@ -559,6 +559,8 @@ verifier 可以上调或下调至多一档并写明理由（例如默认配置�
 
 ### 9.3 报告集
 
+`report/` 目录固定七件套，**不含 skill 自审**——自审按 §10.1 常驻于独立的 `skill-review/` 目录（`SKILL-REVIEW.md`，可移植导出为 `skill-review/portable.json`），二者是 §11 同源信息的两个消费者视角，不在 report/ 混排（[DA-07] 决议）。
+
 | 文件 | 内容 |
 |---|---|
 | `REPORT.md` | 范围、快照、终态、覆盖声明；按紧迫度排序的发现总表；逐条发现卡片；待验证清单摘要；方法与局限 |
@@ -567,7 +569,9 @@ verifier 可以上调或下调至多一档并写明理由（例如默认配置�
 | `COVERAGE.md` 与 `coverage.csv` | 按组件、语言、深度汇总的覆盖；未审读的高风险单元清单；逐文件明细在 CSV 里 |
 | `AUDIT-TRAIL.md` | 审计轨迹（§10.3） |
 | `COST.md` | 消耗报告（§6.8） |
-| `SKILL-REVIEW.md` | skill 自审（§11） |
+| `lessons.md` | 运行教训卷宗（SR-031/DSR-081：按 docs/LESSONS-TEMPLATE.md 模板归档，运行产物、非 skill 资产） |
+
+> 历史注记：本节曾把 `SKILL-REVIEW.md` 列入 report/ 七件套，与 §10.1 的 `skill-review/` 独立目录自相矛盾；已按实现决议（自审归 skill-review/）修订，第七件套为 lessons.md。[DA-07]
 
 ### 9.4 编排规则
 

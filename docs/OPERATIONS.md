@@ -196,15 +196,17 @@ OS 级隔离未经验证时 `safety_acceptance.user_approved` 必须为 `true` �
 
 `events.db` 中 `events` 表为唯一事实来源；恢复/对账（`resume`、`finalize` 的对账段）通过顺序重放事件核对 revision、任务状态与产物引用。人工核查可直接只读查询：`sqlite3 <run-dir>/events.db "SELECT * FROM events ORDER BY id"`。
 
-## 7. 已支持版本（**候选——统一测试后确定**）
+## 7. 已支持版本（实测结论 + 未实测保持 unknown）
+
+> 回填口径（2026-11-20）：实测结论来自统一测试取证（直接套件 1019 passed / 2 skipped，Python 3.14.4 / Linux aarch64 容器；real_cli 类别 7 passed / 1 skipped，2026-11-18）。**未实测的组合一律保持 unknown，不标受支持**（设计原则 8；GATE-01 关闭前本表不得定稿）。
 
 | 项 | 状态 |
 |---|---|
-| Python 下限 | 候选 3.8+；以 GATE-07 兼容测试结论为准 |
-| Claude Code CLI 版本 | 未实测——保持 unknown，不标受支持（GATE-01） |
-| Codex CLI 版本 | 未实测——保持 unknown，不标受支持（GATE-01） |
-| SQLite 文件系统适用范围 | 以 GATE-02 故障注入结论为准 |
-| JSON Schema 子集 / CLI+MCP 接口版本 | `schema_version: "1.0"`；完整 JSON Schema 兼容性不声称（GATE-07） |
+| Python 下限 | 声明下限 3.9（GATE-07）；**实测矩阵仅覆盖 3.14.4**——其余版本为未实测，不标受支持 |
+| Claude Code CLI 版本 | 结构化输出/探针在真实宿主通过（real_cli 7 passed）；隔离与预算能力 unknown（GATE-01-b），具体版本号未定——不标受支持 |
+| Codex CLI 版本 | 本沙箱 headless 不可用（O-08）；真实环境实测后评估——保持 unknown |
+| SQLite 文件系统适用范围 | GATE-02 故障注入结论：pass（`docs/evidence/gate02-summary.json`） |
+| JSON Schema 子集 / CLI+MCP 接口版本 | `schema_version: "1.0"`；完整 JSON Schema 兼容性不声称（GATE-07 pass 仅覆盖声明子集） |
 
 发布前必须先完成 `docs/RELEASE-CHECKLIST.md`。
 
