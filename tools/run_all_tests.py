@@ -111,9 +111,16 @@ def _discover(rel_dir: str, pattern: str, exclude: str | None) -> unittest.TestS
     return suite
 
 
-def run_all(strict: bool = False) -> int:
+def run_all(strict: bool = False, only_categories: frozenset[str] | None = None) -> int:
     print("=" * 92)
-    print("polyglot-audit: Unified Verification Suite (five-category orchestration, DSR-078)")
+    if only_categories is not None:
+        print(
+            "polyglot-audit: Unified Verification Suite (subset: "
+            + ", ".join(sorted(only_categories))
+            + "; release evidence still requires the FULL run, DSR-078)"
+        )
+    else:
+        print("polyglot-audit: Unified Verification Suite (five-category orchestration, DSR-078)")
     print("=" * 92)
 
     t_all = time.time()
@@ -123,6 +130,12 @@ def run_all(strict: bool = False) -> int:
     rows: list[tuple[str, str, int, int, int, int, float, str]] = []
 
     for category, suites in CATEGORY_SUITES.items():
+        if only_categories is not None and category not in only_categories:
+            # Subset run (--fast / --categories): skipped categories are NOT
+            # reported as skipped-passes -- they are simply not claimed, and
+            # the header states that release evidence needs the full run
+            # (DSR-078: skipped 单列不进分母, missing remains unclaimed).
+            continue
         print(f"\n### CATEGORY: {category}")
         for label, rel_dir, pattern, exclude, optional in suites:
             suite_path = ROOT_DIR / rel_dir
@@ -213,8 +226,33 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="DSR-078 five-category test orchestrator")
     parser.add_argument("--strict", action="store_true",
                         help="treat missing optional suites as a non-zero exit")
+    parser.add_argument(
+        "--fast", action="store_true",
+        help="daily mode: skip the network/credential-bound categories "
+             "(real_cli, model_eval) whose probes wait on external hosts; "
+             "release evidence still requires the FULL run",
+    )
+    parser.add_argument(
+        "--categories", default="",
+        help="comma-separated subset of categories to run (e.g. "
+             "deterministic,fault_injection,scale); empty = all five",
+    )
     args = parser.parse_args(argv)
-    return run_all(strict=args.strict)
+
+    only_categories: frozenset[str] | None = None
+    if args.categories:
+        requested = {c.strip() for c in args.categories.split(",") if c.strip()}
+        unknown = requested - set(CATEGORY_SUITES)
+        if unknown:
+            parser.error(
+                "unknown categories: " + ", ".join(sorted(unknown))
+                + " (valid: " + ", ".join(sorted(CATEGORY_SUITES)) + ")"
+            )
+        only_categories = frozenset(requested)
+    elif args.fast:
+        only_categories = frozenset(set(CATEGORY_SUITES) - {"real_cli", "model_eval"})
+
+    return run_all(strict=args.strict, only_categories=only_categories)
 
 
 if __name__ == "__main__":

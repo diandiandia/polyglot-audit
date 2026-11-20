@@ -4,6 +4,12 @@
 
 > **状态声明**：本手册中所有"已支持版本""已验证能力"均为**候选**，实际支持范围由统一测试（`tools/run_all_tests.py` 与双宿主实测）结论决定；未实测能力一律保持 unknown，不标为受支持（设计原则 8：能观测的不靠声明）。发布前须完成 `docs/RELEASE-CHECKLIST.md` 中 GATE-01～07 证据。
 
+## 0. 日常测试与证据交付（分层编排）
+
+- **日常迭代**：`python3 tools/run_all_tests.py --fast`——跳过网络/凭据绑定的 real_cli、model_eval 两类（无外网或未登录宿主 CLI 时，real_cli 探针会等待外部进程直至超时，RUN-LESSONS O-08）；`--categories deterministic,fault_injection,scale` 可进一步选取子集。**发布证据仍必须跑完整五类**（`--fast`/`--categories` 的跳过类别"不声明、不进分母"）。
+- **发布证据**：`python3 tools/generate_release_evidence.py`（内部跑完整编排器；`--skip-tests` 仅用于重生成格式，跳过的类别如实 unknown——2026-11-19 曾发生无编排器输出的降级再生成，已回滚，勿再以半量运行覆盖完整证据）。
+- **开源/第三方交付**：`python3 tools/anonymize_evidence.py --src docs/evidence --dst <portable-dir>`——对证据 JSON 中的 run/ev 标识符做**不可逆加盐哈希**（每次导出独立盐值、导出内一致、不写映射表、禁止源目录原地覆盖）；非 JSON 文件原样拷贝。
+
 ---
 
 ## 1. 安装前置
