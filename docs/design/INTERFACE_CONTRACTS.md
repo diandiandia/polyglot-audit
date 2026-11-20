@@ -30,7 +30,7 @@
 | `Frontier` | frontier_id、source、boundary、steps、open_questions、provenance | 表示源端半链；boundary 标识符、调用点和参数位置无法确定时标 unknown。 |
 | `SinkProbe` | probe_id、sink、boundary、steps、guard_analysis、open_questions、provenance | 不要求 source 或局部无守卫的断言；缺失不应伪造。 |
 | `Connection` | connection_id、frontier_id、probe_id、matching_factors、status | status 为 hypothesized/verified/rejected/unresolved；hypothesized 不直接视为实际路径。 |
-| `Finding` | finding_id、candidate_refs、verdict、evidence_level、provenance | confirmed 需 source/sink、完整逐跳依据、守卫、影响、前提、rating、remediation；needs_validation 需 blockers 和 validation_plan；rejected 需反证锚点；unverified 需原因。 |
+| `Finding` | finding_id、candidate_refs、verdict、evidence_level、provenance | confirmed 需 source/sink、完整逐跳依据、守卫、影响、前提、rating、remediation；needs_validation 需 blockers 和 validation_plan；rejected 需反证锚点；unverified 需原因。evidence_level 按主张强度取值：confirmed=E2、其余=E1；缺失由程序侧补记，已提供的值不改写（无效值由语义门禁拒绝）。因评分因子理由缺失由 confirmed 降级为 needs_validation 时，evidence_level **联动重置为 E1**（store 与 finalize 两处降级点均强制）。 |
 | `Rating` | impact、exploitability、factor_reasons、calculated_severity、calculated_urgency、final_severity、final_urgency、adjustment? | 两因子整数 1～4；调整需 `{operator, reason, direction}`，最多一档且 final urgency 重新计算；待验证只用验证优先级。 |
 | `CoverageObservation` | snapshot_id、unit_id、dimension、source、ranges、confidence | dimension 为 inventoried/signal_scanned/context_supplied/observed_read/review_claimed；工具日志缺失时单独标 unknown。 |
 | `Usage` | attempt_id、dimension、availability、value、unit、source | availability 为 exact/estimated/unavailable；unavailable 的 value 为 null 且需原因；费用币种和精度明示。 |
