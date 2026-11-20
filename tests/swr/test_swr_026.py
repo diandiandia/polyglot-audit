@@ -288,7 +288,13 @@ class TestSWR026HonestPartialReports(unittest.TestCase):
 
         report = (self.run_dir / "report" / "REPORT.md").read_text(encoding="utf-8")
         self.assertIn("Limitations & Scope", report)
-        self.assertIn("pure static semantic analysis", report)
+        # RUN-LESSONS: the limitations section asserts only observable facts.
+        # The old unconditional "pure static semantic analysis / no dynamic
+        # reproduction" claim was falsified by a real run whose verification
+        # recorded end-to-end dynamic reproduction, so the report now grades
+        # claim strength and defers static/dynamic means to per-finding steps.
+        self.assertIn("graded by claim strength", report)
+        self.assertIn("no run-level static/dynamic summary assertion", report)
         self.assertIn("External environment variables", report)
         self.assertIn("Secrets in unrecognized formats", report)
 
