@@ -493,6 +493,110 @@ class TestConcurrentDispatch(unittest.TestCase):
             conn.close()
         self.assertGreater(queued, 0, "task cap did not leave planned work queued")
 
+    def _plan_target_with_candidates(self, n_files=4):
+        """Target + worker fn whose hunt submissions each produce one
+        distinct candidate, so the ANA->LED wiring enqueues verify tasks
+        mid-loop and the DA-06 decision-3 verification exemption is
+        exercised against real queued verification work."""
+        target = self._signal_target(n_files)
+
+        def execute_fn(claim):
+            kind = (claim.get("spec") or {}).get("task_kind") or "hunt"
+            if kind == "hunt":
+                unit_path = (
+                    (((claim.get("spec") or {}).get("unit") or {}).get("ranges") or [{}])[0]
+                    .get("path", "src/unknown.py")
+                )
+                cand = {
+                    "schema_version": "1.0",
+                    "candidate_id": f"cand-{claim['task_id'][-6:]}",
+                    "issue": "py-01",
+                    "source": {"path": unit_path, "line": 3, "symbol": "handle", "kind": "http"},
+                    "sink": {"path": unit_path, "line": 5, "symbol": "restore", "kind": "deserialization"},
+                    "steps": [
+                        {"path": unit_path, "line": 3, "role": "source", "note": "n1"},
+                        {"path": unit_path, "line": 5, "role": "sink", "note": "n2"},
+                    ],
+                    "guard_analysis": "none",
+                    "impact_claim": "RCE",
+                    "open_questions": [],
+                }
+                return {
+                    "schema_version": "1.0",
+                    "task_id": claim["task_id"],
+                    "attempt_id": claim["attempt_id"],
+                    "kind": "hunt",
+                    "coverage": [],
+                    "records": [cand],
+                    "overflow": [],
+                }
+            return {
+                "schema_version": "1.0",
+                "task_id": claim["task_id"],
+                "attempt_id": claim["attempt_id"],
+                "kind": kind,
+                "coverage": [],
+                "records": [],
+                "overflow": [],
+            }
+
+        return target, execute_fn
+
+    def test_verify_dispatch_continues_after_plan_cap(self):
+        """DA-06 decision 3: the caller plan cap (max_batches) bounds
+        hunt/recon only. Once it is reached, queued verification still
+        dispatches to completion (RUN-LESSONS: a shared counter ended
+        budget-first real runs with every candidate unverified)."""
+        target, execute_fn = self._plan_target_with_candidates(4)
+        config = self._make_config(target)
+        prep = self._prepared(config)
+        run_id, run_dir = prep["run_id"], Path(config["run_dir"])
+
+        summary = self.app.run_dispatch_loop(
+            run_id, run_dir, execute_fn,
+            adapter=_FakeAdapter(), max_batches=3,
+        )
+        self.assertEqual(summary["dispatched_plan"], 3)
+        self.assertGreaterEqual(summary["dispatched_verify"], 1)
+        self.assertEqual(
+            summary["batches"],
+            summary["dispatched_plan"] + summary["dispatched_verify"],
+        )
+        self.assertIsNone(summary["stop_reason"])
+        conn = self._db(run_dir)
+        try:
+            queued = conn.execute(
+                "SELECT count(*) AS cnt FROM tasks WHERE state = 'queued'"
+            ).fetchone()["cnt"]
+        finally:
+            conn.close()
+        self.assertGreater(queued, 0, "plan cap must leave planned hunt work queued")
+
+    def test_max_verify_batches_caps_verification_family(self):
+        """DA-06 open question 2: verification is boundable through its own
+        caller cap; reaching it stops verification dispatch the same way the
+        plan cap stops plan-scope work, with the remainder queued and the
+        stop attributed to the cap (stop_reason None)."""
+        target, execute_fn = self._plan_target_with_candidates(4)
+        config = self._make_config(target)
+        prep = self._prepared(config)
+        run_id, run_dir = prep["run_id"], Path(config["run_dir"])
+
+        summary = self.app.run_dispatch_loop(
+            run_id, run_dir, execute_fn,
+            adapter=_FakeAdapter(), max_batches=None, max_verify_batches=1,
+        )
+        self.assertEqual(summary["dispatched_verify"], 1)
+        self.assertIsNone(summary["stop_reason"])
+        conn = self._db(run_dir)
+        try:
+            queued_verify = conn.execute(
+                "SELECT count(*) AS cnt FROM tasks WHERE state = 'queued' AND kind = 'verify'"
+            ).fetchone()["cnt"]
+        finally:
+            conn.close()
+        self.assertGreater(queued_verify, 0, "verify cap must leave verification queued")
+
     def test_summary_contract_keys_are_stable_for_cli_consumers(self):
         target = self._signal_target(1)
         config = self._make_config(target)
@@ -503,12 +607,16 @@ class TestConcurrentDispatch(unittest.TestCase):
         )
         # The dispatch summary embedded by `audit run` keeps its documented key
         # set; consumers read submitted/failed/budget_retained/concurrency/
-        # stop_reason/batches.
+        # stop_reason/batches, plus the DA-06 decision-3 family split
+        # (dispatched_plan / dispatched_verify) that makes the verification
+        # exemption auditable.
         self.assertEqual(
             sorted(summary.keys()),
-            ["batches", "budget_retained", "concurrency", "failed",
-             "stop_reason", "submitted"],
+            ["batches", "budget_retained", "concurrency", "dispatched_plan",
+             "dispatched_verify", "failed", "stop_reason", "submitted"],
         )
+        self.assertEqual(summary["batches"],
+                         summary["dispatched_plan"] + summary["dispatched_verify"])
         self.assertIsInstance(summary["concurrency"], int)
         self.assertIsInstance(json.dumps(summary), str)
 

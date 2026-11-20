@@ -781,8 +781,15 @@ def main() -> int:
     )
     p_run.add_argument(
         "--max-tasks", type=int, default=None,
-        help="cap the number of tasks dispatched this session; remaining "
-             "queued units stay honest incomplete coverage (SR-019/DSR-066)",
+        help="cap PLAN-SCOPE tasks (hunt/recon) dispatched this session; "
+             "verification keeps dispatching (DA-06 decision 3: it is "
+             "SR-008's necessary closure) and remaining queued units stay "
+             "honest incomplete coverage (SR-019/DSR-066)",
+    )
+    p_run.add_argument(
+        "--max-verify-tasks", type=int, default=None,
+        help="optionally cap verification tasks (verify + second opinions) "
+             "dispatched this session; default: uncapped (DA-06 decision 3)",
     )
     p_run.add_argument("--json", action="store_true", default=True)
     _add_format_argument(p_run)
@@ -964,6 +971,7 @@ def main() -> int:
                 controller=controller,
                 lease_seconds=max(1, args.lease_seconds),
                 max_batches=args.max_tasks,
+                max_verify_batches=args.max_verify_tasks,
             )
             summary["stop_reason"] = _stop_reason_for_drain(conn, run_id, summary)
             queued = conn.execute(

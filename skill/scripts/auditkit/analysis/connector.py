@@ -25,6 +25,7 @@ Implements DSR-026 / DSR-058 / DR-013 / SD-04 / SR-005:
 #
 
 from __future__ import annotations
+import re
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -49,6 +50,33 @@ def _param_arity(participant: Dict[str, Any]) -> Optional[int]:
         if not inner:
             return 0
         return len(inner.split(","))
+    return None
+
+
+_TOKEN_SPLIT = re.compile(r"[^a-z0-9_]+")
+
+
+def _name_affinity(left: str, right: str) -> Optional[str]:
+    """Component-aware name affinity for hypothesis joins (RUN-LESSONS O-06).
+
+    Returns ``"exact"`` (full equality), ``"component"`` (at least one
+    complete separator-delimited token shared by both names), or ``None``.
+    Raw bidirectional substring containment no longer pairs anything: names
+    that merely share a loose token ("util.encode" vs "encode", "encode"
+    inside "encode_state") formed false hypothesis edges and spent
+    independent verification budget on them. An edge now needs ONE exact
+    factor (boundary or symbol) or TWO independent component factors
+    (boundary AND symbol) -- a single loose component match pairs nothing.
+    """
+    if not left or not right:
+        return None
+    left_l, right_l = left.lower(), right.lower()
+    if left_l == right_l:
+        return "exact"
+    left_tokens = {t for t in _TOKEN_SPLIT.split(left_l) if t}
+    right_tokens = {t for t in _TOKEN_SPLIT.split(right_l) if t}
+    if left_tokens & right_tokens:
+        return "component"
     return None
 
 
@@ -186,18 +214,28 @@ class HypothesisConnector:
                     })
                     continue
 
-                matching_factors: List[str] = []
-
-                # Match by boundary name/identifier
-                if f_boundary and p_boundary:
-                    if f_boundary in p_boundary or p_boundary in f_boundary:
-                        matching_factors.append(f"Boundary match: '{f_boundary}' ~ '{p_boundary}'")
-
-                # Match by symbols
+                # Name affinity (RUN-LESSONS O-06): component-aware, not raw
+                # substring. One exact factor or two independent component
+                # factors warrant a hypothesis edge; a single loose component
+                # match pairs nothing (it stays in unresolved with a reason).
                 f_sym = f_source.get("symbol", "").lower()
                 p_sym = p_sink.get("symbol", "").lower()
-                if f_sym and p_sym and (f_sym in p_sym or p_sym in f_sym):
-                    matching_factors.append(f"Symbol affinity: '{f_sym}' ~ '{p_sym}'")
+                b_affinity = _name_affinity(f_boundary, p_boundary)
+                s_affinity = _name_affinity(f_sym, p_sym)
+                edge_warranted = (
+                    b_affinity == "exact"
+                    or s_affinity == "exact"
+                    or (b_affinity == "component" and s_affinity == "component")
+                )
+
+                matching_factors: List[str] = []
+                if edge_warranted:
+                    if b_affinity:
+                        label = "Boundary match" if b_affinity == "exact" else "Boundary component match"
+                        matching_factors.append(f"{label}: '{f_boundary}' ~ '{p_boundary}'")
+                    if s_affinity:
+                        label = "Symbol affinity" if s_affinity == "exact" else "Symbol component affinity"
+                        matching_factors.append(f"{label}: '{f_sym}' ~ '{p_sym}'")
 
                 if matching_factors:
                     frontier_matched = True

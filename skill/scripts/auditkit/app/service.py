@@ -3136,6 +3136,7 @@ class AuditAppService:
         adapter: Any = None,
         controller: Optional[ConcurrencyController] = None,
         max_batches: Optional[int] = None,
+        max_verify_batches: Optional[int] = None,
         lease_seconds: int = 300,
         usage_dimension: str = "tokens",
         usage_unit: str = "tokens",
@@ -3172,11 +3173,20 @@ class AuditAppService:
           ``"paused_or_blocked"`` when the run is not active (stop sequence)
           or no cause is recorded. ``None`` means the loop stopped on the
           caller-supplied task cap.
-        - ``max_batches`` now caps TASK DISPATCH ROUNDS (one claimed task per
-          round), not whole-batch claim rounds: once that many tasks have been
-          claimed, no further tasks are claimed, in-flight tasks complete, and
-          ``stop_reason`` is ``None``.
-        - ``batches`` counts dispatched tasks (one claim round per task).
+        - ``max_batches`` caps PLAN-SCOPE dispatch rounds (hunt + recon, one
+          claimed task per round): once that many plan-scope tasks have been
+          claimed, no further PLAN-SCOPE tasks are claimed, in-flight tasks
+          complete, and ``stop_reason`` is ``None``. Verification tasks
+          (``verify``, including second opinions) are EXEMPT from this cap
+          and keep dispatching -- they are SR-008's necessary closure
+          (DA-06 decision 3: RUN-LESSONS, a budget-first audit used to stop
+          with every candidate unverified because hunt consumed the shared
+          counter). ``max_verify_batches`` (default: uncapped) optionally
+          bounds the verification family; when it is set and reached,
+          verification dispatch stops the same way.
+        - ``batches`` counts ALL dispatched tasks (one claim round per task,
+          both families); ``dispatched_plan`` / ``dispatched_verify`` split
+          the accounting by family.
         - ``adapter``: host driver adapter; its ``max_retries`` bounds queue
           retries and its ``backoff_base``/``backoff_max`` bound the backoff
           sleep after retryable failures (slept by the failing worker only).
@@ -3207,6 +3217,8 @@ class AuditAppService:
         ctrl_lock = threading.Lock()
         counters = {
             "dispatched": 0,
+            "dispatched_plan": 0,
+            "dispatched_verify": 0,
             "submitted": 0,
             "failed": 0,
             "budget_retained": 0,
@@ -3298,13 +3310,33 @@ class AuditAppService:
             # next() and never reach execute_fn. batch_size=1 keeps the claim
             # immediately adjacent to this task's own execution.
             with db_lock:
-                # The caller cap is enforced inside the claim critical section,
-                # so a task is never claimed past max_batches even when slots
-                # were already queued on the pool.
-                if stop_claiming.is_set() or (
-                    max_batches is not None and counters["dispatched"] >= max_batches
-                ):
+                # The caller caps are enforced inside the claim critical
+                # section, so a task is never claimed past its family's cap
+                # even when slots were already queued on the pool.
+                # DA-06 decision 3: max_batches bounds PLAN-SCOPE work only;
+                # verification keeps dispatching (SR-008 closure).
+                plan_cap_reached = (
+                    max_batches is not None
+                    and counters["dispatched_plan"] >= max_batches
+                )
+                verify_cap_reached = (
+                    max_verify_batches is not None
+                    and counters["dispatched_verify"] >= max_verify_batches
+                )
+                if stop_claiming.is_set() or (plan_cap_reached and verify_cap_reached):
                     return ("stopped", None)
+                if plan_cap_reached or verify_cap_reached:
+                    # A reached cap exempts only one family: the claim head's
+                    # kind decides whether this slot may claim at all. Peek
+                    # uses the claim query's own ordering (priority DESC,
+                    # task_id ASC); a race between peek and claim is resolved
+                    # by the post-claim guard below (release + stopped).
+                    head_kind = self._peek_next_task_kind(run_id, run_dir)
+                    if head_kind is not None:
+                        if plan_cap_reached and head_kind != "verify":
+                            return ("stopped", None)
+                        if verify_cap_reached and head_kind == "verify":
+                            return ("stopped", None)
                 try:
                     claims = self.next(
                         run_id,
@@ -3318,9 +3350,40 @@ class AuditAppService:
                     # active runs; report honestly via the stop reason.
                     return ("blocked", None)
                 if claims:
+                    claimed_kind = (
+                        (claims[0].get("spec") or {}).get("task_kind") or ""
+                    )
+                    if (
+                        (plan_cap_reached and claimed_kind != "verify")
+                        or (verify_cap_reached and claimed_kind == "verify")
+                    ):
+                        # Race: the queue head changed between the peek and
+                        # the claim, and the claim violates the reached cap.
+                        # The cap is a hard contract -- release the claim
+                        # (budget released, task requeued) and stop.
+                        try:
+                            TaskQueue(self._open_run_db(run_dir)).release_claim(
+                                run_id,
+                                claims[0]["task_id"],
+                                claims[0]["attempt_id"],
+                                claims[0]["generation"],
+                                claims[0]["claim_token"],
+                                "claim exceeded its family's caller cap "
+                                "(peek/claim race); released back to queue",
+                            )
+                        except Exception:  # noqa: BLE001 -- the cap report
+                            # below must not depend on the release outcome;
+                            # a failed release is visible via the queue's own
+                            # events and the stale-lease reclaim path.
+                            pass
+                        return ("stopped", None)
                     # Dispatch accounting stays inside the claim critical
                     # section so the cap is exact under concurrency.
                     counters["dispatched"] += 1
+                    if claimed_kind == "verify":
+                        counters["dispatched_verify"] += 1
+                    else:
+                        counters["dispatched_plan"] += 1
             if not claims:
                 # DA-06 dimension-aware stop: an empty claim usually means the
                 # hunt budget hit its verification-reserve floor. Verify and
@@ -3338,6 +3401,13 @@ class AuditAppService:
                     )
                     if not pending_verify:
                         return ("empty", None)
+                    if (
+                        max_verify_batches is not None
+                        and counters["dispatched_verify"] >= max_verify_batches
+                    ):
+                        # The verification family has its own caller cap and
+                        # it is exhausted: no further verification claims.
+                        return ("stopped", None)
                     sleep_fn(1.0)
                     claims = self.next(
                         run_id,
@@ -3348,6 +3418,7 @@ class AuditAppService:
                     )
                     if claims:
                         counters["dispatched"] += 1
+                        counters["dispatched_verify"] += 1
                         break
                 if not claims:
                     return ("empty", None)
@@ -3501,20 +3572,38 @@ class AuditAppService:
                         drain_seen = False
                         blocked_seen = False
 
-                # 2. Caller cap: no further tasks are claimed once the
-                # dispatched count reaches max_batches.
-                if max_batches is not None and counters["dispatched"] >= max_batches:
+                # 2. Caller caps: blanket claiming stops only when BOTH
+                # families are capped -- with verification uncapped (the
+                # default) it keeps flowing through the kind-aware claim
+                # guard even after the plan cap is reached (DA-06 decision
+                # 3: verification is SR-008's necessary closure; the loop
+                # terminates via the drain path once the verification queue
+                # empties).
+                plan_capped = (
+                    max_batches is not None
+                    and counters["dispatched_plan"] >= max_batches
+                )
+                verify_capped = (
+                    max_verify_batches is not None
+                    and counters["dispatched_verify"] >= max_verify_batches
+                )
+                if plan_capped and verify_capped:
                     stop_claiming.set()
 
                 # 3. Stop decisions BEFORE refilling, so fresh probe slots can
                 # never keep the loop alive after the pipeline is empty.
                 if stop_claiming.is_set() and not in_flight:
-                    # Stopped by the caller-supplied task cap: neither the
-                    # queue nor the run state caused the stop.
+                    # Stopped by the caller-supplied caps (both families):
+                    # neither the queue nor the run state caused the stop.
                     stop_reason = None
                     break
                 if (drain_seen or blocked_seen) and not in_flight:
                     stop_reason = self._dispatch_stop_reason(run_id, run_dir)
+                    if (plan_capped or verify_capped) and stop_reason != "queue_drained":
+                        # Work remains but a caller family cap stopped the
+                        # dispatch: attribute the stop to the cap, not to a
+                        # pipeline/ledger cause the cap merely preempted.
+                        stop_reason = None
                     break
 
                 # 4. Fill the pipeline up to the CURRENT AIMD in-flight cap.
@@ -3539,12 +3628,36 @@ class AuditAppService:
 
         return {
             "batches": counters["dispatched"],
+            "dispatched_plan": counters["dispatched_plan"],
+            "dispatched_verify": counters["dispatched_verify"],
             "submitted": counters["submitted"],
             "failed": counters["failed"],
             "budget_retained": counters["budget_retained"],
             "concurrency": ctrl.current,
             "stop_reason": stop_reason,
         }
+
+    def _peek_next_task_kind(self, run_id: str, run_dir: str | Path) -> Optional[str]:
+        """Kind of the task the next claim would serve (advisory peek).
+
+        Mirrors the claim query's ordering (priority DESC, task_id ASC) so a
+        family-capped dispatch slot can decide whether claiming is allowed
+        BEFORE taking a lease. Advisory only: a queue change between the peek
+        and the claim is resolved by the caller's post-claim cap guard
+        (release + stopped), never by executing past a cap.
+
+        Requirements: SWR-019(预算约束), SWR-022(共用调度) / DA-06 决策③(维度感知上限)
+        """
+        conn = self._open_run_db(run_dir)
+        try:
+            row = conn.execute(
+                "SELECT kind FROM tasks WHERE run_id = ? AND state = 'queued' "
+                "ORDER BY priority DESC, task_id ASC LIMIT 1",
+                (run_id,),
+            ).fetchone()
+            return row["kind"] if row else None
+        finally:
+            conn.close()
 
     def _dispatch_stop_reason(self, run_id: str, run_dir: str | Path) -> str:
         """Disambiguate an empty-claim stop honestly (state contract).
