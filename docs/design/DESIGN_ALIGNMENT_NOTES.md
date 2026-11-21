@@ -148,6 +148,17 @@
 | 回填状态 | 已实现；版本 0.1.0 → 0.1.1（minor；DSR-072 版本门仅查 major，进行中 run resume 兼容，账本 meta 如实记录漂移前后版本）。 |
 | 待设计审查确认 | ① 有证据但无识别签名的失败维持不可重试——是否需要"连接类瞬态签名"（如 ECONNRESET）白名单；② 限流退避默认日程（30/60/120s）是否随真实宿主窗口分布再校准；③ category 属性若未来进契约层，需走契约变更流程（当前留在适配器侧）。 |
 
+### DA-13 适配器级有界格式重试（worker 输出不可解析 = 可重试，非永久隔离）
+
+| 项 | 内容 |
+|---|---|
+| 决议来源 | 有界真实运行暴露的第二类宿主形态（所有者批准中途修复，2026-11-21）：真实 worker 偶发产出不可解析输出（纯散文 / 开头合法但中途截断畸形的 JSON），实测频率 ≈6%；原适配器解析失败抛 InvalidInputError（不可重试）→ 驱动直接永久隔离分析单元。两类失败共同点：重新执行一次通常即产出契约输出（模型方差），永久隔离与"预算内最大有效覆盖"目标相悖。 |
+| 决议内容 | ① 适配器 JSON 解析失败（鲁棒提取——围栏/花括号回退——之后仍无合法 JSON）改为抛 `HostFailureError(retryable=True)` 并附加 `category="format"`（新增 `CATEGORY_FORMAT` 常量，适配器级类别，非 classify_exit_failure 产物）。② 重试走既有机制散热：适配器内 max_retries + 队列层 generation 重排（各上限不变），真实无法产出契约输出的单元在重试上限处照旧隔离并记 coverage gap——有界，非无限重试。③ 与 DSR-018 的关系：DSR-018 是提交层 schema 校验的有界格式纠正（worker_result dict 形状）；本条是提交之前的适配器层解析失败，两者分层互补。 |
+| 设计出处 | DSR-018（有界格式重试，分层适用）、DSR-065（失败重排与隔离）、DA-10（全量覆盖语义——单元损失必须真实不可恢复而非可重试形态）。 |
+| 代码位置 | `hosts/retry.py`（CATEGORY_FORMAT 常量）、`hosts/claude_adapter.py` 与 `hosts/codex_adapter.py`（解析失败 → 可重试 HostFailureError + category 附加）。测试：`tests/hosts/test_adapters.py`（散文输出 / 畸形 JSON / codex 同型，各断言 retryable + category）。 |
+| 回填状态 | 已实现；版本 0.1.1 → 0.1.2（minor；进行中 run 二次 resume，账本如实记录版本轨迹 0.1.0 → 0.1.1 → 0.1.2）。 |
+| 待设计审查确认 | ① format 重试的上限组合（适配器 3 次 × 队列 3 代 = 至多 9 次执行）对系统性截断（token 上限导致的确定性畸形）是否过长；② 截断类畸形是否应触发 packet 再分页（DSR-059 溢出机制的下游联动）而非盲目重试；③ format 类别与 rate_limit 一样属适配器侧扩展类别，DSR-029 正文的类别清单是否收编。 |
+
 ## 与并行工作流的接口确认（本文件随实现更新）
 
 | 接口 | 变更 | 消费方 |

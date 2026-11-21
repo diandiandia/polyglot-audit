@@ -38,6 +38,10 @@ CATEGORY_RATE_LIMIT = "rate_limit"
 CATEGORY_AUTH_ERROR = "auth_error"
 CATEGORY_TIMEOUT = "timeout"
 CATEGORY_OTHER = "other"
+# Adapter-level category (not produced by classify_exit_failure): the worker
+# exited successfully but its output was not parseable contract JSON. Retryable
+# within the existing attempt/generation caps (DA-13 bounded format retry).
+CATEGORY_FORMAT = "format"
 
 # stderr (lowercased) substrings treated as rate limiting / auth failure.
 _RATE_LIMIT_PATTERNS = ("rate limit", "rate_limit", "ratelimit", "429", "too many requests", "quota")

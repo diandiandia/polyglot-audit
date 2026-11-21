@@ -12,7 +12,7 @@ import threading
 import unittest
 from unittest import mock
 
-from auditkit.contracts.errors import HostFailureError, InvalidInputError
+from auditkit.contracts.errors import HostFailureError
 from auditkit.hosts.claude_adapter import ClaudeDriverAdapter
 from auditkit.hosts.codex_adapter import CodexDriverAdapter
 from auditkit.hosts.errors import TerminationUncertainError
@@ -200,6 +200,45 @@ class TestExitClassification(unittest.TestCase, RetryTestMixin):
         with self.assertRaises(HostFailureError) as ctx:
             adapter.execute_worker("prompt", "t1")
         self.assertTrue(ctx.exception.retryable)
+
+    def test_prose_output_is_retryable_format_failure(self):
+        """DA-13 bounded format retry: a successful exit whose output is
+        prose-only (no JSON anywhere) is a retryable format failure, not a
+        permanent quarantine -- one fresh execution usually produces
+        contract output."""
+        binary = fake_hosts.create_fake_host(
+            self.temp_dir, "claude", headless_exit=0,
+            headless_stdout="All checks done. No issues found in this unit.",
+        )
+        adapter = self.make_claude(binary)
+        with self.assertRaises(HostFailureError) as ctx:
+            adapter.execute_worker("prompt", "t1")
+        self.assertTrue(ctx.exception.retryable)
+        self.assertEqual(getattr(ctx.exception, "category", None), "format")
+
+    def test_malformed_json_is_retryable_format_failure(self):
+        """DA-13: truncated/malformed JSON (valid contract shape at the
+        start, syntax error mid-stream) is retryable the same way."""
+        binary = fake_hosts.create_fake_host(
+            self.temp_dir, "claude", headless_exit=0,
+            headless_stdout='{"schema_version": "1.0", "task_id": "t", "candid',
+        )
+        adapter = self.make_claude(binary)
+        with self.assertRaises(HostFailureError) as ctx:
+            adapter.execute_worker("prompt", "t1")
+        self.assertTrue(ctx.exception.retryable)
+        self.assertEqual(getattr(ctx.exception, "category", None), "format")
+
+    def test_codex_prose_output_is_retryable_format_failure(self):
+        binary = fake_hosts.create_fake_host(
+            self.temp_dir, "codex", headless_exit=0,
+            headless_stdout="Verification complete, no findings.",
+        )
+        adapter = self.make_codex(binary)
+        with self.assertRaises(HostFailureError) as ctx:
+            adapter.execute_worker("prompt", "t1")
+        self.assertTrue(ctx.exception.retryable)
+        self.assertEqual(getattr(ctx.exception, "category", None), "format")
 
 
 class TestBackoffAndRetry(unittest.TestCase, RetryTestMixin):
@@ -605,10 +644,17 @@ class TestFormatError(unittest.TestCase, RetryTestMixin):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_invalid_json_raises_invalid_input(self):
+        """DA-13 (revised contract): unparseable worker output is a bounded-
+        retryable format failure (HostFailureError, category=format), not a
+        non-retryable InvalidInputError -- one fresh execution usually
+        produces contract output; the attempt/generation caps still bound a
+        genuinely unformattable unit."""
         binary = fake_hosts.create_fake_host(self.temp_dir, "codex", headless_stdout="not json")
         adapter = self.make_codex(binary)
-        with self.assertRaises(InvalidInputError):
+        with self.assertRaises(HostFailureError) as ctx:
             adapter.execute_worker("prompt", "t1")
+        self.assertTrue(ctx.exception.retryable)
+        self.assertEqual(getattr(ctx.exception, "category", None), "format")
 
 
 if __name__ == "__main__":

@@ -33,9 +33,10 @@ import subprocess
 import time
 from typing import Any, Dict, Optional, Tuple
 
-from auditkit.contracts.errors import HostFailureError, InvalidInputError
+from auditkit.contracts.errors import HostFailureError
 from auditkit.hosts.errors import TerminationUncertainError
 from auditkit.hosts.retry import (
+    CATEGORY_FORMAT,
     CATEGORY_TIMEOUT,
     backoff_delay_for_failure,
     build_usage_envelope,
@@ -258,7 +259,16 @@ class CodexDriverAdapter:
             raise HostFailureError(f"Codex worker timed out after {effective_timeout}s", retryable=True)
 
         except json.JSONDecodeError as e:
-            raise InvalidInputError(f"Failed to parse Codex JSON output: {e}\nRaw output: {stdout[:200]}")
+            # Bounded format retry (DA-13): see claude_adapter — real workers
+            # occasionally emit prose-only or malformed/truncated JSON; one
+            # fresh execution usually produces contract output, so this is
+            # retryable within the existing attempt/generation caps.
+            exc = HostFailureError(
+                f"Failed to parse Codex JSON output: {e}\nRaw output: {stdout[:200]}",
+                retryable=True,
+            )
+            exc.category = CATEGORY_FORMAT
+            raise exc
 
         except Exception:
             if proc and proc.poll() is None:

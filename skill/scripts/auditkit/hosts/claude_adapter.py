@@ -33,9 +33,10 @@ import subprocess
 import time
 from typing import Any, Dict, Optional, Tuple
 
-from auditkit.contracts.errors import HostFailureError, InvalidInputError
+from auditkit.contracts.errors import HostFailureError
 from auditkit.hosts.errors import TerminationUncertainError
 from auditkit.hosts.retry import (
+    CATEGORY_FORMAT,
     CATEGORY_TIMEOUT,
     backoff_delay_for_failure,
     build_usage_envelope,
@@ -243,7 +244,17 @@ class ClaudeDriverAdapter:
                         raise
                     parsed = json.loads(clean_stdout[start:end + 1])
             except json.JSONDecodeError as e:
-                raise InvalidInputError(f"Failed to parse worker JSON output: {e}\nRaw output: {stdout[:200]}")
+                # Bounded format retry (DA-13): real workers occasionally
+                # emit prose-only or malformed/truncated JSON. One fresh
+                # execution usually produces contract output, so this failure
+                # is retryable; the attempt/generation caps still quarantine
+                # a genuinely unformattable unit after the bounded retries.
+                exc = HostFailureError(
+                    f"Failed to parse worker JSON output: {e}\nRaw output: {stdout[:200]}",
+                    retryable=True,
+                )
+                exc.category = CATEGORY_FORMAT
+                raise exc
 
             return parsed, _usage_from_block(
                 parsed, attempt_id, source=type(self).__name__
