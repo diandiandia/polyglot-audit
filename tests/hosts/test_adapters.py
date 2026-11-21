@@ -16,7 +16,7 @@ from auditkit.contracts.errors import HostFailureError, InvalidInputError
 from auditkit.hosts.claude_adapter import ClaudeDriverAdapter
 from auditkit.hosts.codex_adapter import CodexDriverAdapter
 from auditkit.hosts.errors import TerminationUncertainError
-from auditkit.hosts.retry import compute_backoff_delay, extract_usage
+from auditkit.hosts.retry import backoff_delay_for_failure, compute_backoff_delay, extract_usage
 
 import fake_hosts
 
@@ -27,11 +27,13 @@ class RetryTestMixin:
     def make_claude(self, binary, **kwargs):
         kwargs.setdefault("max_retries", 0)
         kwargs.setdefault("backoff_base", 0.0)
+        kwargs.setdefault("rate_backoff_base", 0.0)
         return ClaudeDriverAdapter(claude_binary=binary, **kwargs)
 
     def make_codex(self, binary, **kwargs):
         kwargs.setdefault("max_retries", 0)
         kwargs.setdefault("backoff_base", 0.0)
+        kwargs.setdefault("rate_backoff_base", 0.0)
         return CodexDriverAdapter(codex_binary=binary, **kwargs)
 
 
@@ -162,6 +164,43 @@ class TestExitClassification(unittest.TestCase, RetryTestMixin):
         self.assertIn("timed out", str(ctx.exception))
         self.assertTrue(ctx.exception.retryable)
 
+    def test_evidence_free_exit_defaults_retryable(self):
+        """Exit with no diagnostic signature on either stream defaults to
+        retryable: a non-retryable verdict permanently quarantines an audit
+        unit while a retry costs minutes. The failure reason keeps a stdout
+        tail so evidence-free stays diagnosable."""
+        binary = fake_hosts.create_fake_host(
+            self.temp_dir, "claude", headless_exit=1, headless_stderr="", headless_stdout=""
+        )
+        adapter = self.make_claude(binary)
+        with self.assertRaises(HostFailureError) as ctx:
+            adapter.execute_worker("prompt", "t1")
+        self.assertTrue(ctx.exception.retryable)
+        self.assertIn("exited with code 1", str(ctx.exception))
+        self.assertIn("stdout_tail", str(ctx.exception))
+
+    def test_stdout_only_rate_limit_signature_is_retryable(self):
+        """A rate-limit signature printed on stdout (not stderr) classifies
+        as retryable rate_limit: both streams are classification evidence."""
+        binary = fake_hosts.create_fake_host(
+            self.temp_dir, "claude", headless_exit=1,
+            headless_stderr="", headless_stdout="APIError: Request rejected (429), retry later",
+        )
+        adapter = self.make_claude(binary)
+        with self.assertRaises(HostFailureError) as ctx:
+            adapter.execute_worker("prompt", "t1")
+        self.assertIn("rate limited", str(ctx.exception))
+        self.assertTrue(ctx.exception.retryable)
+
+    def test_codex_evidence_free_exit_defaults_retryable(self):
+        binary = fake_hosts.create_fake_host(
+            self.temp_dir, "codex", headless_exit=1, headless_stderr="", headless_stdout=""
+        )
+        adapter = self.make_codex(binary)
+        with self.assertRaises(HostFailureError) as ctx:
+            adapter.execute_worker("prompt", "t1")
+        self.assertTrue(ctx.exception.retryable)
+
 
 class TestBackoffAndRetry(unittest.TestCase, RetryTestMixin):
 
@@ -178,6 +217,32 @@ class TestBackoffAndRetry(unittest.TestCase, RetryTestMixin):
         self.assertEqual(compute_backoff_delay(3, base=0.5, max_delay=30.0), 2.0)
         self.assertEqual(compute_backoff_delay(10, base=0.5, max_delay=30.0), 30.0)
         self.assertEqual(compute_backoff_delay(0, base=2.0, max_delay=30.0), 2.0)
+
+    def test_backoff_rate_limit_uses_minute_scale_schedule(self):
+        """Rate-limit retries use a minute-scale schedule (provider windows
+        are minute-scale; the generic schedule spends every retry inside the
+        window); other categories keep the generic schedule."""
+        self.assertEqual(backoff_delay_for_failure(1, "rate_limit"), 30.0)
+        self.assertEqual(backoff_delay_for_failure(2, "rate_limit"), 60.0)
+        self.assertEqual(backoff_delay_for_failure(3, "rate_limit"), 120.0)
+        self.assertEqual(backoff_delay_for_failure(9, "rate_limit"), 120.0)
+        self.assertEqual(backoff_delay_for_failure(1, "other"), 0.5)
+        self.assertEqual(backoff_delay_for_failure(2, None), 1.0)
+        # Constructor overrides flow through for both schedules.
+        self.assertEqual(
+            backoff_delay_for_failure(1, "rate_limit", 0.5, 30.0, 0.1, 0.2), 0.1
+        )
+
+    def test_rate_limited_retries_apply_rate_schedule_and_recover(self):
+        """Rate-limit-failing host recovers within retries using the
+        rate schedule (wired via the failure category, fast params)."""
+        binary = fake_hosts.create_rate_limited_fake_host(self.temp_dir, "claude", fail_first=2)
+        adapter = self.make_claude(
+            binary, max_retries=2, backoff_base=0.0, rate_backoff_base=0.01, rate_backoff_max=0.02
+        )
+        result, _usage = adapter.execute_worker("prompt", "t1")
+        self.assertEqual(result["ok"], True)
+        self.assertEqual(adapter.consecutive_failures, 0)
 
     def test_retryable_failure_backs_off_then_succeeds(self):
         binary = fake_hosts.create_rate_limited_fake_host(self.temp_dir, "claude", fail_first=2)

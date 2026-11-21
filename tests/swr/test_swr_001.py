@@ -213,14 +213,18 @@ class TestSWR001(unittest.TestCase):
 
     # --------------------------------------- 4. audit 缺条件不运行
     def test_audit_without_required_config_fields_does_not_run(self):
-        """Missing schema-required fields (budgets / safety_acceptance / scope)
-        fail prepare explicitly and produce no dossier (缺条件不运行)."""
+        """Missing schema-required fields (safety_acceptance / scope) fail
+        prepare explicitly and produce no dossier (缺条件不运行). budgets is
+        NOT in the list: since DA-10 the task budget is sized by prepare to
+        the full-coverage requirement, so an omitted budgets entry is
+        auto-filled (recorded as budget_autosized_full_coverage), not
+        rejected."""
         target = self.temp_dir / "target3"
         target.mkdir()
         (target / "app.py").write_text("value = 1\n", encoding="utf-8")
         app = AuditAppService(SKILL_DIR)
 
-        for missing in ("budgets", "safety_acceptance", "scope"):
+        for missing in ("safety_acceptance", "scope"):
             config = self._audit_config(target)
             config["run_dir"] = str(self.temp_dir / f"run-missing-{missing}")
             del config[missing]

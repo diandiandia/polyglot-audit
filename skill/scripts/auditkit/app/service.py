@@ -157,7 +157,12 @@ from auditkit.inventory.slicer import UnitPlanner
 from auditkit.knowledge.catalog import KnowledgeCatalog
 from auditkit.ledger.artifacts import ArtifactManager
 from auditkit.ledger.budget import BudgetLedger
-from auditkit.ledger.db import check_version_compatibility, get_db_connection, init_database
+from auditkit.ledger.db import (
+    SKILL_VERSION,
+    check_version_compatibility,
+    get_db_connection,
+    init_database,
+)
 from auditkit.ledger.event_store import EventStore, utc_now_iso
 from auditkit.ledger.task_queue import DISPATCHED_TASK_STATES, TaskQueue, sha256_text
 from auditkit.reporting.cost import CostTracker
@@ -482,13 +487,17 @@ class AuditAppService:
         run_id = f"run-{uuid.uuid4().hex[:8]}"
         now = utc_now_iso()
 
-        # Initialize run entry
+        # Initialize run entry. skill_version comes from the db module's own
+        # supported-version constant so the recorded declaration and the
+        # DSR-072 open-time gate share one source of truth (a hardcoded
+        # literal here silently froze the recorded declaration at an old
+        # value; the exact payload version still travels in run.json).
         conn.execute(
             """
             INSERT INTO runs (run_id, snapshot_id, state, schema_version, skill_version, knowledge_version, config_ref, revision, created_at, updated_at)
-            VALUES (?, 'pending', 'preparing', '1.0', '0.1.0', '1.0', 'config.json', 0, ?, ?)
+            VALUES (?, 'pending', 'preparing', '1.0', ?, '1.0', 'config.json', 0, ?, ?)
             """,
-            (run_id, now, now),
+            (run_id, SKILL_VERSION, now, now),
         )
 
         event_store = EventStore(conn)

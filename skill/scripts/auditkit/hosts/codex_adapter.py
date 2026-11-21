@@ -36,9 +36,10 @@ from typing import Any, Dict, Optional, Tuple
 from auditkit.contracts.errors import HostFailureError, InvalidInputError
 from auditkit.hosts.errors import TerminationUncertainError
 from auditkit.hosts.retry import (
+    CATEGORY_TIMEOUT,
+    backoff_delay_for_failure,
     build_usage_envelope,
     classify_exit_failure,
-    compute_backoff_delay,
     extract_usage,
 )
 
@@ -80,6 +81,8 @@ class CodexDriverAdapter:
         max_retries: int = 2,
         backoff_base: float = 0.5,
         backoff_max: float = 30.0,
+        rate_backoff_base: float = 30.0,
+        rate_backoff_max: float = 120.0,
     ) -> None:
         """Configure timeouts, retries, breaker, and backoff.
 
@@ -92,6 +95,8 @@ class CodexDriverAdapter:
         self.max_retries = max_retries
         self.backoff_base = backoff_base
         self.backoff_max = backoff_max
+        self.rate_backoff_base = rate_backoff_base
+        self.rate_backoff_max = rate_backoff_max
         # NOTE: the former shared ``last_usage`` slot was removed (P0 fix).
         # Usage is returned per execution by execute_worker; a shared slot
         # cross-attributed per-attempt usage when two workers finished within
@@ -141,7 +146,14 @@ class CodexDriverAdapter:
                 if not exc.retryable or attempt >= self.max_retries:
                     raise
                 attempt += 1
-                delay = compute_backoff_delay(attempt, self.backoff_base, self.backoff_max)
+                delay = backoff_delay_for_failure(
+                    attempt,
+                    getattr(exc, "category", None),
+                    self.backoff_base,
+                    self.backoff_max,
+                    self.rate_backoff_base,
+                    self.rate_backoff_max,
+                )
                 if delay > 0:
                     time.sleep(delay)
 
@@ -194,18 +206,28 @@ class CodexDriverAdapter:
             stdout, stderr = proc.communicate(input=prompt + '\n', timeout=effective_timeout)
             if proc.returncode != 0:
                 self.consecutive_failures += 1
-                category, retryable = classify_exit_failure(stderr, proc.returncode)
+                # Both streams are classification evidence (see retry.py):
+                # hosts print API errors on either stderr or stdout, and the
+                # failure reason must stay diagnosable when one is empty.
+                category, retryable = classify_exit_failure(stderr, proc.returncode, stdout=stdout)
                 if category == "rate_limit":
-                    raise HostFailureError(f"Codex rate limited: {stderr[:200]}", retryable=True)
+                    exc = HostFailureError(
+                        f"Codex rate limited: stderr={stderr[:200]!r} stdout_tail={stdout[-200:]!r}",
+                        retryable=True,
+                    )
                 elif category == "auth_error":
-                    raise HostFailureError(
-                        f"Codex authentication failure: {stderr[:200]}", retryable=False
+                    exc = HostFailureError(
+                        f"Codex authentication failure: stderr={stderr[:200]!r} stdout_tail={stdout[-200:]!r}",
+                        retryable=False,
                     )
                 else:
-                    raise HostFailureError(
-                        f"Codex process exited with code {proc.returncode}: {stderr[:200]}",
+                    exc = HostFailureError(
+                        f"Codex process exited with code {proc.returncode}: "
+                        f"stderr={stderr[:200]!r} stdout_tail={stdout[-200:]!r}",
                         retryable=retryable,
                     )
+                exc.category = category  # consumer: rate-aware retry backoff
+                raise exc
 
             # Reset consecutive failures on success
             self.consecutive_failures = 0

@@ -10,7 +10,6 @@
     "report_language",
     "profile",
     "scope",
-    "budgets",
     "safety_acceptance"
   ],
   "additionalProperties": false,

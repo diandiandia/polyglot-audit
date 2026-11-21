@@ -36,9 +36,10 @@ from typing import Any, Dict, Optional, Tuple
 from auditkit.contracts.errors import HostFailureError, InvalidInputError
 from auditkit.hosts.errors import TerminationUncertainError
 from auditkit.hosts.retry import (
+    CATEGORY_TIMEOUT,
+    backoff_delay_for_failure,
     build_usage_envelope,
     classify_exit_failure,
-    compute_backoff_delay,
     extract_usage,
 )
 
@@ -80,8 +81,14 @@ class ClaudeDriverAdapter:
         max_retries: int = 2,
         backoff_base: float = 0.5,
         backoff_max: float = 30.0,
+        rate_backoff_base: float = 30.0,
+        rate_backoff_max: float = 120.0,
     ) -> None:
         """Configure timeouts, retries, breaker, and backoff.
+
+        rate_backoff_* applies to rate-limit-categorized retries only:
+        provider windows are minute-scale, so those retries use a
+        minute-scale schedule instead of the generic one.
 
         Requirements: SWR-023(support) / DSR-064(熔断退避)
         """
@@ -92,6 +99,8 @@ class ClaudeDriverAdapter:
         self.max_retries = max_retries
         self.backoff_base = backoff_base
         self.backoff_max = backoff_max
+        self.rate_backoff_base = rate_backoff_base
+        self.rate_backoff_max = rate_backoff_max
         # NOTE: the former shared ``last_usage`` slot was removed (P0 fix).
         # Usage is returned per execution by execute_worker; a shared slot
         # cross-attributed per-attempt usage when two workers finished within
@@ -141,7 +150,17 @@ class ClaudeDriverAdapter:
                 if not exc.retryable or attempt >= self.max_retries:
                     raise
                 attempt += 1
-                delay = compute_backoff_delay(attempt, self.backoff_base, self.backoff_max)
+                # Rate-limit failures back off on a minute-scale schedule:
+                # provider windows are minute-scale, and the generic fast
+                # schedule would spend every retry inside the window.
+                delay = backoff_delay_for_failure(
+                    attempt,
+                    getattr(exc, "category", None),
+                    self.backoff_base,
+                    self.backoff_max,
+                    self.rate_backoff_base,
+                    self.rate_backoff_max,
+                )
                 if delay > 0:
                     time.sleep(delay)
 
@@ -179,18 +198,29 @@ class ClaudeDriverAdapter:
 
             if ret_code != 0:
                 self.consecutive_failures += 1
-                category, retryable = classify_exit_failure(stderr, ret_code)
+                # Both streams are classification evidence: real hosts print
+                # API errors on either stderr or stdout, and the failure
+                # reason must keep enough of both to stay diagnosable when
+                # one of them is empty.
+                category, retryable = classify_exit_failure(stderr, ret_code, stdout=stdout)
                 if category == "rate_limit":
-                    raise HostFailureError(f"Claude rate limited: {stderr[:200]}", retryable=True)
+                    exc = HostFailureError(
+                        f"Claude rate limited: stderr={stderr[:200]!r} stdout_tail={stdout[-200:]!r}",
+                        retryable=True,
+                    )
                 elif category == "auth_error":
-                    raise HostFailureError(
-                        f"Claude authentication failure: {stderr[:200]}", retryable=False
+                    exc = HostFailureError(
+                        f"Claude authentication failure: stderr={stderr[:200]!r} stdout_tail={stdout[-200:]!r}",
+                        retryable=False,
                     )
                 else:
-                    raise HostFailureError(
-                        f"Claude process exited with code {ret_code}: {stderr[:200]}",
+                    exc = HostFailureError(
+                        f"Claude process exited with code {ret_code}: "
+                        f"stderr={stderr[:200]!r} stdout_tail={stdout[-200:]!r}",
                         retryable=retryable,
                     )
+                exc.category = category  # consumer: rate-aware retry backoff
+                raise exc
 
             # Reset consecutive failures on success
             self.consecutive_failures = 0
@@ -231,7 +261,11 @@ class ClaudeDriverAdapter:
                     "process-group termination could not be confirmed; attempt "
                     "budget must be retained pending resolution"
                 )
-            raise HostFailureError(f"Claude execution timed out after {effective_timeout}s", retryable=True)
+            timeout_exc = HostFailureError(
+                f"Claude execution timed out after {effective_timeout}s", retryable=True
+            )
+            timeout_exc.category = CATEGORY_TIMEOUT  # consumer: retry backoff
+            raise timeout_exc
 
         except Exception:
             if proc and proc.poll() is None:

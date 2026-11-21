@@ -2,7 +2,7 @@
 
 Implements DSR-029 / DSR-064:
 - compute_backoff_delay: pure exponential backoff function with cap.
-- classify_exit_failure: maps exit code + stderr onto failure categories
+- classify_exit_failure: maps exit code + stderr/stdout onto failure categories
   (rate_limit / auth_error / timeout / other) with retryability.
 - extract_usage / locate_usage_block: pull a usage block out of a structured
   worker result. The search is generalized (O-02, run lessons): real host
@@ -59,14 +59,24 @@ def compute_backoff_delay(attempt: int, base: float = 0.5, max_delay: float = 30
     return delay
 
 
-def classify_exit_failure(stderr: str, return_code: int) -> Tuple[str, bool]:
+def classify_exit_failure(stderr: str, return_code: int, stdout: str = "") -> Tuple[str, bool]:
     """Classify a non-zero CLI exit into (category, retryable).
 
     Categories follow DSR-029: rate_limit and timeout are retryable,
-    auth_error is not, other is not retryable by default.
+    auth_error is not, other is retryable only when evidence-free.
+
+    Evidence rule: a category (and its retryability) requires a diagnostic
+    signature on stderr OR stdout -- real hosts print API errors on either
+    stream, so both are searched. An exit carrying no recognizable signature
+    on either stream defaults to retryable: a non-retryable verdict
+    permanently quarantines an audit unit, while a retry costs minutes;
+    absence of evidence of permanence is not evidence of permanence.
+    Present-but-unrecognized evidence stays non-retryable (something specific
+    went wrong; a blind retry would likely repeat it).
+
     Requirements: SWR-023(support) / DSR-029(退出分类), DSR-064(类别互异)
     """
-    lowered = (stderr or "").lower()
+    lowered = f"{stderr or ''}\n{stdout or ''}".lower()
     if any(p in lowered for p in _RATE_LIMIT_PATTERNS):
         return CATEGORY_RATE_LIMIT, True
     if any(p in lowered for p in _AUTH_PATTERNS):
@@ -74,7 +84,31 @@ def classify_exit_failure(stderr: str, return_code: int) -> Tuple[str, bool]:
     # Non-zero exit codes conventionally used by rate limiting.
     if return_code in (429,):
         return CATEGORY_RATE_LIMIT, True
+    if not (stderr or "").strip() and not (stdout or "").strip():
+        # Evidence-free failure: default to retryable (see docstring).
+        return CATEGORY_OTHER, True
     return CATEGORY_OTHER, False
+
+
+def backoff_delay_for_failure(
+    attempt: int,
+    category: Optional[str],
+    base: float = 0.5,
+    max_delay: float = 30.0,
+    rate_base: float = 30.0,
+    rate_max_delay: float = 120.0,
+) -> float:
+    """Return the retry backoff seconds for a failure of ``category``.
+
+    Provider rate-limit windows are typically minute-scale; the generic
+    exponential schedule (sub-second to seconds) would spend every retry
+    inside the window. Rate-limit retries therefore use a minute-scale
+    schedule. Pure function: no I/O, no clock, no state.
+    Requirements: SWR-019(有限退避) / DSR-064(限流退避)
+    """
+    if category == CATEGORY_RATE_LIMIT:
+        return compute_backoff_delay(attempt, rate_base, rate_max_delay)
+    return compute_backoff_delay(attempt, base, max_delay)
 
 
 # Recognized token-counter field names inside a usage block. Matching is
