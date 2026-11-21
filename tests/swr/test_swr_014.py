@@ -64,7 +64,7 @@ class SWR014FinalizeBase(unittest.TestCase):
     def tearDown(self) -> None:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def prepare_run(self, task_budget: int = 10) -> None:
+    def prepare_run(self, task_budget: int = 10, autosize: bool = True) -> None:
         target = self.temp_dir / "target"
         target.mkdir(parents=True)
         (target / "danger.py").write_text(DANGER_SOURCE, encoding="utf-8")
@@ -80,6 +80,8 @@ class SWR014FinalizeBase(unittest.TestCase):
                 "limit": task_budget, "settled": 0, "reserved": 0, "unit": "tasks",
                 "availability": "exact",
             }],
+            "budget_autosize": autosize,
+            "budget_autosize": autosize,
             "safety_acceptance": {
                 "allow_unverified_execution": False,
                 "allow_unverified_network": False,
@@ -165,7 +167,7 @@ class TestSWR014GeneratedPerRun(SWR014FinalizeBase):
     def test_incomplete_run_also_produces_self_review(self):
         """A finishable but incomplete run (budget exhausted) still gets its
         local self-review."""
-        self.prepare_run(task_budget=1)
+        self.prepare_run(task_budget=1, autosize=False)
         claims = self.app.next(self.run_id, self.run_dir, batch_size=10)
         self.assertEqual(claims[0]["spec"]["task_kind"], "recon")
         for claim in claims:

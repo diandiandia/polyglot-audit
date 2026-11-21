@@ -202,6 +202,20 @@ TRIAGE_MAX_RECORDS_CEILING = 500
 def _effective_triage_cap(strong_hit_count: int) -> int:
     return max(TRIAGE_MAX_RECORDS, min(strong_hit_count, TRIAGE_MAX_RECORDS_CEILING))
 
+
+# DA-11 hunt dispatch priority: tier base + attack-surface adjustment. All
+# resulting values stay BELOW the verify task priority (VERIFY_TASK_PRIORITY)
+# so verification always precedes any new hunt claim.
+_HUNT_TIER_PRIORITY = {"T1": 24, "T2": 20, "T3": 16, "T4": 10}
+_HUNT_SURFACE_ADJUSTMENT = {"remote": 3, "local": 1, "internal": 0}
+
+
+def _hunt_dispatch_priority(unit: Dict[str, Any]) -> int:
+    tier = str(unit.get("tier") or "T4")
+    surface = str(unit.get("surface_class") or "internal")
+    priority = _HUNT_TIER_PRIORITY.get(tier, 10) + _HUNT_SURFACE_ADJUSTMENT.get(surface, 0)
+    return min(priority, VERIFY_TASK_PRIORITY - 1)
+
 # Event types that account for coverage blind spots and capped work. They are
 # surfaced through finalize's coverage_gaps; only "coverage_gap" (lost or
 # quarantined dispatched work) forces an incomplete terminal state, keeping
@@ -215,6 +229,58 @@ TERMINATION_UNCERTAIN_EVENT_TYPE = "attempt_termination_uncertain"
 # Verified findings produced by verify-task submissions are persisted here.
 FINDINGS_ARTIFACT_KIND = "verified_findings"
 VERIFIED_FINDING_VERDICTS = ("confirmed", "needs_validation", "rejected", "unverified")
+
+# RUN-LESSONS (real-shape family, L-12/O-06 kin): the output contract itself
+# advertised steps as literal "path:LINE explanation" strings while the
+# semantic gate requires {path, line, role, note} objects -- real workers
+# followed the contract text and their confirmed findings died at the gate /
+# crashed the report renderer. Normalization is program-side bookkeeping:
+# path/line/note parsed from the string's leading token, role assigned by the
+# documented trace convention (first = source, last = sink, middle = hop; the
+# record's source/sink objects state the endpoints independently).
+_STEP_HEAD_RE = re.compile(
+    r"^\s*([A-Za-z0-9_./\\\-]+\.[A-Za-z][A-Za-z0-9]{1,8})(?::(\d+))?\s*[-–—]?\s*(.*)$",
+    re.DOTALL,
+)
+
+
+def _normalize_trace_steps(steps: List[Any]) -> List[Dict[str, Any]]:
+    """Normalize recorded trace steps to the contract shape (bookkeeping).
+
+    Dict steps pass through untouched. Strings are parsed: a leading
+    ``path:LINE`` token becomes path/line and the remainder becomes the note;
+    a string with no parsable location keeps its full text as the note with
+    NO invented path/line (SR-025: 不虚设). Roles follow the trace
+    convention by position.
+    """
+    if not isinstance(steps, list):
+        return []
+    normalized: List[Dict[str, Any]] = []
+    for idx, s in enumerate(steps):
+        if isinstance(s, dict):
+            normalized.append(s)
+            continue
+        text = str(s).strip()
+        if not text:
+            continue
+        record: Dict[str, Any] = {}
+        m = _STEP_HEAD_RE.match(text)
+        if m:
+            record["path"] = m.group(1)
+            record["line"] = int(m.group(2)) if m.group(2) else None
+            note = (m.group(3) or "").strip()
+        else:
+            note = text
+        record["note"] = note or text
+        if len(steps) >= 2:
+            if idx == 0:
+                record["role"] = "source"
+            elif idx == len(steps) - 1:
+                record["role"] = "sink"
+            else:
+                record["role"] = "hop"
+        normalized.append(record)
+    return normalized
 # DSR-062 wiring (ANA -> SNP/ANA): every confirmed finding runs the bounded
 # variant search against the FROZEN snapshot before it is persisted. The read
 # cap mirrors bounded_variant_search's own max_files bound so a large snapshot
@@ -429,19 +495,11 @@ class AuditAppService:
         budget_ledger = BudgetLedger(conn)
         task_queue = TaskQueue(conn)
 
-        # Save config
-        with open(run_path / "config.json", "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=2)
-
-        # Configure budgets
-        for b in config.get("budgets", []):
-            budget_ledger.set_budget(
-                run_id=run_id,
-                dimension=b["dimension"],
-                limit_val=b["limit"],
-                unit=b["unit"],
-                mode=b.get("mode", "enforced"),
-            )
+        # Config persistence + budget seeding happen AFTER the plan and the
+        # DA-10 full-coverage budget auto-sizing below: the applied (possibly
+        # raised) tasks limit must be what the ledger seeds and what run.json
+        # freezes -- seeding from the pre-plan config would silently keep a
+        # truncating limit (the exact sampled-audit behavior DA-10 retires).
 
         # 5. Collect Snapshot (knowledge_dir wiring: language knowledge gaps are
         # disclosed in the manifest assumptions instead of silently assumed).
@@ -649,20 +707,99 @@ class AuditAppService:
             # RUN-LESSONS: a plan whose hunt units outnumber the task budget
             # used to finalize silently at single-digit percent coverage --
             # the shortfall was visible only in the coverage report after the
-            # budget drained. The forecast is recorded here, before any work
-            # starts, so the mismatch is a visible decision point (the
-            # self-review flags low forecasts; the user can renegotiate the
-            # budget or accept a sampled audit deliberately).
+            # budget drained. The forecast stays as a canary: under the
+            # DA-10 full-coverage semantics the budget is auto-sized to the
+            # plan, so a sub-1.0 forecast can only mean an operator-pinned
+            # cap and must stay visible.
             "binary_files_skipped": getattr(planner, "binary_files_skipped", 0),
         }
-        tasks_budget_limit = next(
-            (
-                int(b.get("limit", 0))
-                for b in (config.get("budgets") or [])
-                if b.get("dimension") == "tasks"
-            ),
-            None,
+        # DA-10 (owner decision): audit is FULL coverage -- the task budget
+        # is sized to the whole plan, never a sampling fraction. Required =
+        # every planned unit + a verification allowance (candidates per unit
+        # x second-opinion/retry margin, multiplier config-tunable). An
+        # explicit operator budget is honored only when it already covers the
+        # requirement; a smaller one is raised to full coverage and the raise
+        # is recorded as an explicit event + plan field (never silent).
+        verify_budget_multiplier = float(
+            config.get("verify_budget_multiplier", 2.0) or 2.0
         )
+        plan_units = len(units)
+        required_tasks = plan_units + int(plan_units * verify_budget_multiplier) + 1
+        budgets_cfg = config.setdefault("budgets", [])
+        tasks_entry = next(
+            (b for b in budgets_cfg if b.get("dimension") == "tasks"), None
+        )
+        requested_limit = int(tasks_entry.get("limit", 0)) if tasks_entry else None
+        applied_limit = required_tasks
+        autosized_reason = "no explicit tasks budget; sized for full coverage"
+        # Escape hatch (fault-injection/emergency only, never a sampling
+        # mode): `budget_autosize: false` pins the explicit budget even below
+        # the full-coverage requirement, with a loud warning event. The
+        # default is always full-coverage auto-sizing.
+        pinned = (
+            config.get("budget_autosize") is False
+            and tasks_entry is not None
+            and bool(requested_limit)
+        )
+        if pinned:
+            applied_limit = requested_limit
+            autosized_reason = (
+                f"operator pinned via budget_autosize=false at limit "
+                f"{requested_limit} (full-coverage requirement: {required_tasks})"
+            )
+        elif tasks_entry and requested_limit and requested_limit >= required_tasks:
+            applied_limit = requested_limit
+            autosized_reason = ""
+        elif tasks_entry and requested_limit:
+            autosized_reason = (
+                f"explicit limit {requested_limit} below full-coverage "
+                f"requirement {required_tasks}; raised (sampling retired, DA-10)"
+            )
+        if tasks_entry:
+            tasks_entry["limit"] = applied_limit
+            tasks_entry["settled"] = 0
+            tasks_entry["reserved"] = 0
+        else:
+            budgets_cfg.append(
+                {
+                    "schema_version": "1.0",
+                    "dimension": "tasks",
+                    "mode": "enforced",
+                    "limit": applied_limit,
+                    "settled": 0,
+                    "reserved": 0,
+                    "unit": "tasks",
+                    "availability": "exact",
+                }
+            )
+        plan_summary["budget_full_coverage"] = {
+            "plan_units": plan_units,
+            "required_tasks": required_tasks,
+            "requested_limit": requested_limit,
+            "applied_limit": applied_limit,
+            "verify_budget_multiplier": verify_budget_multiplier,
+            "raised": bool(autosized_reason and requested_limit and not pinned),
+            "pinned": pinned,
+            "reason": autosized_reason,
+        }
+        if autosized_reason:
+            event_store.append_event(
+                run_id,
+                "budget_pinned_below_full_coverage" if pinned
+                else "budget_autosized_full_coverage",
+                "service",
+                {
+                    "requested_limit": requested_limit,
+                    "applied_limit": applied_limit,
+                    "required_tasks": required_tasks,
+                    "reason": autosized_reason,
+                    **({"warning": (
+                        "pinned budget may truncate coverage; this mode exists "
+                        "for fault injection and emergency cost control only"
+                    )} if pinned else {}),
+                },
+            )
+        tasks_budget_limit = applied_limit
         if tasks_budget_limit:
             hunt_plan_units = max(1, len(analyze_units))
             coverage_forecast = round(min(1.0, tasks_budget_limit / hunt_plan_units), 4)
@@ -676,6 +813,20 @@ class AuditAppService:
                     "hunt_units": len(analyze_units),
                     "coverage_forecast": coverage_forecast,
                 },
+            )
+
+        # Persist the applied config + seed the budget ledger (moved here from
+        # early prepare so the DA-10 auto-sized tasks limit is what the
+        # ledger enforces and what run.json freezes).
+        with open(run_path / "config.json", "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2)
+        for b in config.get("budgets", []):
+            budget_ledger.set_budget(
+                run_id=run_id,
+                dimension=b["dimension"],
+                limit_val=b["limit"],
+                unit=b["unit"],
+                mode=b.get("mode", "enforced"),
             )
         # Save the plan artifact at its §10.1 location (plan/plan.json), hashed
         # into the artifact ledger. finalize reads it back with a read-only
@@ -705,26 +856,12 @@ class AuditAppService:
         if g0_res.status != "pass":
             raise GateFailedError(f"Gate G0 failed: {g0_res.reason or 'Snapshot/Plan criteria unsatisfied'}")
 
-        # Enqueue tasks per unit disposition (DSR-056): only analyze-disposition
-        # units get hunt tasks. triage_only (T3) / inventory_only (T4) units are
-        # recorded as explicit disposition marker events, never silently dropped
-        # and never dispatched as hunt work.
+        # Enqueue hunt tasks for EVERY planned unit (DA-10: audit is full
+        # coverage; the old DSR-056 disposition gating is retired). Dispatch
+        # priority = tier base + attack-surface adjustment (DA-11): T1 remote
+        # work drains first, internal/low-tier work follows -- all below the
+        # verify priority so verification always precedes new hunt claims.
         for u in units:
-            disposition = u.get("disposition", "analyze")
-            if disposition != "analyze":
-                event_store.append_event(
-                    run_id,
-                    "unit_disposition",
-                    "service",
-                    {
-                        "unit_id": u["unit_id"],
-                        "tier": u.get("tier", ""),
-                        "disposition": disposition,
-                        "snapshot_id": snapshot_id,
-                        "reason": "No hunt task dispatched for this disposition (DSR-056)",
-                    },
-                )
-                continue
             task_queue.enqueue(
                 run_id=run_id,
                 task_key=f"hunt:{u['unit_id']}",
@@ -735,7 +872,7 @@ class AuditAppService:
                     "snapshot_id": snapshot_id,
                     "unit": u,
                 }),
-                priority=20 if "T1" in u.get("tier", "") else 10,
+                priority=_hunt_dispatch_priority(u),
             )
 
         # Recon stage wiring (DDS-05 S1 / DSR-024 / SR-006): exactly one recon
@@ -2408,6 +2545,13 @@ class AuditAppService:
                 # the id even when the verdict payload is well-formed
                 # (RUN-LESSONS real-shape series, run-009b/010).
                 finding["finding_id"] = f"F-VERIFY-{claim_hint}-{n}"
+            raw_steps = finding.get("steps")
+            if raw_steps and any(isinstance(s, str) for s in raw_steps):
+                # Contract-vs-gate shape alignment (RUN-LESSONS real-shape
+                # family): normalize the contract's literal string form into
+                # the gate's object form at acceptance, so a compliant
+                # worker never dies on bookkeeping shape.
+                finding["steps"] = _normalize_trace_steps(raw_steps)
             if not finding.get("evidence_level"):
                 # Program-side bookkeeping stamp (SR-011): evidence level
                 # follows the claim strength of the verdict -- confirmed runs
@@ -4100,6 +4244,14 @@ class AuditAppService:
             # worker-supplied values are never overwritten (SR-025).
             if not f.get("evidence_level"):
                 f["evidence_level"] = "E2" if f.get("verdict") == "confirmed" else "E1"
+            raw_steps = f.get("steps")
+            if raw_steps and any(isinstance(s, str) for s in raw_steps):
+                # Older-dossier shape normalization: findings persisted by
+                # generations before the contract alignment carry the
+                # contract's literal string steps; normalize in-memory so
+                # gates and reports see the recorded trace in contract shape
+                # (the submitted artifacts keep the original text verbatim).
+                f["steps"] = _normalize_trace_steps(raw_steps)
             if f.get("verdict") != "confirmed":
                 continue
             rating = f.get("rating") or {}

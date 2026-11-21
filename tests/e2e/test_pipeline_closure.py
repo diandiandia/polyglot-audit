@@ -169,7 +169,7 @@ class PipelineClosureBase(unittest.TestCase):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     # ------------------------------------------------------------- helpers
-    def make_config(self, target, budgets=None, report_language="en", profile="standard"):
+    def make_config(self, target, budgets=None, report_language="en", profile="standard", autosize=True):
         return {
             "schema_version": "1.0",
             "target": str(target),
@@ -190,21 +190,23 @@ class PipelineClosureBase(unittest.TestCase):
             },
         }
 
-    def prepared_pyapp(self, budgets=None, report_language="en"):
+    def prepared_pyapp(self, budgets=None, report_language="en", autosize=True):
         target = self.temp_dir / "target"
         shutil.copytree(FIXTURES_APP, target)
         config = self.make_config(target, budgets=budgets, report_language=report_language)
+        config["budget_autosize"] = autosize
         prep = self.app.prepare(target, self.run_dir, config)
         self.app.activate(self.run_id, self.run_dir)
         return prep
 
-    def prepared_two_unit_target(self, budgets=None, report_language="en"):
+    def prepared_two_unit_target(self, budgets=None, report_language="en", autosize=True):
         """Two strong-signal files in separate directories: two hunt units."""
         target = self.temp_dir / "target2"
         for sub in ("a", "b"):
             (target / sub).mkdir(parents=True)
             (target / sub / "danger.py").write_text(DANGER_SOURCE, encoding="utf-8")
         config = self.make_config(target, budgets=budgets, report_language=report_language)
+        config["budget_autosize"] = autosize
         prep = self.app.prepare(target, self.run_dir, config)
         self.assertEqual(prep["plan_summary"]["hunt_units"], 2)
         self.app.activate(self.run_id, self.run_dir)
@@ -222,6 +224,42 @@ class PipelineClosureBase(unittest.TestCase):
 
     def claim_all(self):
         return self.app.next(self.run_id, self.run_dir, batch_size=10)
+
+    def drain_all_hunts(self):
+        """DA-10 full coverage: complete every remaining hunt task with an
+        honest empty result so finalize sees a fully processed plan scope.
+        Verification tasks are released back to the queue untouched -- tests
+        that drive verification do so explicitly."""
+        while True:
+            claims = self.app.next(self.run_id, self.run_dir, batch_size=10)
+            hunts = [c for c in claims
+                     if (c.get("spec") or {}).get("task_kind") != "verify"]
+            if not hunts:
+                for c in claims:  # verification-only batch: release untouched
+                    self._release(claims and c)
+                break
+            for c in claims:
+                if (c.get("spec") or {}).get("task_kind") == "verify":
+                    self._release(c)
+                    continue
+                self.app.start(self.run_dir, c)
+                self.app.submit(
+                    self.run_dir, c, hunt_result(c, []),
+                    f"digest-drain-{c['task_id']}",
+                )
+
+    def _release(self, claim):
+        from auditkit.ledger.db import get_db_connection as _gdb
+        from auditkit.ledger.task_queue import TaskQueue as _TQ
+        conn = _gdb(Path(self.run_dir) / "events.db")
+        try:
+            _TQ(conn).release_claim(
+                self.run_id, claim["task_id"], claim["attempt_id"],
+                claim["generation"], claim["claim_token"],
+                "test drain: verification stays queued",
+            )
+        finally:
+            conn.close()
 
     @property
     def run_id(self):
@@ -474,11 +512,22 @@ class TestDedupAndSecondOpinion(PipelineClosureBase):
         """Full hunt -> verify -> confirmed(High) flow through the service."""
         self.prepared_pyapp()
         self.drain_recon()
-        hunt_claim = next(c for c in self.claim_all() if c["spec"].get("task_kind") != "recon")
+        claims = self.claim_all()
+        hunt_claim = next(c for c in claims if c["spec"].get("task_kind") != "recon")
         candidate = candidate_record(
             hunt_claim, source_path="handlers/upload.py", sink_path="storage/state.py",
         )
         self.submit_hunt(hunt_claim, candidate)
+        # DA-10 full coverage: sibling hunts are completed with honest empty
+        # results (never left holding claim leases through finalize).
+        for sibling in claims:
+            if sibling is hunt_claim or sibling["spec"].get("task_kind") == "recon":
+                continue
+            self.app.start(self.run_dir, sibling)
+            self.app.submit(
+                self.run_dir, sibling, hunt_result(sibling, []),
+                f"digest-{sibling['task_id']}",
+            )
         verify_claim = self.app.next(self.run_id, self.run_dir, batch_size=5)[0]
         self.assertEqual(verify_claim["spec"]["role"], "verify")
         self.app.start(self.run_dir, verify_claim)
@@ -532,6 +581,7 @@ class TestDedupAndSecondOpinion(PipelineClosureBase):
         self.assertEqual(len(adjudicated), 1)
         self.assertEqual(adjudicated[0]["resolution"], "corroborated")
 
+        self.drain_all_hunts()
         fin = self.app.finalize(self.run_id, self.run_dir, findings=[])
         self.assertEqual(fin["final_state"], "complete")
         self.assertEqual(fin["second_opinion_pending"], [])
@@ -558,6 +608,7 @@ class TestDedupAndSecondOpinion(PipelineClosureBase):
         self.assertEqual(len(adjudicated), 1)
         self.assertEqual(adjudicated[0]["resolution"], "conflict_demoted")
 
+        self.drain_all_hunts()
         fin = self.app.finalize(self.run_id, self.run_dir, findings=[])
         self.assertEqual(fin["final_state"], "complete")
         demoted = [u for u in fin["unverified"] if u["finding_id"] == finding["finding_id"]]
@@ -575,6 +626,7 @@ class TestDedupAndSecondOpinion(PipelineClosureBase):
     def test_pending_second_opinion_recorded_not_implied_done(self):
         hunt_claim, verify_claim, finding = self._confirm_high_finding()
         # The second-opinion task exists but is never dispatched/completed.
+        self.drain_all_hunts()
         fin = self.app.finalize(self.run_id, self.run_dir, findings=[])
         self.assertIn(finding["finding_id"], fin["second_opinion_pending"])
         pending = self.events("second_opinion_pending")
@@ -597,8 +649,18 @@ class TestFinalizeClosure(PipelineClosureBase):
                 max_retries=2,
             )
             self.assertEqual(res["action"], "requeued")
-            hunt_claims = [c for c in self.claim_all() if c["spec"].get("task_kind") != "recon"]
+            hunt_claims = hunt_claims + [
+                c for c in self.claim_all() if c["spec"].get("task_kind") != "recon"
+            ]
+        # DA-10 full coverage: submit the LATEST claim of every distinct task
+        # exactly once (a retried task re-appears with a fresh generation and
+        # its stale attempt is dead; the siblings from the first batch still
+        # hold valid leases and must be completed too, or finalize honestly
+        # refuses on held leases).
+        latest_by_task = {}
         for c in hunt_claims:
+            latest_by_task[c["task_id"]] = c
+        for c in latest_by_task.values():
             self.app.start(self.run_dir, c)
             self.app.submit(
                 self.run_dir, c, hunt_result(c, []), "digest-hunt-final",
@@ -608,6 +670,7 @@ class TestFinalizeClosure(PipelineClosureBase):
 
     def test_finalize_cost_reflects_usage_records_and_ledger_retries(self):
         self._run_hunts(with_usage=True, retry_first=True)
+        self.drain_all_hunts()
         fin = self.app.finalize(self.run_id, self.run_dir, findings=[])
         self.assertEqual(fin["final_state"], "complete")
         # SR-012/026: a fully drained run reaches the complete terminal state
@@ -832,6 +895,7 @@ class TestCrossTaskHalfChains(PipelineClosureBase):
             f"digest-{hunt_b['task_id']}",
         )
 
+        self.drain_all_hunts()
         fin = self.app.finalize(self.run_id, self.run_dir, findings=[])
         self.assertEqual(fin["final_state"], "complete")
 
@@ -896,11 +960,15 @@ class TestUnverifiedCandidateSurfacing(PipelineClosureBase):
 
     CANDIDATE = None
 
-    def _submit_hunt_with_candidate(self, budgets=None):
-        self.prepared_pyapp(budgets=budgets)
+    def _submit_hunt_with_candidate(self, budgets=None, autosize=True):
+        self.prepared_pyapp(budgets=budgets, autosize=autosize)
         self.drain_recon()
+        claims = self.claim_all()
+        # DA-10 full coverage: EVERY unit is a hunt task now -- claim all,
+        # submit the candidate hunt, and complete the remaining hunts with
+        # empty results so only the candidate's verify task stays queued.
         hunt_claim = next(
-            c for c in self.claim_all() if c["spec"].get("task_kind") != "recon"
+            c for c in claims if c["spec"].get("task_kind") != "recon"
         )
         candidate = candidate_record(
             hunt_claim, source_path="handlers/upload.py", sink_path="storage/state.py",
@@ -911,6 +979,17 @@ class TestUnverifiedCandidateSurfacing(PipelineClosureBase):
             f"digest-{hunt_claim['task_id']}",
             usage=usage_exact(hunt_claim["attempt_id"], 100),
         )
+        for other in claims:
+            if other is hunt_claim or other["spec"].get("task_kind") == "recon":
+                continue
+            if other["spec"].get("task_kind") == "verify":
+                continue  # the candidate's verify task must stay queued
+            self.app.start(self.run_dir, other)
+            self.app.submit(
+                self.run_dir, other,
+                hunt_result(other, []),
+                f"digest-{other['task_id']}",
+            )
         return hunt_claim, candidate
 
     def _needs_validation_md(self):
@@ -922,7 +1001,9 @@ class TestUnverifiedCandidateSurfacing(PipelineClosureBase):
             "limit": 2, "settled": 0, "reserved": 0, "unit": "tasks",
             "availability": "exact",
         }]
-        hunt_claim, candidate = self._submit_hunt_with_candidate(budgets=budgets)
+        # Pinned (budget_autosize=False): the exhaustion path is exercised
+        # deliberately -- DA-10 auto-sizing would otherwise cover the plan.
+        hunt_claim, candidate = self._submit_hunt_with_candidate(budgets=budgets, autosize=False)
 
         # The verify task can never be claimed: the budget is exhausted.
         self.assertEqual(self.app.next(self.run_id, self.run_dir, batch_size=5), [])

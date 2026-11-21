@@ -79,7 +79,7 @@ class TestBudgetStopReason(unittest.TestCase):
             )
         return target
 
-    def _config(self, target: Path, tasks_limit: int) -> dict:
+    def _config(self, target: Path, tasks_limit: int, autosize: bool = True) -> dict:
         return {
             "schema_version": "1.0",
             "target": str(target),
@@ -99,6 +99,7 @@ class TestBudgetStopReason(unittest.TestCase):
                     "availability": "exact",
                 },
             ],
+            "budget_autosize": autosize,
             "safety_acceptance": {
                 "allow_unverified_execution": False,
                 "allow_unverified_network": False,
@@ -162,7 +163,7 @@ class TestBudgetStopReason(unittest.TestCase):
         # hunt-visible pool then empties while 1 unit stays reserved for
         # verify — dispatch stops with hunts still queued.
         target = self._target(6)
-        config = self._config(target, tasks_limit=4)
+        config = self._config(target, tasks_limit=4, autosize=False)
         prep = self.app.prepare(target, Path(config["run_dir"]), config)
         run_id, run_dir = prep["run_id"], Path(config["run_dir"])
         self.app.activate(run_id, run_dir)
@@ -198,7 +199,7 @@ class TestBudgetStopReason(unittest.TestCase):
         even when the refused claim was a hunt whose reason text mentions
         the (zero-sized) protection."""
         target = self._target(4)
-        config = self._config(target, tasks_limit=1)
+        config = self._config(target, tasks_limit=1, autosize=False)
         prep = self.app.prepare(target, Path(config["run_dir"]), config)
         run_id, run_dir = prep["run_id"], Path(config["run_dir"])
         self.app.activate(run_id, run_dir)

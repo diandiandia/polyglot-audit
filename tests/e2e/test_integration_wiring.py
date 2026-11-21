@@ -25,7 +25,7 @@ import unittest
 from pathlib import Path
 
 from auditkit.analysis.verifier import Verifier
-from auditkit.app.service import AuditAppService
+from auditkit.app.service import AuditAppService, _hunt_dispatch_priority, VERIFY_TASK_PRIORITY
 from auditkit.contracts.errors import InvalidInputError
 from auditkit.hosts.concurrency import ConcurrencyController
 from auditkit.hosts.errors import TerminationUncertainError
@@ -588,7 +588,7 @@ class TestIntegrationWiring(unittest.TestCase):
         prep = self._prepared(config)
         run_id, run_dir = prep["run_id"], Path(config["run_dir"])
 
-        all_claims = self.app.next(run_id, run_dir, batch_size=5)
+        all_claims = self.app.next(run_id, run_dir, batch_size=2)
         recon_claim = next(c for c in all_claims if self._is_recon(c))
         self.app.start(run_dir, recon_claim)
         self.app.submit(
@@ -688,7 +688,7 @@ class TestIntegrationWiring(unittest.TestCase):
     # ------------------------------------------------------------------
     # 4. T3/T4 units produce no hunt tasks (disposition markers instead)
     # ------------------------------------------------------------------
-    def test_t3_t4_units_produce_no_hunt_tasks(self):
+    def test_full_coverage_every_unit_gets_a_hunt_task(self):
         target = self.temp_dir / "mixed_target"
         (target / "src").mkdir(parents=True)
         (target / "src" / "hot.py").write_text(
@@ -705,11 +705,13 @@ class TestIntegrationWiring(unittest.TestCase):
 
         plan = json.loads((run_dir / "plan" / "plan.json").read_text(encoding="utf-8"))
         dispositions = plan["dispositions"]
-        self.assertGreaterEqual(dispositions.get("triage_only", 0), 1)
-        self.assertGreaterEqual(dispositions.get("inventory_only", 0), 1)
-        self.assertEqual(plan["hunt_units"], dispositions.get("analyze", 0))
+        # DA-10 full coverage: every planned unit is analyze -- no sampled
+        # tiers, no disposition markers.
+        self.assertEqual(set(dispositions), {"analyze"})
+        self.assertEqual(plan["hunt_units"], dispositions["analyze"])
+        self.assertEqual(plan["hunt_units"], plan["total_units"])
 
-        # Only analyze-disposition units have hunt tasks; the single recon task
+        # EVERY planned unit has a hunt task; the single recon task
         # (DDS-05 S1) is the one non-hunt task in the plan.
         tasks = self._task_rows(run_dir)
         self.assertTrue(tasks)
@@ -721,24 +723,35 @@ class TestIntegrationWiring(unittest.TestCase):
 
         conn = get_db_connection(run_dir / "events.db")
         try:
-            specs = [json.loads(r["spec_json"]) for r in conn.execute("SELECT spec_json FROM tasks")]
+            hunt_rows = [
+                dict(r) for r in conn.execute(
+                    "SELECT task_id, priority, spec_json FROM tasks WHERE kind = 'hunt'"
+                )
+            ]
         finally:
             conn.close()
-        analyze_unit_ids = {
-            u["unit_id"] for u in plan["units"] if u["disposition"] == "analyze"
-        }
-        hunt_specs = [s for s in specs if s.get("task_kind") != "recon"]
-        self.assertEqual({s["unit"]["unit_id"] for s in hunt_specs}, analyze_unit_ids)
-
-        # T3/T4 markers are explicit events (never silently dropped).
-        markers = self._events(run_dir, "unit_disposition")
-        marked = {m["disposition"] for m in markers}
-        self.assertIn("triage_only", marked)
-        self.assertIn("inventory_only", marked)
-        non_analyze_ids = {
-            u["unit_id"] for u in plan["units"] if u["disposition"] != "analyze"
-        }
-        self.assertEqual({m["unit_id"] for m in markers}, non_analyze_ids)
+        plan_units = {u["unit_id"]: u for u in plan["units"]}
+        # DA-11 ordering: every planned unit has exactly one hunt task whose
+        # priority equals the tier+surface formula, strictly below verify.
+        self.assertEqual(len(hunt_rows), len(plan_units))
+        tier_prios = {}
+        for row in hunt_rows:
+            spec = json.loads(row["spec_json"])
+            uid = spec["unit"]["unit_id"]
+            u = plan_units[uid]
+            self.assertEqual(
+                row["priority"],
+                min(_hunt_dispatch_priority(u), VERIFY_TASK_PRIORITY - 1),
+            )
+            tier_prios.setdefault(u["tier"], set()).add(row["priority"])
+        for higher, lower in (("T1", "T2"), ("T2", "T3"), ("T3", "T4")):
+            if higher in tier_prios and lower in tier_prios:
+                self.assertGreaterEqual(
+                    min(tier_prios[higher]), max(tier_prios[lower]),
+                    f"{higher} priorities must not rank below {lower}",
+                )
+        self.assertTrue(all(p < VERIFY_TASK_PRIORITY for p in
+                            (x for ps in tier_prios.values() for x in ps)))
 
     # ------------------------------------------------------------------
     # 5. triage records and hunter overflow persisted as events
@@ -758,7 +771,7 @@ class TestIntegrationWiring(unittest.TestCase):
 
         # Hunter-reported overflow becomes an explicit event with the
         # standardized payload shape (dimension / estimated_count / reason).
-        all_claims = self.app.next(run_id, run_dir, batch_size=5)
+        all_claims = self.app.next(run_id, run_dir, batch_size=2)
         recon_claim = next(c for c in all_claims if self._is_recon(c))
         self.app.start(run_dir, recon_claim)
         self.app.submit(

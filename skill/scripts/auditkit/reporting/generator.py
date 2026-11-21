@@ -422,7 +422,15 @@ class ReportGenerator:
             lines.append(f"- **Sink**: `{sink.get('path')}:{sink.get('line')}` ({sink.get('kind', 'sensitive_op')})")
             lines.append(t("taint_path"))
             for idx, s in enumerate(steps, start=1):
-                lines.append(f"  {idx}. `{s.get('path')}:{s.get('line')}` - [{s.get('role')}] {s.get('note')}")
+                # Real worker shapes (RUN-LESSONS real-shape family): steps
+                # arrive as {path, line, role, note} objects OR as the
+                # contract's literal "path:LINE explanation" strings. Render
+                # either honestly -- a report must never crash on a recorded
+                # evidence shape (SR-025: records are rendered as recorded).
+                if isinstance(s, dict):
+                    lines.append(f"  {idx}. `{s.get('path')}:{s.get('line')}` - [{s.get('role')}] {s.get('note')}")
+                else:
+                    lines.append(f"  {idx}. {s}")
 
             # SR-010 / SWR-010: guards, attack preconditions, impact and
             # exploitability belong to the confirmed-finding presentation.

@@ -86,7 +86,7 @@ class SWR012Base(unittest.TestCase):
         (target / "danger.py").write_text(DANGER_SOURCE, encoding="utf-8")
         return target
 
-    def make_config(self, target: Path, task_budget: int = 10) -> dict:
+    def make_config(self, target: Path, task_budget: int = 10, autosize: bool = True) -> dict:
         return {
             "schema_version": "1.0",
             "target": str(target),
@@ -99,6 +99,7 @@ class SWR012Base(unittest.TestCase):
                 "limit": task_budget, "settled": 0, "reserved": 0, "unit": "tasks",
                 "availability": "exact",
             }],
+            "budget_autosize": autosize,
             "safety_acceptance": {
                 "allow_unverified_execution": False,
                 "allow_unverified_network": False,
@@ -107,9 +108,9 @@ class SWR012Base(unittest.TestCase):
             },
         }
 
-    def prepare_run(self, task_budget: int = 10) -> dict:
+    def prepare_run(self, task_budget: int = 10, autosize: bool = True) -> dict:
         target = self.make_target()
-        config = self.make_config(target, task_budget=task_budget)
+        config = self.make_config(target, task_budget=task_budget, autosize=autosize)
         prep = self.app.prepare(str(target), str(self.run_dir), config)
         self.app.activate(prep["run_id"], self.run_dir)
         self._run_id = prep["run_id"]
@@ -332,7 +333,7 @@ class TestSWR012BudgetExhausted(SWR012Base):
         # tasks budget = 1 covers only the recon claim; the hunt claim then
         # exhausts the enforced budget (real ledger path, not a synthetic
         # injected event).
-        self.prepare_run(task_budget=1)
+        self.prepare_run(task_budget=1, autosize=False)
         claims = self.app.next(self.run_id, self.run_dir, batch_size=10)
         self.assertEqual(len(claims), 1, "only the recon claim fits the 1-task budget")
         self.assertEqual(claims[0]["spec"]["task_kind"], "recon")
@@ -375,7 +376,7 @@ class TestSWR012BudgetExhausted(SWR012Base):
         """SR-012: a budget-exhausted run still publishes the report set — the
         deliverables exist and carry the incomplete state, instead of producing
         nothing."""
-        self.prepare_run(task_budget=1)
+        self.prepare_run(task_budget=1, autosize=False)
         claims = self.app.next(self.run_id, self.run_dir, batch_size=10)
         self.app.start(self.run_dir, claims[0])
         self.app.submit(self.run_dir, claims[0], self.worker_result(claims[0]), "d")

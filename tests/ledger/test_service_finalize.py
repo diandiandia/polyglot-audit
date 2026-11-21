@@ -49,8 +49,9 @@ class TestServiceFinalize(unittest.TestCase):
                                   "user_approved": True},
         }
 
-    def _prepared_run(self, fixture: str = "pyapp", limit: int = 20):
+    def _prepared_run(self, fixture: str = "pyapp", limit: int = 20, autosize: bool = True):
         config = self._make_config(fixture, limit)
+        config["budget_autosize"] = autosize
         prep = self.app.prepare(config["target"], config["run_dir"], config)
         self.app.activate(prep["run_id"], config["run_dir"])
         self._active_run_id = prep["run_id"]
@@ -192,7 +193,7 @@ class TestServiceFinalize(unittest.TestCase):
     def test_finalize_incomplete_on_budget_exhaustion(self):
         """Budget exhaustion is recorded and forces an incomplete run (DSR-066)."""
         # boundary fixture has 2 units; a limit of 1 exhausts the budget
-        prep, config = self._prepared_run(fixture="boundary", limit=1)
+        prep, config = self._prepared_run(fixture="boundary", limit=1, autosize=False)
         run_id, run_dir = prep["run_id"], Path(config["run_dir"])
 
         claims = self.app.next(run_id, run_dir, batch_size=1)

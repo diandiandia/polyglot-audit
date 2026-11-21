@@ -20,3 +20,8 @@ events.db
 tests/model_eval/forbidden_tokens.local.json
 poc-task-*
 audit-target-*/
+
+# 探针/诊断临时目录（SR-016：目标代码副本不入库）
+.hunt-tmp/
+.probe-tmp/
+.upstream-tmp/

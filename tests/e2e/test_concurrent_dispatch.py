@@ -428,9 +428,11 @@ class TestConcurrentDispatch(unittest.TestCase):
 
     def test_stop_reason_budget_exhausted_with_tasks_remaining(self):
         target = self._signal_target(4)
-        # Budget of one task: after the recon consumes it, the queued hunts
+        # Budget of one pinned task (budget_autosize=False: fault-injection
+        # escape hatch, DA-10): after the recon consumes it, the queued hunts
         # can never be dispatched.
         config = self._make_config(target, tasks_limit=1)
+        config["budget_autosize"] = False
         prep = self._prepared(config)
         run_id, run_dir = prep["run_id"], Path(config["run_dir"])
 

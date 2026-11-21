@@ -224,17 +224,22 @@ class TestSWR004(unittest.TestCase):
         units = planner.create_units(self.manifest.files, self.file_signals, boundaries=[])
         t4_units = [u for u in units if u["tier"] == "T4"]
         self.assertGreaterEqual(len(t4_units), 1)
-        self.assertTrue(all(u["disposition"] == "inventory_only" for u in t4_units))
+        # DA-10: full coverage -- the no-signal file stays ANALYZE-planned
+        # (its surface_class reads "internal": ordering label, not a filter),
+        # and the T4 wording never claims safety.
+        self.assertTrue(all(u["disposition"] == "analyze" for u in t4_units))
+        self.assertTrue(all(u.get("surface_class") == "internal" for u in t4_units))
         # The no-signal file is still planned (kept in the denominator).
         self.assertIn(
             "web/helper.go", {a["path"] for u in units for a in u["ranges"]}
         )
 
-        # Lower profiles do not plan it, but the inventory still counts it.
+        # DA-10: lower profiles plan it too (full coverage -- no profile
+        # samples); the inventory counts it regardless.
         quick = UnitPlanner("snp-swr004", profile="quick").create_units(
             self.manifest.files, self.file_signals, boundaries=[]
         )
-        self.assertNotIn("web/helper.go", {a["path"] for u in quick for a in u["ranges"]})
+        self.assertIn("web/helper.go", {a["path"] for u in quick for a in u["ranges"]})
         summary = reconcile(self.manifest, discovered_total=self.discovered_total)
         self.assertEqual(summary["included"], EXPECTED_INCLUDED)  # includes helper.go
 

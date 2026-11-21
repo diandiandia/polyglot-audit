@@ -176,32 +176,52 @@ class TestProfiles(unittest.TestCase):
             out.setdefault(u["disposition"], set()).add(u["ranges"][0]["path"])
         return out
 
-    def test_quick_profile_covers_t1_and_t2(self):
-        units = UnitPlanner("snp-x", profile="quick").create_units(
-            self.files, self.signals, []
-        )
+    def _all_paths_by_disposition(self, units):
         buckets = self._paths_by_disposition(units)
-        self.assertEqual(buckets.get("analyze"), {"t1.py", "t2.py"})
-        self.assertNotIn("triage_only", buckets)
-        self.assertNotIn("inventory_only", buckets)
+        return buckets
 
-    def test_standard_profile_keeps_t3_triage_only(self):
-        units = UnitPlanner("snp-x", profile="standard").create_units(
-            self.files, self.signals, []
-        )
-        buckets = self._paths_by_disposition(units)
-        self.assertEqual(buckets.get("analyze"), {"t1.py", "t2.py"})
-        self.assertEqual(buckets.get("triage_only"), {"t3.py"})
-        self.assertNotIn("inventory_only", buckets)
+    def test_full_coverage_all_profiles_analyze_every_tier(self):
+        """DA-10: audit is full coverage -- every profile plans EVERY tier
+        as analyze (the old quick/standard/deep disposition gating is
+        retired); the tier only orders dispatch priority."""
+        for profile in ("quick", "standard", "deep"):
+            units = UnitPlanner("snp-x", profile=profile).create_units(
+                self.files, self.signals, []
+            )
+            buckets = self._paths_by_disposition(units)
+            self.assertEqual(
+                buckets.get("analyze"),
+                {"t1.py", "t2.py", "t3.py", "t4.py"},
+                f"profile {profile} must plan all tiers as analyze",
+            )
+            self.assertNotIn("triage_only", buckets)
+            self.assertNotIn("inventory_only", buckets)
 
-    def test_deep_profile_includes_t4_inventory_only(self):
-        units = UnitPlanner("snp-x", profile="deep").create_units(
-            self.files, self.signals, []
-        )
-        buckets = self._paths_by_disposition(units)
-        self.assertEqual(buckets.get("inventory_only"), {"t4.py"})
-        self.assertEqual(buckets.get("triage_only"), {"t3.py"})
-        self.assertEqual(buckets.get("analyze"), {"t1.py", "t2.py"})
+    def test_surface_class_derived_from_entry_signals(self):
+        """DA-11: surface_class follows the unit's entry-signal ids --
+        src_http* -> remote, other src_* -> local, none -> internal. It is
+        an ordering/labeling dimension, never a coverage filter."""
+        signals = {
+            "t1.py": [{"kind": "source", "strength": 3, "line": 1,
+                       "signal_id": "src_http_input"},
+                      {"kind": "sink", "strength": 3, "line": 2}],
+            "t2.py": [{"kind": "source", "strength": 2, "line": 1,
+                       "signal_id": "src_cli_env"}],
+            # t3.py: no signals at all (internal)
+        }
+        files = [
+            {"path": p, "sha256": i * "0" + str(i), "line_count": 5,
+             "language": "python", "component": "app"}
+            for i, p in enumerate(("t1.py", "t2.py", "t3.py"), start=1)
+        ]
+        units = UnitPlanner("snp-x").create_units(files, signals, [])
+        surface = {}
+        for u in units:
+            path = u["ranges"][0]["path"]
+            surface.setdefault(u.get("surface_class"), set()).add(path)
+        self.assertEqual(surface.get("remote"), {"t1.py"})
+        self.assertEqual(surface.get("local"), {"t2.py"})
+        self.assertEqual(surface.get("internal"), {"t3.py"})
 
     def test_profile_output_deterministic(self):
         planner = UnitPlanner("snp-x", profile="deep")

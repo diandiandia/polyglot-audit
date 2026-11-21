@@ -71,6 +71,14 @@
         "type": "object"
       }
     },
+    "budget_autosize": {
+      "type": "boolean",
+      "description": "DA-10 full-coverage auto-sizing of the tasks budget (default true). Set false ONLY for fault injection / emergency cost control: pins the explicit budget even below the full-coverage requirement, with a loud budget_pinned_below_full_coverage event. Never a sampling mode."
+    },
+    "verify_budget_multiplier": {
+      "type": "number",
+      "description": "Verification allowance multiplier used by the DA-10 full-coverage budget sizing (default 2.0): required tasks = plan units x (1 + multiplier) + 1."
+    },
     "safety_acceptance": {
       "type": "object",
       "required": [

@@ -109,10 +109,11 @@ class TestPrepareComponentDetection(unittest.TestCase):
         # recorded snapshot_id still matches the manifest's root hash prefix.
         self.assertEqual(manifest["snapshot_id"], prep["snapshot_id"])
 
-        # Every planned unit inherits its file's component; the signal-bearing
-        # svc-a module is the planned hunt unit of this run.
+        # Every planned unit inherits its file's component. DA-10 full
+        # coverage: ALL files are planned (not only the signal-bearing
+        # module), so the component set spans the whole inventory.
         unit_components = {u["component"] for u in detection["units"]}
-        self.assertEqual(unit_components, {"svc-a"})
+        self.assertEqual(unit_components, {"svc-a", "web", "default"})
         for unit in detection["units"]:
             self.assertIn(unit["component"], {"svc-a", "web", "default"})
             self.assertEqual(

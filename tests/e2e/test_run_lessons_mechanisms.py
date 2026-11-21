@@ -245,30 +245,39 @@ class TestPlanHygiene(RunLessonsMechanismHarness):
 
 
 class TestBudgetForecast(RunLessonsMechanismHarness):
-    def test_unaffordable_plan_records_forecast_before_work(self):
-        # A wide target and a tiny task budget: the forecast must exist in
-        # the plan BEFORE any task executes (RUN-LESSONS: a real run executed
-        # a few percent of its plan and finalized without a decision point).
+    def test_budget_autosized_to_full_coverage(self):
+        """DA-10: audit is full coverage -- a tiny operator budget is RAISED
+        to the full-coverage requirement (plan units + verify multiplier)
+        with an explicit ledger event; the forecast reads 1.0 by construction
+        and the old sampled-audit behavior (finalize at a few percent) is
+        retired."""
         files = {f"pkg/mod_{n}.py": _big_source(600) for n in range(6)}
         target = self._write_target(files)
         config = self._make_config(target, tasks_limit=2)
         prep = self.app.prepare(config["target"], config["run_dir"], config)
-        self.app.activate(prep["run_id"], config["run_dir"])
         run_dir = Path(config["run_dir"])
 
         plan = json.loads((run_dir / "plan" / "plan.json").read_text(encoding="utf-8"))
+        sized = plan.get("budget_full_coverage") or {}
+        self.assertEqual(sized.get("requested_limit"), 2)
+        self.assertGreater(sized.get("applied_limit"), 2)
+        self.assertTrue(sized.get("raised"))
         forecast = plan.get("budget_coverage_forecast")
-        self.assertIsNotNone(forecast)
-        self.assertLess(forecast, 1.0)
-        self.assertGreater(forecast, 0.0)
+        self.assertEqual(forecast, 1.0)
+        # The frozen ledger config carries the applied (raised) limit.
+        applied = json.loads((run_dir / "config.json").read_text(encoding="utf-8"))
+        tasks_budget = next(b for b in applied["budgets"] if b["dimension"] == "tasks")
+        self.assertEqual(tasks_budget["limit"], sized["applied_limit"])
 
-        events = self._events(run_dir, "budget_plan_forecast")
+        events = self._events(run_dir, "budget_autosized_full_coverage")
         self.assertEqual(len(events), 1)
-        self.assertEqual(events[0]["tasks_budget_limit"], 2)
-        self.assertGreater(events[0]["hunt_units"], forecast * events[0]["hunt_units"])
+        self.assertEqual(events[0]["requested_limit"], 2)
+        self.assertEqual(events[0]["applied_limit"], sized["applied_limit"])
 
-        # The self-review turns the low forecast into an explicit anomaly.
-        review = SelfReviewCollector({"budget_coverage_forecast": forecast}).collect()
+        # The canary detector stays armed: a sub-1.0 forecast (operator-pinned
+        # cap below the plan, or legacy dossiers) would still be flagged by
+        # the self-review.
+        review = SelfReviewCollector({"budget_coverage_forecast": 0.4}).collect()
         self.assertTrue(
             any("budget_coverage_forecast" in a.get("evidence", "") for a in review)
         )

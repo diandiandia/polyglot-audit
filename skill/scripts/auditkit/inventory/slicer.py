@@ -98,14 +98,15 @@ def slice_file_ranges(
 class UnitPlanner:
     """Plans units from files and signal scans."""
 
-    # DSR-056: profile -> which dispositions produce active hunt units.
-    # - quick:    T1 + T2 only (disposition "analyze")
-    # - standard: T1 + T2 analyzed, T3 kept as triage-only markers
-    # - deep:     everything; T4 kept as inventory-only markers
+    # DA-10 (owner decision): audit is FULL coverage -- the profile no longer
+    # gates which dispositions produce hunt work; every planned unit is
+    # analyzed and the tier orders dispatch priority. The mapping is kept as
+    # a validated constant so existing configs stay accepted; all profiles
+    # plan the full unit set.
     PROFILE_DISPOSITIONS = {
         "quick": {"analyze"},
-        "standard": {"analyze", "triage_only"},
-        "deep": {"analyze", "triage_only", "inventory_only"},
+        "standard": {"analyze"},
+        "deep": {"analyze"},
     }
 
     def __init__(self, snapshot_id: str, profile: str = "standard") -> None:
@@ -190,17 +191,14 @@ class UnitPlanner:
                 tier = "T2"
                 factors.append("Test file (tier capped from T1)")
 
-            # DSR-056 disposition mapping
-            if tier in ("T1", "T2"):
-                disposition = "analyze"
-            elif tier == "T3":
-                disposition = "triage_only"
-            else:
-                disposition = "inventory_only"
-
-            # Skip unit creation for dispositions this profile does not plan
-            if disposition not in self.PROFILE_DISPOSITIONS[self.profile]:
-                continue
+            # DA-10 (owner decision, supersedes DSR-056 disposition gating):
+            # audit means FULL coverage -- every planned unit is analyzed
+            # regardless of tier. The tier remains as the dispatch-priority
+            # ordering (T1 first); it no longer gates whether a unit is
+            # hunted. Low-signal units still carry their tier honestly, so
+            # the queue drains highest-risk work first and the tail is
+            # covered as budget allows.
+            disposition = "analyze"
 
             ranges = slice_file_ranges(line_count)
             if not ranges:
@@ -229,6 +227,27 @@ class UnitPlanner:
                     "risk_factors": factors + [f"Tier: {tier}"],
                     "tier": tier,
                     "disposition": disposition,
+                    "surface_class": self._derive_surface_class(signals),
                 })
 
         return units
+
+    @staticmethod
+    def _derive_surface_class(hits: List[Dict[str, Any]]) -> str:
+        """Attack-surface class from the unit's entry-signal ids (DA-11).
+
+        ``remote``: at least one ``src_http*`` (network entry) hit;
+        ``local``: any other ``src_*`` (CLI/env/file) hit; ``internal``: no
+        entry-signal hits. The signal ids are the toolkit's own cross-language
+        taxonomy -- no language-specific rules (SR-003). Surface class orders
+        dispatch within a tier and labels the dossier's attack-surface view;
+        it never filters coverage (DA-10: audit is full coverage).
+        """
+        saw_local = False
+        for h in hits or []:
+            sid = str(h.get("signal_id") or "")
+            if sid.startswith("src_http"):
+                return "remote"
+            if sid.startswith("src_"):
+                saw_local = True
+        return "local" if saw_local else "internal"

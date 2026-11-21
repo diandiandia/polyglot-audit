@@ -294,6 +294,8 @@ class RunConfig(TypedDict, total=False):
     profile: str
     scope: RunScope
     budgets: List[Dict[str, Any]]
+    budget_autosize: bool
+    verify_budget_multiplier: float
     safety_acceptance: SafetyAcceptance
 
 
