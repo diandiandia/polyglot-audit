@@ -9,6 +9,7 @@
 - **日常迭代**：`python3 tools/run_all_tests.py --fast`——跳过网络/凭据绑定的 real_cli、model_eval 两类（无外网或未登录宿主 CLI 时，real_cli 探针会等待外部进程直至超时，RUN-LESSONS O-08）；`--categories deterministic,fault_injection,scale` 可进一步选取子集。**发布证据仍必须跑完整五类**（`--fast`/`--categories` 的跳过类别"不声明、不进分母"）。
 - **发布证据**：`python3 tools/generate_release_evidence.py`（内部跑完整编排器；`--skip-tests` 仅用于重生成格式，跳过的类别如实 unknown——2026-11-19 曾发生无编排器输出的降级再生成，已回滚，勿再以半量运行覆盖完整证据）。
 - **开源/第三方交付**：`python3 tools/anonymize_evidence.py --src docs/evidence --dst <portable-dir>`——对证据 JSON 中的 run/ev 标识符做**不可逆加盐哈希**（每次导出独立盐值、导出内一致、不写映射表、禁止源目录原地覆盖）；非 JSON 文件原样拷贝。
+- **超大型仓库（XL，500 万行+）标准工作流**：不要追求单次 run 全量——按组件目录分区（`scope.include` 每分区一次 run），**每个分区内部仍然全量**（DA-10：预算自动覆盖该分区全部单元）；分区覆盖在卷宗按组件报告，合并各分区卷宗即整体覆盖。勿用 `budget_autosize=false` 做抽样摸底——那是故障注入逃生阀，不是探索模式。
 
 ---
 
