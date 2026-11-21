@@ -3687,6 +3687,29 @@ class AuditAppService:
                     failures = counters["failed"]
                 sleep_fn(compute_backoff_delay(failures, backoff_base, backoff_max))
                 return ("failed", claim["task_id"])
+            except Exception as e:  # noqa: BLE001 -- task-level isolation
+                # Last-resort task-level isolation (RUN-LESSONS L-06
+                # discipline, extended to the whole submit/verify-enqueue
+                # path): an unexpected failure while accepting a result --
+                # e.g. a real-world candidate shape an enqueue helper did
+                # not expect -- must degrade to a task-scoped retryable
+                # failure and NEVER escape to the dispatch loop. One
+                # unforeseen shape must not stop the audit. Bounded by the
+                # same retry caps: a deterministic crasher exhausts the
+                # generation budget and quarantines with an honest gap.
+                _report_failure_safe(
+                    claim,
+                    HostFailureError(
+                        f"unexpected submit failure: {e!r}",
+                        retryable=True,
+                    ),
+                )
+                with ctrl_lock:
+                    ctrl.on_failure()
+                    counters["failed"] += 1
+                    failures = counters["failed"]
+                sleep_fn(compute_backoff_delay(failures, backoff_base, backoff_max))
+                return ("failed", claim["task_id"])
             with ctrl_lock:
                 ctrl.on_success()
                 counters["submitted"] += 1

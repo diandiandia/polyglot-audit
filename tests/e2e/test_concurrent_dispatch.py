@@ -26,6 +26,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from auditkit.app.service import AuditAppService
 from auditkit.contracts.errors import HostFailureError
@@ -621,6 +622,57 @@ class TestConcurrentDispatch(unittest.TestCase):
                          summary["dispatched_plan"] + summary["dispatched_verify"])
         self.assertIsInstance(summary["concurrency"], int)
         self.assertIsInstance(json.dumps(summary), str)
+
+    # ------------------------------------------------------------------
+    # g. unexpected submit failures are task-scoped, never loop-fatal
+    # ------------------------------------------------------------------
+    def test_unexpected_submit_exception_is_task_scoped_not_loop_fatal(self):
+        """RUN-LESSONS L-06 discipline extended to the whole submit /
+        verify-enqueue path: an unexpected exception while accepting a
+        result (e.g. a real-world candidate shape an enqueue helper did not
+        expect) degrades to a task-scoped retryable failure. It must never
+        escape the worker future and kill the dispatch loop; the task is
+        requeued with a fresh generation and completes."""
+        target = self._signal_target(2)
+        config = self._make_config(target)
+        prep = self._prepared(config)
+        run_id, run_dir = prep["run_id"], Path(config["run_dir"])
+
+        real_submit = AuditAppService.submit
+        state = {"crashed": False}
+
+        def submit_crashing_once(self, run_dir, claim, worker_result, digest, usage=None):
+            if not state["crashed"]:
+                state["crashed"] = True
+                raise RuntimeError("unexpected real-world candidate shape")
+            return real_submit(self, run_dir, claim, worker_result, digest, usage=usage)
+
+        def execute_fn(claim):
+            return self._worker_result(claim), _usage_for(claim)
+
+        with mock.patch.object(AuditAppService, "submit", submit_crashing_once):
+            summary = self.app.run_dispatch_loop(
+                run_id, run_dir, execute_fn,
+                adapter=_FakeAdapter(), controller=ConcurrencyController(initial=1),
+            )
+
+        # The loop survived and drained: the crashed attempt's task was
+        # requeued with a fresh generation and completed on its next try.
+        self.assertEqual(summary["stop_reason"], "queue_drained")
+        self.assertGreaterEqual(summary["failed"], 1)
+        conn = self._db(run_dir)
+        try:
+            done_rows = conn.execute(
+                "SELECT count(*) AS cnt FROM tasks WHERE state = 'done'"
+            ).fetchone()["cnt"]
+            quarantined = conn.execute(
+                "SELECT count(*) AS cnt FROM tasks WHERE state = 'quarantined'"
+            ).fetchone()["cnt"]
+        finally:
+            conn.close()
+        # recon + 2 hunts, including the task that survived its crash.
+        self.assertEqual(done_rows, 3)
+        self.assertEqual(quarantined, 0)
 
 
 if __name__ == "__main__":

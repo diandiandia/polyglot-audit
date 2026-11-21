@@ -593,5 +593,46 @@ class TestGuardSummaryShapes(unittest.TestCase):
             self.assertTrue(len(digest) == 64)
 
 
+class TestCandidateProvenanceShapes(unittest.TestCase):
+    """Verify-spec construction against real-model candidate shapes.
+
+    A real worker emitted candidate.provenance as a bare string; the
+    unguarded ``candidate.get("provenance", {}).get(...)`` chain raised
+    AttributeError through the submit path and killed the dispatch loop.
+    The contract rejection must be an InvalidInputError (DSR-018 bounded
+    retry family), never an AttributeError."""
+
+    def _candidate(self, provenance):
+        return {
+            "candidate_id": "cand-1",
+            "source": {"path": "sample-web/src/main.py", "line": 3},
+            "sink": {"path": "sample-web/src/main.py", "line": 7},
+            "provenance": provenance,
+        }
+
+    def test_provenance_as_bare_string_is_contract_rejected(self):
+        from auditkit.analysis.verifier import Verifier
+
+        with self.assertRaises(InvalidInputError) as ctx:
+            Verifier().build_verify_task(self._candidate("hunt att-1 via task-2"))
+        self.assertIn("provenance", str(ctx.exception))
+
+    def test_provenance_missing_is_contract_rejected(self):
+        from auditkit.analysis.verifier import Verifier
+
+        cand = self._candidate({"hunt_tasks": ["task-1"]})
+        del cand["provenance"]
+        with self.assertRaises(InvalidInputError):
+            Verifier().build_verify_task(cand)
+
+    def test_provenance_as_contract_dict_is_accepted(self):
+        from auditkit.analysis.verifier import Verifier
+
+        spec = Verifier().build_verify_task(
+            self._candidate({"hunt_tasks": ["task-1"], "snapshot_id": "snp-1"})
+        )
+        self.assertEqual(spec["role"], "verify")
+
+
 if __name__ == "__main__":
     unittest.main()

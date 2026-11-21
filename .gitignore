@@ -25,3 +25,6 @@ audit-target-*/
 .hunt-tmp/
 .probe-tmp/
 .upstream-tmp/
+
+scratch-task-*/
+.scratch-*/

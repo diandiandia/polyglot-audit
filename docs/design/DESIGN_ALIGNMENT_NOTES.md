@@ -159,6 +159,17 @@
 | 回填状态 | 已实现；版本 0.1.1 → 0.1.2（minor；进行中 run 二次 resume，账本如实记录版本轨迹 0.1.0 → 0.1.1 → 0.1.2）。 |
 | 待设计审查确认 | ① format 重试的上限组合（适配器 3 次 × 队列 3 代 = 至多 9 次执行）对系统性截断（token 上限导致的确定性畸形）是否过长；② 截断类畸形是否应触发 packet 再分页（DSR-059 溢出机制的下游联动）而非盲目重试；③ format 类别与 rate_limit 一样属适配器侧扩展类别，DSR-029 正文的类别清单是否收编。 |
 
+### DA-14 候选 provenance 形状守卫 + submit 路径任务级兜底（驱动循环不可因单点形状死亡）
+
+| 项 | 内容 |
+|---|---|
+| 决议来源 | 有界真实运行击穿的第四个真实形状缺陷（L-07/O-01/L-12 同族）：真实 worker 将候选 `provenance` 写为裸字符串，`verifier.build_verify_task` 的无守卫 `.get` 链抛 AttributeError；该异常沿 submit → `_on_result_accepted` → `_enqueue_verify_tasks` 逃逸——submit 块只捕 InvalidInputError（DSR-018）与 StaleAttemptError（DDS-06），**无兜底**，异常穿透 worker future 击杀整个 dispatch 循环，审计停摆。 |
+| 决议内容 | ① **形状守卫**（verifier 层）：`provenance` 非契约 dict 时抛 InvalidInputError（进入 DSR-018 有界重试族，任务局部containment），与 dedup 池守卫同一语义族——契约违反映射为显式拒绝，永不 AttributeError。② **任务级兜底**（service 层）：execute_one_task 的 submit 块补 `except Exception` 最后防线——意外异常降级为任务级可重试失败（重排 generation+1，失败计数 + AIMD 减半 + 退避），确定性肇事者在上限处照旧隔离并记诚实 gap；**任何单点意外形状不得击杀驱动循环**（L-06 任务级隔离纪律补全到 submit 全路径）。③ KeyboardInterrupt/SystemExit（BaseException）不受兜底影响，中断语义不变。 |
+| 设计出处 | L-06（任务级异常隔离）、DSR-018（有界格式重试）、DSR-065（失败重排与隔离）、设计原则"诚实展示"——兜底路径的失败原因完整入账。 |
+| 代码位置 | `analysis/verifier.py`（provenance 形状守卫）、`app/service.py`（submit 块兜底 except）。测试：`tests/analysis/test_real_shape_regressions.py`（provenance 三形状：字符串拒绝/缺失拒绝/契约 dict 通过）、`tests/e2e/test_concurrent_dispatch.py`（submit 抛 RuntimeError → 循环存活、任务重排后完成、零隔离）。 |
+| 回填状态 | 已实现；版本 0.1.2 → 0.1.3（minor；run-001 三次 resume，版本轨迹 0.1.0 → 0.1.1 → 0.1.2 → 0.1.3 如实入账）。 |
+| 待设计审查确认 | ① 兜底 except 是否应附带 traceback 到 stderr（L-05 惯例）以区分"意外形状"与"代码 bug"；② verifier 其余候选字段访问链（title/source/sink）的同族审计——L-12 已防御 packet 渲染层，spec 构建层是否还有无守卫链；③ "形状守卫 → InvalidInputError → 有界重试 → 隔离" 是否对信封级字段（非 worker 输出而是程序拥有的卷宗数据）语义过重——程序侧数据错误或许应记 analysis_gap 而非消耗重试。 |
+
 ## 与并行工作流的接口确认（本文件随实现更新）
 
 | 接口 | 变更 | 消费方 |

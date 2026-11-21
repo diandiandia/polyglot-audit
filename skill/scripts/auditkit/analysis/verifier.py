@@ -222,11 +222,24 @@ class Verifier:
         cand_id = candidate.get("candidate_id", "")
         if not cand_id:
             raise InvalidInputError("candidate is missing candidate_id")
-        hunt_tasks = candidate.get("provenance", {}).get("hunt_tasks", [])
+        # Real-model shape guard (same family as the dedup pool guard,
+        # RUN-LESSONS L-07/O-01): provenance must be the contract dict
+        # {hunt_tasks, snapshot_id}. A real worker emitted it as a bare
+        # string; an unguarded .get chain there escaped as AttributeError
+        # through the submit path and killed the whole dispatch loop. Reject
+        # via InvalidInputError so the DSR-018 bounded-retry path contains
+        # it task-locally instead.
+        provenance = candidate.get("provenance")
+        if not isinstance(provenance, dict):
+            raise InvalidInputError(
+                "candidate provenance must be a dict with hunt_tasks/snapshot_id, "
+                f"got {type(provenance).__name__}"
+            )
+        hunt_tasks = provenance.get("hunt_tasks", [])
         resolved_snapshot = (
             snapshot_id
             or candidate.get("snapshot_id", "")
-            or candidate.get("provenance", {}).get("snapshot_id", "")
+            or provenance.get("snapshot_id", "")
         )
 
         spec: Dict[str, Any] = {
