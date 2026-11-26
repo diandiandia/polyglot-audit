@@ -674,6 +674,65 @@ class TestConcurrentDispatch(unittest.TestCase):
         self.assertEqual(done_rows, 3)
         self.assertEqual(quarantined, 0)
 
+    # ------------------------------------------------------------------
+    # h. circuit-breaker trips pause the run fail-safe, never cascade
+    # ------------------------------------------------------------------
+    def test_breaker_trip_pauses_run_and_requeues_task_without_quarantine(self):
+        """RUN-LESSONS L-02, realized twice in one bounded real run: a
+        wedged adapter instance can never reset (it raises before
+        attempting), so reporting its breaker errors as non-retryable
+        mass-quarantined every task it touched during a transient host
+        outage. The breaker contract is failure-driven slowdown: a trip
+        must pause the run fail-safe and requeue the touched task, never
+        quarantine it."""
+        target = self._signal_target(2)
+        config = self._make_config(target)
+        prep = self._prepared(config)
+        run_id, run_dir = prep["run_id"], Path(config["run_dir"])
+
+        def execute_fn(claim):
+            exc = HostFailureError(
+                "Circuit breaker tripped: 3 consecutive Claude host failures",
+                retryable=False,
+            )
+            exc.breaker_tripped = True
+            raise exc
+
+        summary = self.app.run_dispatch_loop(
+            run_id, run_dir, execute_fn,
+            adapter=_FakeAdapter(), controller=ConcurrencyController(initial=1),
+        )
+
+        # The loop stopped on the pause (fail-safe), not on a queue drain.
+        self.assertEqual(summary["stop_reason"], "paused_or_blocked")
+
+        conn = self._db(run_dir)
+        try:
+            state = conn.execute(
+                "SELECT state FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()["state"]
+            task_states = dict(conn.execute(
+                "SELECT state, count(*) FROM tasks GROUP BY state"
+            ).fetchall())
+            gens = dict(conn.execute(
+                "SELECT generation, count(*) FROM tasks WHERE state='queued' GROUP BY generation"
+            ).fetchall())
+            reasons = [r[0] for r in conn.execute(
+                "SELECT payload_json FROM events WHERE event_type='run_paused'"
+            ).fetchall()]
+        finally:
+            conn.close()
+
+        self.assertEqual(state, "paused")
+        # Every task survived: requeued, nothing quarantined.
+        self.assertEqual(task_states.get("quarantined", 0), 0)
+        self.assertGreater(task_states.get("queued", 0), 0)
+        # The tripped task was requeued with a bumped generation (tasks
+        # start at generation 0; one fail-safe requeue lands on 1).
+        self.assertIn(1, gens)
+        # The pause reason names the fail-safe breaker path.
+        self.assertTrue(any("fail-safe pause" in r for r in reasons))
+
 
 if __name__ == "__main__":
     unittest.main()

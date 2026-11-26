@@ -29,7 +29,7 @@ from auditkit.contracts.errors import UnsupportedSchemaError
 # DSR-072: supported formats. Automatic migration of active runs is prohibited;
 # encountering any other version must fail closed.
 SUPPORTED_SCHEMA_VERSIONS = {"1.0"}
-SKILL_VERSION = "0.1.4"
+SKILL_VERSION = "0.1.5"
 SUPPORTED_KNOWLEDGE_VERSION_MAJOR = "1"
 
 

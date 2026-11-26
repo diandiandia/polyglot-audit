@@ -3589,6 +3589,39 @@ class AuditAppService:
                     counters["failed"] += 1
                 return ("retained", claim["task_id"])
             except AuditError as e:
+                if getattr(e, "breaker_tripped", False):
+                    # Fail-safe on circuit-breaker trips (RUN-LESSONS L-02,
+                    # realized twice in one bounded real run): the breaker's
+                    # contract is failure-driven slowdown -- a wedged adapter
+                    # instance can NEVER reset (it raises before attempting),
+                    # so reporting its errors as non-retryable cascaded a
+                    # mass-quarantine of every task it touched during a
+                    # transient host outage. Pause the run instead (fail-safe:
+                    # in-flight leases stay honest, no work is destroyed) and
+                    # requeue THIS task with a retryable report; a fresh
+                    # driver resume restarts with a clean breaker.
+                    try:
+                        self.pause(
+                            run_id, run_dir,
+                            reason=(
+                                "fail-safe pause: circuit breaker tripped "
+                                "(host outage); tasks requeued, resume to continue"
+                            ),
+                        )
+                    except Exception:  # noqa: BLE001 -- already paused / racy
+                        pass
+                    _report_failure_safe(
+                        claim,
+                        HostFailureError(
+                            "circuit breaker tripped; run paused fail-safe and task requeued: "
+                            f"{e.message}",
+                            retryable=True,
+                        ),
+                    )
+                    with ctrl_lock:
+                        ctrl.on_failure()
+                        counters["failed"] += 1
+                    return ("failed", claim["task_id"])
                 _report_failure_safe(claim, e)
                 with ctrl_lock:
                     ctrl.on_failure()

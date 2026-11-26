@@ -344,6 +344,22 @@ class TestCircuitBreaker(unittest.TestCase, RetryTestMixin):
             adapter.execute_worker("prompt", "t1")
         self.assertIn("Circuit breaker", str(ctx.exception))
         self.assertFalse(ctx.exception.retryable)
+        # Fail-safe pause marker: the dispatch layer pauses the run on this
+        # error instead of cascading non-retryable quarantine (L-02).
+        self.assertTrue(getattr(ctx.exception, "breaker_tripped", False))
+
+    def test_claude_circuit_breaker_trips_marked_for_fail_safe_pause(self):
+        binary = fake_hosts.create_fake_host(
+            self.temp_dir, "claude", headless_exit=1, headless_stderr="generic failure"
+        )
+        adapter = self.make_claude(binary)
+        for _ in range(3):
+            with self.assertRaises(HostFailureError):
+                adapter.execute_worker("prompt", "t1")
+        with self.assertRaises(HostFailureError) as ctx:
+            adapter.execute_worker("prompt", "t1")
+        self.assertIn("Circuit breaker", str(ctx.exception))
+        self.assertTrue(getattr(ctx.exception, "breaker_tripped", False))
 
     def test_claude_circuit_breaker_resets_on_success(self):
         binary = fake_hosts.create_rate_limited_fake_host(self.temp_dir, "claude", fail_first=2)

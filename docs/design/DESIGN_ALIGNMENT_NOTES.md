@@ -170,6 +170,17 @@
 | 回填状态 | 已实现；版本 0.1.2 → 0.1.3（minor；run-001 三次 resume，版本轨迹 0.1.0 → 0.1.1 → 0.1.2 → 0.1.3 如实入账）。 |
 | 待设计审查确认 | ① 兜底 except 是否应附带 traceback 到 stderr（L-05 惯例）以区分"意外形状"与"代码 bug"；② verifier 其余候选字段访问链（title/source/sink）的同族审计——L-12 已防御 packet 渲染层，spec 构建层是否还有无守卫链；③ "形状守卫 → InvalidInputError → 有界重试 → 隔离" 是否对信封级字段（非 worker 输出而是程序拥有的卷宗数据）语义过重——程序侧数据错误或许应记 analysis_gap 而非消耗重试。 |
 
+### DA-15 熔断触发安全暂停（breaker → pause，替代级联隔离）+ 退避指数钳制
+
+| 项 | 内容 |
+|---|---|
+| 决议来源 | 有界真实运行两次命中同一数据丢失级缺陷（2026-11-23 与 11-26）：宿主瞬时故障窗口 → 适配器熔断（3 连败）→ 熔断实例**永不复位**（触发点在尝试之前，成功无从发生）→ 后续每个被触达任务按不可重试上报 → **连环 mass-quarantine**（一次 1012 单元、一次 +29）——L-02 模式在熔断语义下的复活。熔断契约（DSR-064/SWR-022"失败驱动降速"）显然不含"销毁在途工作"。另同窗口暴露：compute_backoff_delay 以累计失败计数为指数 → `2**1000` 浮点溢出击杀 worker 线程（长跑必然）。 |
+| 决议内容 | ① **熔断安全暂停**：execute_one_task 的 AuditError 处理器识别 `breaker_tripped` 标记（适配器附加，冻结契约不改）→ 调 pause 使 run 进入 paused（幂等 best-effort，在途租约如实保留）→ 该任务按**可重试**上报重排（generation+1 有界）→ dispatch 循环经 blocked-drain 退出；新驱动 resume 即全新熔断状态。瞬时宿主故障从此降级为"暂停+无损重排"，不再产生任何隔离。② **退避指数钳制**：compute_backoff_delay 指数 `min(attempt-1, 16)`——调用方可传累计计数器，max_delay 本就封顶结果，钳制不改变可达日程。③ 熔断异常本身（retryable=False、消息、复位条件）不变——改变的只是 dispatch 层对它的响应。 |
+| 设计出处 | DSR-064（熔断退避：目的为降速非销毁）、DSR-065（失败重排）、SWR-022（暂停切换）、RUN-LESSONS L-02（mass-quarantine 根因）。 |
+| 代码位置 | `hosts/claude_adapter.py` 与 `hosts/codex_adapter.py`（breaker_tripped 标记）、`hosts/retry.py`（指数钳制）、`app/service.py`（AuditError 处理器熔断分支 → pause + 可重试上报）。测试：`tests/hosts/test_adapters.py`（双适配器标记断言）、`tests/e2e/test_concurrent_dispatch.py`（熔断注入 → run paused / 任务重排 gen+1 / 零隔离 / 暂停原因含 fail-safe）。 |
+| 回填状态 | 已实现；版本 0.1.4 → 0.1.5。真实 run 缺口事实不变：11-23 的 1012 个隔离为终态诚实 gap（恢复需 finalize 后 scoped follow-up run）；11-26 的 +29 个同。 |
+| 待设计审查确认 | ① 熔断触发是否应自动 resume（当前设计为人工/监督方 resume——保守优先）；② 熔断阈值（3 连败）在分钟级退避日程下的适配性；③ paused 事件的 reason 长度上限（256）与多 worker 并发触发的幂等性已按 best-effort 处理，是否需要显式去重。 |
+
 ## 与并行工作流的接口确认（本文件随实现更新）
 
 | 接口 | 变更 | 消费方 |

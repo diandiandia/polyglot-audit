@@ -134,10 +134,12 @@ class ClaudeDriverAdapter:
         Requirements: SWR-023(无头执行) / DSR-029(退出分类), DSR-064(退避熔断), DSR-033(逐次用量)
         """
         if self.consecutive_failures >= self.max_consecutive_failures:
-            raise HostFailureError(
+            breaker_exc = HostFailureError(
                 f"Circuit breaker tripped: {self.consecutive_failures} consecutive Claude host failures",
                 retryable=False,
             )
+            breaker_exc.breaker_tripped = True  # consumer: fail-safe pause
+            raise breaker_exc
 
         attempt = 0
         while True:
