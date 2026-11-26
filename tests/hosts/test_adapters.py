@@ -257,6 +257,13 @@ class TestBackoffAndRetry(unittest.TestCase, RetryTestMixin):
         self.assertEqual(compute_backoff_delay(10, base=0.5, max_delay=30.0), 30.0)
         self.assertEqual(compute_backoff_delay(0, base=2.0, max_delay=30.0), 2.0)
 
+    def test_compute_backoff_delay_bounded_under_cumulative_counter(self):
+        """A cumulative failure counter (thousands) passed as the attempt
+        index must not overflow float conversion -- the exponent is clamped
+        and the schedule stays capped at max_delay."""
+        self.assertEqual(compute_backoff_delay(1000, base=0.5, max_delay=30.0), 30.0)
+        self.assertEqual(compute_backoff_delay(10**9, base=30.0, max_delay=120.0), 120.0)
+
     def test_backoff_rate_limit_uses_minute_scale_schedule(self):
         """Rate-limit retries use a minute-scale schedule (provider windows
         are minute-scale; the generic schedule spends every retry inside the

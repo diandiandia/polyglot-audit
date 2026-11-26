@@ -57,7 +57,12 @@ def compute_backoff_delay(attempt: int, base: float = 0.5, max_delay: float = 30
     """
     if attempt < 1:
         attempt = 1
-    delay = base * (2 ** (attempt - 1))
+    # Bound the exponent before exponentiation: callers may pass a
+    # cumulative failure counter rather than a per-task retry index, and
+    # ``2 ** 1000`` overflows float conversion and kills the worker thread.
+    # max_delay caps the result anyway, so clamping the exponent changes
+    # nothing about the reachable schedule.
+    delay = base * (2 ** min(attempt - 1, 16))
     if delay > max_delay:
         delay = max_delay
     return delay
