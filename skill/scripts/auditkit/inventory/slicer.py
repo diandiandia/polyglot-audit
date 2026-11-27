@@ -1,17 +1,16 @@
 """Risk-based slicing, T1-T4 prioritization, and interval union planning.
 
-Implements DSR-015 / DSR-056 / SD-03 / SR-004 / SR-005:
+Implements DSR-015 / SD-03 / SR-004 / SR-005 (tier semantics per [DA-10]):
 - Deterministic unit planning from snapshot and signal analysis.
-- Risk Tiers:
+- Risk Tiers (dispatch ORDER only -- never a coverage filter under the
+  full-coverage decision [DA-10]):
   - T1: High density source/sink combinations or boundaries
   - T2: Present source or sink signals
-  - T3: Guard, config, or sparse signals (triage only)
-  - T4: Clean / no signal files (inventory only)
-- Profiles (DSR-056): quick plans T1+T2; standard additionally keeps T3 as
-  triage-only markers; deep keeps everything, with T4 as inventory-only
-  markers. Each unit carries ``tier`` and ``disposition``
-  (analyze / triage_only / inventory_only). Identical snapshot + config
-  yields byte-identical unit lists.
+  - T3: Guard, config, or sparse signals
+  - T4: Clean / no signal files
+- Every planned unit carries ``tier`` and ``disposition="analyze"``: all
+  tiers are analyzed, tiers only order dispatch (T1 first). Identical
+  snapshot + config yields byte-identical unit lists.
 - Slicing with window rollback (e.g., 20-line overlap).
 - Interval union guarantee: union of all unit chunks covers 1..line_count
   exactly once when overlaps are merged.
@@ -147,14 +146,13 @@ class UnitPlanner:
     ) -> List[Dict[str, Any]]:
         """Create deterministic units for a snapshot.
 
-        Every unit carries its ``tier`` (T1..T4) and a ``disposition``
-        (DSR-056): ``analyze`` (T1/T2), ``triage_only`` (T3) or
-        ``inventory_only`` (T4). Profiles control which dispositions yield
-        units; the profile never changes the evidence standard, only which
-        tiers get active hunt units.
+        Every unit carries its ``tier`` (T1..T4) and ``disposition``:
+        under the full-coverage decision ([DA-10], superseding the DSR-056
+        disposition gating) every planned unit is ``analyze`` -- tiers only
+        order dispatch, profiles do not gate tiers out of the plan.
 
         Requirements: SWR-005(确定性单元计划), SWR-004(无命中保留资格)
-        / DSR-056(tier+disposition策略), DSR-015(分块区间).
+        / DA-10(全量覆盖，tier 仅排序), DSR-015(分块区间).
         """
         units: List[Dict[str, Any]] = []
         boundary_files = {b["path"] for b in boundaries}

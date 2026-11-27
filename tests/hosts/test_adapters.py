@@ -290,6 +290,54 @@ class TestBackoffAndRetry(unittest.TestCase, RetryTestMixin):
         self.assertEqual(result["ok"], True)
         self.assertEqual(adapter.consecutive_failures, 0)
 
+    def test_cli_json_envelope_usage_extracted_as_exact(self):
+        """O-T03: with --output-format json the CLI wraps the worker text in
+        an envelope carrying the host's token telemetry. The envelope's
+        usage block is host-declared telemetry and maps to "exact"; the
+        worker's own JSON is recovered from envelope.result."""
+        worker_json = json.dumps({"ok": True, "candidates": []})
+        envelope = json.dumps({
+            "type": "result",
+            "subtype": "success",
+            "result": worker_json,
+            "usage": {"input_tokens": 100, "output_tokens": 50},
+        })
+        binary = fake_hosts.create_fake_host(
+            self.temp_dir, "claude", headless_exit=0, headless_stdout=envelope
+        )
+        adapter = self.make_claude(binary)
+        result, usage = adapter.execute_worker("prompt", "t1", attempt_id="att-x1")
+        self.assertEqual(result["ok"], True)
+        self.assertIsNotNone(usage)
+        self.assertEqual(usage["availability"], "exact")
+        self.assertEqual(usage["value"], 150)
+        self.assertEqual(usage["attempt_id"], "att-x1")
+
+    def test_cli_json_envelope_without_usage_yields_none(self):
+        """An envelope without a usage block yields None (never invented);
+        the worker result still parses from envelope.result."""
+        worker_json = json.dumps({"ok": True})
+        envelope = json.dumps({
+            "type": "result",
+            "subtype": "success",
+            "result": worker_json,
+        })
+        binary = fake_hosts.create_fake_host(
+            self.temp_dir, "claude", headless_exit=0, headless_stdout=envelope
+        )
+        adapter = self.make_claude(binary)
+        result, usage = adapter.execute_worker("prompt", "t1")
+        self.assertEqual(result["ok"], True)
+        self.assertIsNone(usage)
+
+    def test_legacy_plain_worker_output_still_parses(self):
+        """Regression: plain (non-envelope) worker output keeps parsing via
+        the legacy path when the CLI ignores --output-format json."""
+        binary = fake_hosts.create_fake_host(self.temp_dir, "claude")
+        adapter = self.make_claude(binary)
+        result, _usage = adapter.execute_worker("prompt", "t1")
+        self.assertEqual(result["ok"], True)
+
     def test_retryable_failure_backs_off_then_succeeds(self):
         binary = fake_hosts.create_rate_limited_fake_host(self.temp_dir, "claude", fail_first=2)
         adapter = self.make_claude(binary, max_retries=2, backoff_base=0.0)

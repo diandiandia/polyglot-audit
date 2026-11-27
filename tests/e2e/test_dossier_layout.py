@@ -376,6 +376,10 @@ class TestRunJsonImmutability(DossierLayoutBase):
         digest_b = AuditAppService._compute_skill_payload_sha256(SKILL_DIR)
         self.assertEqual(digest_a, digest_b)
         pycache = SKILL_DIR / "scripts" / "__pycache__"
+        # Self-sufficient precondition (isolated runs with -I never write
+        # bytecode caches): the digest must be insensitive to cache
+        # presence, so the cache is created here rather than assumed.
+        pycache.mkdir(parents=True, exist_ok=True)
         self.assertTrue(pycache.is_dir(), "precondition: a bytecode cache exists")
         sentinel = pycache / "layout-probe.pyc"
         sentinel.write_bytes(b"x")

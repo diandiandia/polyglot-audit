@@ -182,7 +182,12 @@ class ClaudeDriverAdapter:
         # untouched -- no blocking, no swallowed input. Prompt-via-pipe also
         # removes the OS single-argument length ceiling that large review
         # packets would otherwise hit on the argv path.
-        cmd = [self.claude_binary, "--print"]
+        # --output-format json: the CLI wraps the worker's text in an
+        # envelope whose "usage" field carries the host's token telemetry
+        # (RUN-LESSONS O-T03, two-run evidence: bare --print output never
+        # carries usage, leaving cost telemetry permanently unavailable).
+        # Older CLIs that ignore the flag fall through to the legacy parse.
+        cmd = [self.claude_binary, "--print", "--output-format", "json"]
 
         proc = None
         try:
@@ -228,11 +233,25 @@ class ClaudeDriverAdapter:
             # Reset consecutive failures on success
             self.consecutive_failures = 0
 
+            # CLI JSON envelope detection: worker text in "result", host
+            # token telemetry in "usage". Non-envelope output (older CLIs,
+            # fakes) falls through to the legacy worker-output parse.
+            envelope_usage_block = None
+            work_text = stdout.strip()
+            try:
+                envelope = json.loads(work_text)
+            except json.JSONDecodeError:
+                envelope = None
+            if isinstance(envelope, dict) and isinstance(envelope.get("result"), str):
+                work_text = envelope["result"].strip()
+                if isinstance(envelope.get("usage"), dict):
+                    envelope_usage_block = envelope["usage"]
+
             # Attempt to parse output JSON. Real models wrap JSON in prose
             # ("All verification complete. ...") or markdown fences; both are
             # accepted, with the raw error preserved for honest retryables.
             try:
-                clean_stdout = stdout.strip()
+                clean_stdout = work_text
                 if "```json" in clean_stdout:
                     clean_stdout = clean_stdout.split("```json")[1].split("```")[0].strip()
                 elif "```" in clean_stdout:
@@ -258,9 +277,22 @@ class ClaudeDriverAdapter:
                 exc.category = CATEGORY_FORMAT
                 raise exc
 
-            return parsed, _usage_from_block(
-                parsed, attempt_id, source=type(self).__name__
-            )
+            # Host telemetry first: the CLI envelope's usage block is the
+            # host's own declaration (maps to "exact"); a worker-result
+            # usage block is the fallback. Neither exists -> None (never
+            # invented, honest unavailable per SWR-020).
+            usage = None
+            if envelope_usage_block is not None:
+                usage = build_usage_envelope(
+                    {"usage": envelope_usage_block},
+                    attempt_id,
+                    source=type(self).__name__,
+                )
+            if usage is None:
+                usage = _usage_from_block(
+                    parsed, attempt_id, source=type(self).__name__
+                )
+            return parsed, usage
 
         except subprocess.TimeoutExpired:
             self.consecutive_failures += 1
