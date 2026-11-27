@@ -325,9 +325,12 @@ class SemanticValidator:
         else:
             raise InvalidInputError(f"Invalid verdict '{verdict}'")
 
-        # Check provenance acyclicity
-        provenance = finding.get("provenance", {})
-        candidates = provenance.get("candidates", [])
+        # Check provenance acyclicity. Real-model shape guard (DA-14
+        # family): a non-dict provenance (real workers emitted a bare
+        # string) cannot carry a self-referencing cycle -- read it as
+        # candidate-less instead of crashing the finalize path.
+        provenance = finding.get("provenance")
+        candidates = provenance.get("candidates", []) if isinstance(provenance, dict) else []
         finding_id = finding.get("finding_id", "")
         if finding_id in candidates:
             raise InvalidInputError(f"Cycle detected in provenance: {finding_id} references itself")

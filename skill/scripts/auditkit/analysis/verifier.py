@@ -331,7 +331,8 @@ class Verifier:
         """
         finding_id = f"F-{uuid.uuid4().hex[:6].upper()}"
         cand_id = candidate.get("candidate_id", "")
-        hunt_tasks = candidate.get("provenance", {}).get("hunt_tasks", [])
+        _prov = candidate.get("provenance")
+        hunt_tasks = _prov.get("hunt_tasks", []) if isinstance(_prov, dict) else []
 
         finding: Dict[str, Any] = {
             "schema_version": "1.0",
@@ -369,8 +370,9 @@ class Verifier:
             # verification attempt, distinct from the hunt attempt. The gate
             # is evaluated against the CLAIMED verdict before any demotion,
             # so missing factor reasons can never be used to bypass it.
-            hunt_attempt = hunt_attempt_id or candidate.get("provenance", {}).get(
-                "hunt_attempt_id", ""
+            _prov = candidate.get("provenance")
+            hunt_attempt = hunt_attempt_id or (
+                _prov.get("hunt_attempt_id", "") if isinstance(_prov, dict) else ""
             )
             if self.enforce_attempt_gate:
                 if not verify_attempt_id:

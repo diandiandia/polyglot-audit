@@ -365,7 +365,8 @@ class ReportGenerator:
 
             Requirements: SWR-011(紧迫度排序) / DSR-028(重算呈现)+(support)
             """
-            urg = f.get("rating", {}).get("final_urgency", "P3")
+            _rating = f.get("rating")
+            urg = _rating.get("final_urgency", "P3") if isinstance(_rating, dict) else "P3"
             return URGENCY_ORDER.index(urg) if urg in URGENCY_ORDER else -1
 
         sorted_confirmed = sorted(confirmed, key=urgency_key, reverse=True)
@@ -395,8 +396,9 @@ class ReportGenerator:
         else:
             for f in sorted_confirmed:
                 fid = f.get("finding_id")
-                urg = f.get("rating", {}).get("final_urgency", "P3")
-                sev = f.get("rating", {}).get("final_severity", "Info")
+                _rating = f.get("rating")
+                urg = _rating.get("final_urgency", "P3") if isinstance(_rating, dict) else "P3"
+                sev = _rating.get("final_severity", "Info") if isinstance(_rating, dict) else "Info"
                 issue = f.get("issue", "general")
                 title = f.get("title", "")
                 sink = f.get("sink", {})
@@ -407,8 +409,9 @@ class ReportGenerator:
         lines.append("")
         for f in sorted_confirmed:
             fid = f.get("finding_id")
-            urg = f.get("rating", {}).get("final_urgency", "P3")
-            sev = f.get("rating", {}).get("final_severity", "Info")
+            _rating = f.get("rating")
+            urg = _rating.get("final_urgency", "P3") if isinstance(_rating, dict) else "P3"
+            sev = _rating.get("final_severity", "Info") if isinstance(_rating, dict) else "Info"
             title = f.get("title", "")
             source = f.get("source", {})
             sink = f.get("sink", {})
@@ -522,7 +525,8 @@ class ReportGenerator:
             lines.append(t("no_needs_val"))
         for f in needs_val:
             fid = f.get("finding_id")
-            prio = f.get("rating", {}).get("validation_priority", "V2")
+            _rating = f.get("rating")
+            prio = _rating.get("validation_priority", "V2") if isinstance(_rating, dict) else "V2"
             title = f.get("title", "")
             blockers = f.get("blockers", [])
             plan = f.get("validation_plan", "")

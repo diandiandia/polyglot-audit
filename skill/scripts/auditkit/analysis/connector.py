@@ -275,8 +275,8 @@ class HypothesisConnector:
                         "provenance": {
                             "candidates": [f_id, p_id],
                             "hunt_tasks": list(set(
-                                f.get("provenance", {}).get("hunt_tasks", [])
-                                + p.get("provenance", {}).get("hunt_tasks", [])
+                                ((f.get("provenance") or {}).get("hunt_tasks", []) if isinstance(f.get("provenance"), dict) else [])
+                                + (((p.get("provenance") or {}).get("hunt_tasks", [])) if isinstance(p.get("provenance"), dict) else [])
                             )),
                         },
                     }
