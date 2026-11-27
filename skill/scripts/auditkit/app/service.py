@@ -1740,7 +1740,7 @@ class AuditAppService:
         try:
             SchemaValidator(res_schema).validate_or_raise(worker_result)
         except InvalidInputError as e:
-            self._publish_validation_log(run_dir, claim, e)
+            self._publish_validation_log(run_dir, claim, e, worker_result=worker_result)
             raise
 
         conn = self._open_run_db(run_dir)
@@ -1842,6 +1842,7 @@ class AuditAppService:
         run_dir: str | Path,
         claim: Dict[str, Any],
         error: InvalidInputError,
+        worker_result: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Publish tasks/{task_id}/validation.json for a schema-rejected result.
 
@@ -1864,6 +1865,10 @@ class AuditAppService:
                 "rejected": True,
                 "reason": str(getattr(error, "message", error)),
                 "errors": details.get("errors", []),
+                # The received result verbatim (bounded to keep the log
+                # readable): the rejection is auditable against exactly what
+                # the worker emitted, not just the refusal reason.
+                "worker_result_received": worker_result,
             },
             sort_keys=True,
             ensure_ascii=False,

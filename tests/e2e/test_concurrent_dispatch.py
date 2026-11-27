@@ -733,6 +733,42 @@ class TestConcurrentDispatch(unittest.TestCase):
         # The pause reason names the fail-safe breaker path.
         self.assertTrue(any("fail-safe pause" in r for r in reasons))
 
+    # ------------------------------------------------------------------
+    # i. coverage is program-derived from packets (O-T02 corrected semantics)
+    # ------------------------------------------------------------------
+    def test_context_supplied_coverage_derived_from_packets(self):
+        """O-T02 corrected: coverage is PROGRAM-owned accounting (L-08 /
+        design principle 1) -- the driver replaces worker self-reports with
+        ranges derived from the published packet's untrusted_code markers,
+        so a run's coverage_intervals carry context_supplied rows without
+        any worker cooperation. A coverage-empty worker changes nothing."""
+        target = self._signal_target(2)
+        config = self._make_config(target)
+        prep = self._prepared(config)
+        run_id, run_dir = prep["run_id"], Path(config["run_dir"])
+
+        def execute_fn(claim):
+            result = self._worker_result(claim)
+            result["coverage"] = []  # worker self-report: dropped by design
+            return result, _usage_for(claim)
+
+        summary = self.app.run_dispatch_loop(
+            run_id, run_dir, execute_fn,
+            adapter=_FakeAdapter(), controller=ConcurrencyController(initial=1),
+        )
+        self.assertEqual(summary["stop_reason"], "queue_drained")
+
+        conn = self._db(run_dir)
+        try:
+            dims = dict(conn.execute(
+                "SELECT dimension, count(*) FROM coverage_intervals GROUP BY dimension"
+            ).fetchall())
+        finally:
+            conn.close()
+        # Program-derived context_supplied rows exist despite the
+        # coverage-empty worker: accounting is observed, not self-declared.
+        self.assertGreater(dims.get("context_supplied", 0), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

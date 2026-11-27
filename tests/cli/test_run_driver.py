@@ -21,6 +21,7 @@ Requirements: SWR-022(驱动与暂停) / DSR-064(缺失宿主拒绝), DSR-074(in
 
 import json
 import os
+import shlex
 import shutil
 import stat
 import subprocess
@@ -35,10 +36,12 @@ FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures"
 
 FAKE_CLAUDE_HEADLESS_STDOUT = json.dumps({
     "ok": True,
+    "coverage": [{"schema_version": "1.0", "snapshot_id": "snp-drv", "unit_id": "unit-drv", "dimension": "observed_read", "ranges": [{"path": "src/app.py", "line_start": 1, "line_end": 2}]}],
     "usage": {"input_tokens": 12, "output_tokens": 8, "availability": "exact"},
 })
 FAKE_CODEX_HEADLESS_STDOUT = json.dumps({
     "ok": True,
+    "coverage": [{"schema_version": "1.0", "snapshot_id": "snp-drv", "unit_id": "unit-drv", "dimension": "observed_read", "ranges": [{"path": "src/app.py", "line_start": 1, "line_end": 2}]}],
     "usage": {"total_tokens": 42, "availability": "estimated"},
 })
 
@@ -77,9 +80,37 @@ def write_executable(path: Path, content: str) -> Path:
 def make_fake_host(directory: Path, name: str, headless_stdout: str) -> Path:
     """Create a fake host CLI script (tests/hosts/fake_hosts.py pattern).
 
-    `--version` exits 0; any other invocation (headless path used by the
-    driver adapters) prints headless_stdout and exits 0.
+    `--version` exits 0. The headless path reads the packet prompt from
+    stdin and emits a CONTRACT-COMPLIANT result derived from the packet's
+    own task_id/attempt_id/unit_id: a static payload cannot pass the
+    worker_result schema (task_id/attempt_id/coverage are per-claim), so
+    the fake must model what a real worker does — echo the packet's
+    identity back inside the contract shape.
     """
+    worker_src = (
+        "import sys, json, re\n"
+        "data = sys.stdin.read()\n"
+        "\n"
+        "def grab(key, default):\n"
+        "    m = re.search('\"' + key + '\"\\\\s*:\\\\s*\"([^\"]+)\"', data)\n"
+        "    return m.group(1) if m else default\n"
+        "\n"
+        "print(json.dumps({\n"
+        "    'schema_version': '1.0',\n"
+        "    'task_id': grab('task_id', 'task-x'),\n"
+        "    'attempt_id': grab('attempt_id', 'att-x'),\n"
+        "    'kind': grab('task_kind', 'hunt'),\n"
+        "    'coverage': [{'schema_version': '1.0', 'snapshot_id': 'snp-drv',\n"
+        "                  'unit_id': grab('unit_id', 'unit-drv'),\n"
+        "                  'dimension': 'observed_read',\n"
+        "                  'ranges': [{'path': 'src/app.py', 'line_start': 1, 'line_end': 2}]}],\n"
+        "    'records': [],\n"
+        "    'overflow': [],\n"
+        "    'usage': {'input_tokens': 12, 'output_tokens': 8, 'availability': 'exact'},\n"
+        "}))\n"
+    )
+    worker_path = directory / (name + "_worker.py")
+    worker_path.write_text(worker_src, encoding="utf-8")
     script = (
         "#!/bin/sh\n"
         "# Auto-generated fake host CLI (tests/cli/test_run_driver.py). Do not edit.\n"
@@ -87,8 +118,7 @@ def make_fake_host(directory: Path, name: str, headless_stdout: str) -> Path:
         f'  echo "fake-{name} version 9.9.9"\n'
         "  exit 0\n"
         "fi\n"
-        f"echo '{headless_stdout}'\n"
-        "exit 0\n"
+        f"exec python3 {shlex.quote(str(worker_path))}\n"
     )
     return write_executable(directory / name, script)
 
@@ -158,7 +188,7 @@ class TestRunDriverLoop(DriverLoopTestCase):
 
         res = self.cli_ok(
             ["run", "--run-dir", str(self.run_dir), "--host", "claude", "--concurrency", "2"],
-            env_path=bin_dir,
+            env_path=f"{bin_dir}:{os.environ['PATH']}",
         )
         self.assertEqual(res["run_id"], run_id)
         self.assertEqual(res["mode"], "claude")
@@ -186,7 +216,7 @@ class TestRunDriverLoop(DriverLoopTestCase):
 
         res = self.cli_ok(
             ["run", "--run-dir", str(self.run_dir), "--host", "codex"],
-            env_path=bin_dir,
+            env_path=f"{bin_dir}:{os.environ['PATH']}",
         )
         self.assertEqual(res["mode"], "codex")
         self.assertGreaterEqual(res["dispatch"]["submitted"], 1)
@@ -198,7 +228,7 @@ class TestRunDriverLoop(DriverLoopTestCase):
         make_fake_host(Path(bin_dir), "claude", FAKE_CLAUDE_HEADLESS_STDOUT)
         self.cli_ok(
             ["run", "--run-dir", str(self.run_dir), "--host", "claude"],
-            env_path=bin_dir,
+            env_path=f"{bin_dir}:{os.environ['PATH']}",
         )
         import sqlite3
         conn = sqlite3.connect(str(self.run_dir / "events.db"))
@@ -268,7 +298,7 @@ class TestRunDriverLoop(DriverLoopTestCase):
         make_fake_host(Path(bin_dir), "claude", FAKE_CLAUDE_HEADLESS_STDOUT)
         proc = run_cli(
             ["run", "--run-dir", str(self.run_dir), "--host", "claude", "--concurrency", "0"],
-            env_path=bin_dir,
+            env_path=f"{bin_dir}:{os.environ['PATH']}",
         )
         self.assertNotEqual(proc.returncode, 0)
         self.assertEqual(parse_envelope(proc)["error"]["code"], "INVALID_INPUT")
