@@ -34,18 +34,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 AUDIT_PY = REPO_ROOT / "skill" / "scripts" / "audit.py"
 FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures"
 
-FAKE_CLAUDE_HEADLESS_STDOUT = json.dumps({
-    "ok": True,
-    "coverage": [{"schema_version": "1.0", "snapshot_id": "snp-drv", "unit_id": "unit-drv", "dimension": "observed_read", "ranges": [{"path": "src/app.py", "line_start": 1, "line_end": 2}]}],
-    "usage": {"input_tokens": 12, "output_tokens": 8, "availability": "exact"},
-})
-FAKE_CODEX_HEADLESS_STDOUT = json.dumps({
-    "ok": True,
-    "coverage": [{"schema_version": "1.0", "snapshot_id": "snp-drv", "unit_id": "unit-drv", "dimension": "observed_read", "ranges": [{"path": "src/app.py", "line_start": 1, "line_end": 2}]}],
-    "usage": {"total_tokens": 42, "availability": "estimated"},
-})
-
-
 def run_cli(args, stdin_text=None, env_path=None):
     """Run audit.py in an isolated interpreter (-I) and return the process.
 
@@ -77,7 +65,7 @@ def write_executable(path: Path, content: str) -> Path:
     return path
 
 
-def make_fake_host(directory: Path, name: str, headless_stdout: str) -> Path:
+def make_fake_host(directory: Path, name: str) -> Path:
     """Create a fake host CLI script (tests/hosts/fake_hosts.py pattern).
 
     `--version` exits 0. The headless path reads the packet prompt from
@@ -184,7 +172,7 @@ class TestRunDriverLoop(DriverLoopTestCase):
     def test_run_host_claude_drives_target_to_complete(self):
         run_id = self.prepared_run_id()
         bin_dir = self.make_fake_bin_dir()
-        make_fake_host(Path(bin_dir), "claude", FAKE_CLAUDE_HEADLESS_STDOUT)
+        make_fake_host(Path(bin_dir), "claude")
 
         res = self.cli_ok(
             ["run", "--run-dir", str(self.run_dir), "--host", "claude", "--concurrency", "2"],
@@ -212,7 +200,7 @@ class TestRunDriverLoop(DriverLoopTestCase):
     def test_run_host_codex_drives_target_to_complete(self):
         self.prepared_run_id()
         bin_dir = self.make_fake_bin_dir()
-        make_fake_host(Path(bin_dir), "codex", FAKE_CODEX_HEADLESS_STDOUT)
+        make_fake_host(Path(bin_dir), "codex")
 
         res = self.cli_ok(
             ["run", "--run-dir", str(self.run_dir), "--host", "codex"],
@@ -225,7 +213,7 @@ class TestRunDriverLoop(DriverLoopTestCase):
     def test_run_trusted_usage_flows_from_adapter_to_ledger(self):
         self.prepared_run_id()
         bin_dir = self.make_fake_bin_dir()
-        make_fake_host(Path(bin_dir), "claude", FAKE_CLAUDE_HEADLESS_STDOUT)
+        make_fake_host(Path(bin_dir), "claude")
         self.cli_ok(
             ["run", "--run-dir", str(self.run_dir), "--host", "claude"],
             env_path=f"{bin_dir}:{os.environ['PATH']}",
@@ -295,7 +283,7 @@ class TestRunDriverLoop(DriverLoopTestCase):
     def test_invalid_concurrency_rejected(self):
         self.prepared_run_id()
         bin_dir = self.make_fake_bin_dir()
-        make_fake_host(Path(bin_dir), "claude", FAKE_CLAUDE_HEADLESS_STDOUT)
+        make_fake_host(Path(bin_dir), "claude")
         proc = run_cli(
             ["run", "--run-dir", str(self.run_dir), "--host", "claude", "--concurrency", "0"],
             env_path=f"{bin_dir}:{os.environ['PATH']}",

@@ -37,7 +37,6 @@ from auditkit.contracts.errors import HostFailureError
 from auditkit.hosts.errors import TerminationUncertainError
 from auditkit.hosts.retry import (
     CATEGORY_FORMAT,
-    CATEGORY_TIMEOUT,
     backoff_delay_for_failure,
     build_usage_envelope,
     classify_exit_failure,
