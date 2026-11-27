@@ -1351,7 +1351,7 @@ class AuditAppService:
                 # work existed. The continuation carries the leftover ranges
                 # as real queued work (consuming task budget honestly).
                 self._enqueue_packet_continuation(
-                    conn, run_id, claim, spec, kind, unit, leftover
+                    conn, run_path, run_id, claim, spec, kind, unit, leftover
                 )
 
         # Coverage wiring: the ranges supplied in the packet are recorded in the
@@ -1377,16 +1377,71 @@ class AuditAppService:
             )
         return receipt
 
-    # Packet-continuation bounds (RUN-LESSONS B12): a continuation hop is
-    # strictly smaller than its origin (oversized ranges are chunked by
-    # lines), and the depth cap bounds the chain -- beyond it the dropped
-    # tail stays honestly uncovered via packet_overflow events.
-    PACKET_CONTINUATION_MAX_DEPTH = 3
-    PACKET_CONTINUATION_CHUNK_LINES = 1500
+    # Packet-continuation bounds (RUN-LESSONS B12 / O-T01): continuation
+    # batches are packed by an ESTIMATED CHARACTER BUDGET -- the packet
+    # capacity is character-based, so a pure line-count chunk overflows
+    # again on long-line content and the depth cap then drops the tail
+    # (two real runs: 642 depth-cap drops in one run). Line widths come
+    # from the frozen manifest (bytes/line_count), batches each fit one
+    # packet, and every batch is a REAL queued task (parallel-friendly,
+    # no serial chain). The depth cap remains as the loop guard; both
+    # bounds are operator-tunable via run config keys
+    # packet_continuation_max_depth / packet_continuation_budget_chars.
+    PACKET_CONTINUATION_MAX_DEPTH = 8
+    PACKET_CONTINUATION_BUDGET_CHARS = 13600  # ~PacketBuilder.max_chars * 0.85
+    _CONTINUATION_DEFAULT_CHARS_PER_LINE = 80
+
+    def _continuation_config(self, run_path: Path) -> "tuple[int, int]":
+        """Operator-tunable continuation bounds from the run config.
+
+        Defaults keep every real-world hop inside one packet; the depth cap
+        is a loop guard, not a coverage control ([DA-10]: dropped tails are
+        the last resort, never a sampling mechanism).
+        """
+        try:
+            cfg = json.loads(
+                (Path(run_path) / "config.json").read_text(encoding="utf-8")
+            )
+        except (OSError, json.JSONDecodeError, ValueError):
+            cfg = {}
+        depth = cfg.get("packet_continuation_max_depth", self.PACKET_CONTINUATION_MAX_DEPTH)
+        budget = cfg.get("packet_continuation_budget_chars", self.PACKET_CONTINUATION_BUDGET_CHARS)
+        try:
+            depth = max(1, int(depth))
+        except (TypeError, ValueError):
+            depth = self.PACKET_CONTINUATION_MAX_DEPTH
+        try:
+            budget = max(200, int(budget))
+        except (TypeError, ValueError):
+            budget = self.PACKET_CONTINUATION_BUDGET_CHARS
+        return depth, budget
+
+    def _manifest_widths(self, run_path: Path) -> Dict[str, "tuple[int, int]"]:
+        """path -> (bytes, line_count) from the frozen manifest.
+
+        Requirements: SWR-004(清单真值) -- widths are program-owned facts,
+        never model estimates.
+        """
+        try:
+            manifest = json.loads(
+                (Path(run_path) / "snapshot" / "manifest.json").read_text(encoding="utf-8")
+            )
+        except (OSError, json.JSONDecodeError, ValueError):
+            return {}
+        out: Dict[str, "tuple[int, int]"] = {}
+        for f in manifest.get("files", []):
+            path = f.get("path", "")
+            if path:
+                out[path] = (
+                    max(0, int(f.get("bytes", 0) or 0)),
+                    max(1, int(f.get("line_count", 1) or 1)),
+                )
+        return out
 
     def _enqueue_packet_continuation(
         self,
         conn: Any,
+        run_path: Path,
         run_id: str,
         claim: Dict[str, Any],
         spec: Dict[str, Any],
@@ -1394,20 +1449,23 @@ class AuditAppService:
         unit: Dict[str, Any],
         leftover_ranges: List[Dict[str, Any]],
     ) -> None:
-        """Enqueue follow-up work for the ranges a packet dropped (RUN-LESSONS B12).
+        """Enqueue follow-up work for the ranges a packet dropped (RUN-LESSONS B12 / O-T01).
 
         Two real-target run series recorded packet_overflow whose dropped
-        ranges were never re-supplied: the unit's tail stayed under-covered
-        with no follow-up path. The continuation is a fresh task of the same
-        kind and priority carrying exactly the leftover ranges; oversized
-        ranges are chunked by lines so each hop strictly shrinks the
-        remaining work. Depth is capped -- past the cap the drop stays
-        honest (a packet_overflow event names the uncovered tail) instead of
-        looping.
+        ranges were never re-supplied. The leftover is split by an
+        ESTIMATED CHARACTER BUDGET (line widths from the frozen manifest --
+        a pure line-count chunk re-overflows on long-line content and the
+        depth cap then drops the tail), and each batch becomes a REAL
+        queued task of the same kind and priority, so the whole tail is
+        covered by parallel work instead of a serial chain. The depth cap
+        stays as the loop guard: past it the drop stays honest (a
+        packet_overflow event names the uncovered tail) instead of looping.
 
         Requirements: SWR-006(support), SWR-007(上下文供给) / DSR-059(溢出留痕), DSR-034(覆盖登记)
         """
         try:
+            max_depth, budget = self._continuation_config(run_path)
+            widths = self._manifest_widths(run_path)
             orig_row = conn.execute(
                 "SELECT priority FROM tasks WHERE task_id = ?", (claim["task_id"],)
             ).fetchone()
@@ -1416,10 +1474,10 @@ class AuditAppService:
             depth = 1
             if "-cont" in orig_unit_id:
                 try:
-                    depth = int(orig_unit_id.rsplit("-cont", 1)[1]) + 1
+                    depth = int(orig_unit_id.rsplit("-cont", 1)[1].split("b", 1)[0]) + 1
                 except ValueError:
                     depth = 2
-            if depth > self.PACKET_CONTINUATION_MAX_DEPTH:
+            if depth > max_depth:
                 EventStore(conn).append_event(
                     run_id,
                     "packet_overflow",
@@ -1430,52 +1488,89 @@ class AuditAppService:
                         "dimension": "packet_capacity",
                         "estimated_count": len(leftover_ranges),
                         "reason": (
-                            f"continuation depth cap {self.PACKET_CONTINUATION_MAX_DEPTH} "
+                            f"continuation depth cap {max_depth} "
                             "reached; the remaining ranges stay explicitly uncovered"
                         ),
                     },
                 )
                 return
-            chunked: List[Dict[str, Any]] = []
-            for rng in leftover_ranges:
+
+            def est_chars(rng: Dict[str, Any]) -> "tuple[int, int]":
+                path = rng.get("path", "")
                 start = int(rng.get("line_start", 1))
                 end = int(rng.get("line_end", start))
-                if end - start + 1 <= self.PACKET_CONTINUATION_CHUNK_LINES:
-                    chunked.append(dict(rng))
+                lines = max(1, end - start + 1)
+                nbytes, line_count = widths.get(path, (0, 0))
+                per = max(1, nbytes // line_count) if nbytes else self._CONTINUATION_DEFAULT_CHARS_PER_LINE
+                return lines * per, lines
+
+            # Split any single range whose own estimate exceeds the budget
+            # (line-sliced at the per-line width the manifest implies).
+            pieces: List[Dict[str, Any]] = []
+            for rng in leftover_ranges:
+                est, _lines = est_chars(rng)
+                if est <= budget:
+                    pieces.append(dict(rng))
                     continue
+                path = rng.get("path", "")
+                start = int(rng.get("line_start", 1))
+                end = int(rng.get("line_end", start))
+                nbytes, line_count = widths.get(path, (0, 0))
+                per = max(1, nbytes // line_count) if nbytes else self._CONTINUATION_DEFAULT_CHARS_PER_LINE
+                step = max(1, budget // per)
                 cursor = start
                 while cursor <= end:
-                    stop = min(end, cursor + self.PACKET_CONTINUATION_CHUNK_LINES - 1)
+                    stop = min(end, cursor + step - 1)
                     piece = dict(rng)
                     piece["line_start"] = cursor
                     piece["line_end"] = stop
-                    chunked.append(piece)
+                    pieces.append(piece)
                     cursor = stop + 1
-            cont_unit = dict(unit)
-            cont_unit["unit_id"] = f"{orig_unit_id}-cont{depth}"
-            cont_unit["ranges"] = chunked
-            cont_spec = dict(spec)
-            cont_spec["unit"] = cont_unit
-            cont_spec["unit_id"] = cont_unit["unit_id"]
-            task_id = TaskQueue(conn).enqueue(
-                run_id=run_id,
-                task_key=f"cont:{kind}:{claim['task_id']}:{depth}",
-                kind=kind,
-                spec=cont_spec,
-                priority=priority,
-            )
-            EventStore(conn).append_event(
-                run_id,
-                "packet_continuation_enqueued",
-                "service",
-                {
-                    "origin_task_id": claim["task_id"],
-                    "task_id": task_id,
-                    "unit_id": cont_unit["unit_id"],
-                    "ranges": len(chunked),
-                    "depth": depth,
-                },
-            )
+
+            # Greedy pack: each batch stays inside one packet's budget.
+            batches: List[List[Dict[str, Any]]] = []
+            current: List[Dict[str, Any]] = []
+            current_est = 0
+            for piece in pieces:
+                piece_est, _ = est_chars(piece)
+                if current and current_est + piece_est > budget:
+                    batches.append(current)
+                    current, current_est = [], 0
+                current.append(piece)
+                current_est += piece_est
+            if current:
+                batches.append(current)
+
+            multi = len(batches) > 1
+            for idx, batch in enumerate(batches, start=1):
+                suffix = f"-cont{depth}" + (f"b{idx}" if multi else "")
+                cont_unit = dict(unit)
+                cont_unit["unit_id"] = f"{orig_unit_id}{suffix}"
+                cont_unit["ranges"] = batch
+                cont_spec = dict(spec)
+                cont_spec["unit"] = cont_unit
+                cont_spec["unit_id"] = cont_unit["unit_id"]
+                task_id = TaskQueue(conn).enqueue(
+                    run_id=run_id,
+                    task_key=f"cont:{kind}:{claim['task_id']}:{depth}:{idx}",
+                    kind=kind,
+                    spec=cont_spec,
+                    priority=priority,
+                )
+                EventStore(conn).append_event(
+                    run_id,
+                    "packet_continuation_enqueued",
+                    "service",
+                    {
+                        "origin_task_id": claim["task_id"],
+                        "task_id": task_id,
+                        "unit_id": cont_unit["unit_id"],
+                        "ranges": len(batch),
+                        "depth": depth,
+                        "batch": idx,
+                        "batches": len(batches),
+                    },
+                )
         except Exception as cont_err:  # noqa: BLE001 -- best effort: the
             # packet_overflow event above already records the drop honestly.
             EventStore(conn).append_event(

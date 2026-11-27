@@ -101,6 +101,16 @@
           "type": "boolean"
         }
       }
+    },
+    "packet_continuation_max_depth": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Packet-continuation chain guard (O-T01): beyond this depth a dropped tail stays honestly uncovered. Default 8."
+    },
+    "packet_continuation_budget_chars": {
+      "type": "integer",
+      "minimum": 200,
+      "description": "Estimated character budget per continuation batch (O-T01): batches are packed from manifest line widths to fit one packet. Default 13600."
     }
   }
 }
