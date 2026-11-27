@@ -213,6 +213,20 @@ class SelfReviewCollector:
                 "renegotiate the budget, shrink scope via include rules, or "
                 "accept the sampled coverage explicitly before running",
             ))
+        # DR-012 (G-3): guard-baseline utility -- recorded hits with zero
+        # triage consumption mean the recon baseline's utility was never
+        # realized (real-run evidence: 444 hits recorded, none triaged).
+        guard_reported = (stats or {}).get("guard_baseline_reported")
+        guard_consumed = (stats or {}).get("guard_triage_consumed")
+        if guard_reported is not None and guard_reported > 0 and not guard_consumed:
+            out.append(self._anomaly(
+                "adaptation",
+                f"guard baseline recorded {guard_reported} hits with zero triage follow-up",
+                "the recon guard baseline's utility was unrealized -- recorded "
+                "hits never entered triage follow-up (DR-012)",
+                "either consume the baseline in triage follow-up tasks or "
+                "state the baseline as informational in the coverage claims",
+            ))
         calibration = (stats or {}).get("calibration") or {}
         observed_rate = calibration.get("observed_candidates_per_hunt_unit")
         configured = calibration.get("configured_candidate_rate_estimate")

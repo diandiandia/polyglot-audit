@@ -344,6 +344,11 @@ JVM_BUILD_FILE_MARKERS = (
 )
 JVM_BUILD_SUFFIX_MARKERS = (".sbt",)
 JVM_BUILD_PATH_PREFIX_MARKERS = (".mvn/",)
+# DA-03 (real-run evidence, zcode-series): an Android application manifest
+# is a strong JVM-platform signal for platform-conditional languages --
+# Kotlin under an Android project targets the JVM/ART runtime by default,
+# so the Java base index applies instead of leaving the platform unknown.
+ANDROID_PLATFORM_MARKERS = ("AndroidManifest.xml",)
 JVM_CONDITIONAL_LANGUAGES = ("kotlin", "scala")
 # --- Design §10.1 dossier layout (path-B alignment) -------------------------
 # dossier_version marks the on-disk layout recorded in run.json so a future
@@ -398,6 +403,8 @@ def detect_jvm_build_evidence_files(paths: List[str]) -> List[str]:
         elif normalized.startswith(JVM_BUILD_PATH_PREFIX_MARKERS):
             evidence.append(p)
         elif name.endswith(JVM_BUILD_SUFFIX_MARKERS):
+            evidence.append(p)
+        elif name in ANDROID_PLATFORM_MARKERS:
             evidence.append(p)
     return sorted(evidence)
 
@@ -1387,9 +1394,59 @@ class AuditAppService:
     # no serial chain). The depth cap remains as the loop guard; both
     # bounds are operator-tunable via run config keys
     # packet_continuation_max_depth / packet_continuation_budget_chars.
+    CALIBRATION_AFTER_HUNTS = 10  # SYSTEM_DESIGN §预算: 首批 10 个任务后校准
     PACKET_CONTINUATION_MAX_DEPTH = 8
     PACKET_CONTINUATION_BUDGET_CHARS = 13600  # ~PacketBuilder.max_chars * 0.85
     _CONTINUATION_DEFAULT_CHARS_PER_LINE = 80
+
+    def _record_budget_calibration(
+        self,
+        run_dir: Path,
+        run_id: str,
+        planned_verify_per_hunt: float,
+        after_hunts: int,
+    ) -> bool:
+        """SYSTEM_DESIGN §预算 (G-1): one-shot in-run estimate calibration.
+
+        After ``after_hunts`` completed hunt tasks, compare the planned
+        verify-per-hunt allowance against the observed verification demand
+        and record the deviation once in the ledger (the finalize-time
+        self-review surfaces the same numbers). Returns True when the
+        calibration event fired (the caller stops re-checking).
+        """
+        try:
+            conn = self._open_run_db(run_dir)
+            hunts_done = conn.execute(
+                "SELECT count(*) AS c FROM tasks WHERE run_id = ? "
+                "AND kind = 'hunt' AND state = 'done'",
+                (run_id,),
+            ).fetchone()["c"]
+            if hunts_done < after_hunts:
+                return False
+            verify_enqueued = conn.execute(
+                "SELECT count(*) AS c FROM tasks WHERE run_id = ? "
+                "AND kind = 'verify'",
+                (run_id,),
+            ).fetchone()["c"]
+            observed = round(verify_enqueued / hunts_done, 4) if hunts_done else None
+            EventStore(conn).append_event(
+                run_id,
+                "budget_estimate_calibrated",
+                "service",
+                {
+                    "hunts_done": hunts_done,
+                    "verify_enqueued": verify_enqueued,
+                    "planned_verify_per_hunt": planned_verify_per_hunt,
+                    "observed_verify_per_hunt": observed,
+                    "deviation_from_planned": (
+                        round(abs(observed - planned_verify_per_hunt), 4)
+                        if observed is not None else None
+                    ),
+                },
+            )
+            return True
+        except Exception:  # noqa: BLE001 -- calibration must never break dispatch
+            return False
 
     def _continuation_config(self, run_path: Path) -> "tuple[int, int]":
         """Operator-tunable continuation bounds from the run config.
@@ -3548,6 +3605,7 @@ class AuditAppService:
                 return "report_failed"
 
         def execute_one_task(_slot: int) -> tuple:
+            nonlocal calibration_done
             """Claim ONE task and drive it through the full pipeline.
 
             Returns an (outcome, task_id) tuple; outcomes:
@@ -3846,6 +3904,17 @@ class AuditAppService:
             with ctrl_lock:
                 ctrl.on_success()
                 counters["submitted"] += 1
+
+            # SYSTEM_DESIGN §预算 (G-1): after the first
+            # CALIBRATION_AFTER_HUNTS completed hunt tasks the planned
+            # verify-per-hunt allowance is compared against the observed
+            # verification demand; the deviation is recorded once in the
+            # ledger and surfaces again in the finalize-time self-review
+            # (detect_cost calibration check).
+            if not calibration_done:
+                calibration_done = self._record_budget_calibration(
+                    run_dir, run_id, planned_verify_per_hunt, self.CALIBRATION_AFTER_HUNTS
+                )
             return ("submitted", claim["task_id"])
             # Defensive catch-all (RUN-LESSONS: a None return here crashes the
             # dispatch loop with TypeError at fut.result() unpacking).
@@ -3854,6 +3923,16 @@ class AuditAppService:
         stop_reason: Optional[str] = None
         drain_seen = False
         blocked_seen = False
+        # G-1 in-run estimate calibration state (fires once per run).
+        calibration_done = False
+        planned_verify_per_hunt = 2.0
+        try:
+            with open(Path(run_dir) / "config.json", "r", encoding="utf-8") as _cfg_f:
+                planned_verify_per_hunt = float(
+                    json.load(_cfg_f).get("verify_budget_multiplier", 2.0) or 2.0
+                )
+        except (OSError, ValueError):
+            pass
         # Pool sizing: the controller's maximum bounds the in-flight cap, so a
         # pool of that size can always satisfy the current AIMD level.
         with concurrent.futures.ThreadPoolExecutor(
@@ -4545,6 +4624,24 @@ class AuditAppService:
         }
         executed_counts["report"] = executed_counts.get("report", 0) + REPORT_STAGE_TASKS
         cost_tracker.set_executed_tasks(executed_counts)
+        # G-2 (SYSTEM_DESIGN §6.10): metric inputs wired from the ledger.
+        cost_tracker.set_candidate_count(
+            len(self._collect_final_candidates(conn, run_id))
+        )
+        _att_total = conn.execute(
+            "SELECT count(*) AS cnt FROM attempts a JOIN tasks t ON a.task_id = t.task_id "
+            "WHERE t.run_id = ?",
+            (run_id,),
+        ).fetchone()["cnt"]
+        _att_missing = conn.execute(
+            "SELECT count(*) AS cnt FROM attempts a JOIN tasks t ON a.task_id = t.task_id "
+            "LEFT JOIN usage_records u ON u.attempt_id = a.attempt_id "
+            "WHERE t.run_id = ? AND (u.attempt_id IS NULL OR u.availability = 'unavailable')",
+            (run_id,),
+        ).fetchone()["cnt"]
+        cost_tracker.set_usage_coverage(
+            max(0, _att_total - _att_missing), _att_total
+        )
         self._apply_usage_records(conn, run_id, cost_tracker)
         cost_metrics = cost_tracker.compute_metrics(
             coverage_summary.get("total_inventoried_lines", 0),
@@ -5097,6 +5194,20 @@ class AuditAppService:
             1 for e in events if e["event_type"] == "coverage_unreported"
         )
 
+        # DR-012 (G-3): guard-baseline utility -- the recon baseline only
+        # pays off if its hits are consumed by triage follow-up; recorded
+        # hits with zero consumption mean the baseline's utility was
+        # unrealized (real-run evidence: 444 hits recorded, none triaged).
+        guard_baseline_reported = 0
+        for e in events:
+            if e["event_type"] == "guard_baseline":
+                guard_baseline_reported += int(
+                    (e["payload"] or {}).get("guards_reported", 0) or 0
+                )
+        triage_recorded = sum(
+            1 for e in events if e["event_type"] == "triage_recorded"
+        )
+
         # RUN-LESSONS (SYSTEM_DESIGN §预算): the per-unit candidate estimate
         # (0.2) is calibrated against the observed rate at finalize; the
         # deviation is written into the self-review instead of silently
@@ -5137,6 +5248,8 @@ class AuditAppService:
             "error_events": error_events,
             "usage_missing_count": int(usage_missing_rows),
             "coverage_unreported_count": coverage_unreported,
+            "guard_baseline_reported": guard_baseline_reported,
+            "guard_triage_consumed": triage_recorded,
             "budget_coverage_forecast": plan_dict.get("budget_coverage_forecast"),
             "calibration": calibration,
             "plan_hunt_units": plan_dict.get("hunt_units"),

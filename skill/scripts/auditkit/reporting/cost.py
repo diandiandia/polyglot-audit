@@ -57,6 +57,9 @@ class CostTracker:
 
         Requirements: SWR-020(缺省不可得) / DSR-067(遥测初始化), DSR-033(来源保留)
         """
+        self.candidate_count: Optional[int] = None
+        self.usage_covered: Optional[int] = None
+        self.usage_total: Optional[int] = None
         self.stage_tasks: Dict[str, int] = {"recon": 0, "hunt": 0, "verify": 0, "report": 0}
         # O-03: executed tasks per stage (settled done / quarantined / failed
         # work actually processed), recorded by the LED wiring. Empty until a
@@ -145,6 +148,15 @@ class CostTracker:
         self.cache_hits = int(count)
         self.cache_hits_source = source
         self.cache_hits_reason = None
+
+    def set_candidate_count(self, count: int) -> None:
+        """Caller-supplied confirmed-candidate count for §6.10 rates."""
+        self.candidate_count = count
+
+    def set_usage_coverage(self, covered: int, total: int) -> None:
+        """Caller-supplied usage telemetry coverage (G-2 §6.10: 带 token 用量的任务比例)."""
+        self.usage_covered = covered
+        self.usage_total = total
 
     def set_protocol_overhead(self, overhead: int, source: str = "exact") -> None:
         """Record caller-supplied protocol-overhead telemetry (never defaulted).
@@ -257,5 +269,53 @@ class CostTracker:
             "cache_hits": self._optional_metric(self.cache_hits, self.cache_hits_source, self.cache_hits_reason),
             "protocol_overhead": self._optional_metric(
                 self.protocol_overhead, self.protocol_overhead_source, self.protocol_overhead_reason
+            ),
+        }
+        out["six_ten_metrics"] = self._six_ten_metrics(out)
+
+    def _six_ten_metrics(self, out: Dict[str, Any]) -> Dict[str, Any]:
+        """SYSTEM_DESIGN §6.10 metric table (M4: 可自动产出) -- honest
+        computed/unknown statuses, never fabricated numbers."""
+        executed = out.get("total_executed")
+        stage_executed = out.get("stage_tasks_executed") or {}
+        hunt_exec = stage_executed.get("hunt", 0)
+        hunt_share = round(hunt_exec / executed, 4) if executed else None
+
+        verify_exec = stage_executed.get("verify", 0)
+        cand = self.candidate_count
+        verify_per_candidate = (
+            round(verify_exec / cand, 3) if cand and cand > 0 else None
+        )
+
+        quarantined = stage_executed.get("quarantined", 0)
+        failed = stage_executed.get("failed", 0)
+        invalid_ratio = (
+            round((quarantined + failed) / executed, 4) if executed else None
+        )
+
+        if self.usage_covered is not None and self.usage_total:
+            usage_ratio = round(self.usage_covered / self.usage_total, 4)
+        else:
+            usage_ratio = None
+
+        def _m(value, status, reason=None):
+            return {"value": value, "status": status, **({"reason": reason} if reason else {})}
+
+        return {
+            "hunt_share_of_executed": (
+                _m(hunt_share, "computed") if hunt_share is not None
+                else _m(None, "unknown", "no executed tasks")
+            ),
+            "verify_tasks_per_candidate": (
+                _m(verify_per_candidate, "computed") if verify_per_candidate is not None
+                else _m(None, "unknown", "no confirmed candidates or executed verify tasks")
+            ),
+            "invalid_task_ratio": (
+                _m(invalid_ratio, "computed") if invalid_ratio is not None
+                else _m(None, "unknown", "no executed tasks")
+            ),
+            "usage_task_coverage_ratio": (
+                _m(usage_ratio, "computed") if usage_ratio is not None
+                else _m(None, "unknown", "usage coverage not supplied by the ledger wiring")
             ),
         }

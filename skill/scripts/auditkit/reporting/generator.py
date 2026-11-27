@@ -791,6 +791,28 @@ class ReportGenerator:
         for stg, cnt in cost_metrics.get("stage_tasks", {}).items():
             lines.append(f"| `{stg}` | {cnt} |")
 
+        # G-2: SYSTEM_DESIGN §6.10 metric table (M4: auto-produced), honest
+        # computed/unknown statuses -- missing data is never rendered as zero.
+        m10 = cost_metrics.get("six_ten_metrics") or {}
+        if m10:
+            lines.append(t("metrics_six_ten"))
+            lines.append("")
+            lines.append(
+                f"| {t('col_metric')} | {t('col_value')} | {t('col_status')} |"
+            )
+            lines.append("|---|---|---|")
+            for key, label in (
+                ("hunt_share_of_executed", "m_hunt_share"),
+                ("verify_tasks_per_candidate", "m_verify_per_candidate"),
+                ("invalid_task_ratio", "m_invalid_ratio"),
+                ("usage_task_coverage_ratio", "m_usage_coverage"),
+            ):
+                m = m10.get(key) or {}
+                val = m.get("value")
+                status = m.get("status", "unknown")
+                shown = val if val is not None else "unknown"
+                lines.append(f"| {t(label)} | {shown} | {status} |")
+
         return "\n".join(lines)
 
     def _render_skill_review_md(self, anomalies: List[Dict[str, Any]], generation_id: str) -> str:
