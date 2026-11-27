@@ -408,6 +408,7 @@ class ReportGenerator:
         lines.append(t("detailed_findings"))
         lines.append("")
         for f in sorted_confirmed:
+          try:
             fid = f.get("finding_id")
             _rating = f.get("rating")
             urg = _rating.get("final_urgency", "P3") if isinstance(_rating, dict) else "P3"
@@ -444,11 +445,18 @@ class ReportGenerator:
             lines.append(f"- **{t('guards')}**:")
             if guards:
                 for g in guards:
-                    lines.append(
-                        f"  - `{g.get('guard_id', '')}` [{g.get('status', 'unknown')}] "
-                        f"{g.get('mechanism', '')} "
-                        f"(applicability: {g.get('applicability', 'N/A')})"
-                    )
+                    # Real-model shape guard (O-01 family): workers emit
+                    # guard entries as bare strings as often as dicts.
+                    # Render string entries as the raw text they carry;
+                    # only dict entries have the structured fields.
+                    if isinstance(g, dict):
+                        lines.append(
+                            f"  - `{g.get('guard_id', '')}` [{g.get('status', 'unknown')}] "
+                            f"{g.get('mechanism', '')} "
+                            f"(applicability: {g.get('applicability', 'N/A')})"
+                        )
+                    else:
+                        lines.append(f"  - {g}")
             else:
                 lines.append(f"  - {t('guards_none')}")
             lines.append(f"- **{t('attacker')}**: `{f.get('attacker', 'unknown')}`")
@@ -472,6 +480,20 @@ class ReportGenerator:
             lines.append("")
             lines.append(f"{t('remediation')}: {remediation.get('change', 'N/A')}")
             lines.append(f"{t('regression_test')}: {remediation.get('regression_test', 'N/A')}")
+            lines.append("")
+          except Exception as render_err:  # noqa: BLE001 -- per-finding isolation
+            # One real-shaped finding must not take down the whole report:
+            # degrade THAT finding to an honest error entry (RUN-LESSONS
+            # L-06 discipline applied to rendering); its full record stays
+            # in findings.json for manual review.
+            fid = f.get("finding_id", "?") if isinstance(f, dict) else "?"
+            lines.append(f"### {fid}")
+            lines.append("")
+            lines.append(
+                f"> [degraded] this finding could not be fully rendered "
+                f"({type(render_err).__name__}); its record remains in "
+                f"findings.json for manual review"
+            )
             lines.append("")
 
         lines.append(t("limitations"))
@@ -682,7 +704,12 @@ class ReportGenerator:
             lines.append("- —")
         for f in findings:
             prov = f.get("provenance", {}) or {}
-            prov_parts = " | ".join(f"{k}: `{json.dumps(v, ensure_ascii=False)}`" for k, v in prov.items())
+            # Real-model shape guard (O-01/DA-14 family): a bare-string
+            # provenance renders verbatim; only dict provenance has keys.
+            if isinstance(prov, dict):
+                prov_parts = " | ".join(f"{k}: `{json.dumps(v, ensure_ascii=False)}`" for k, v in prov.items())
+            else:
+                prov_parts = f"`{prov}`"
             lines.append(f"- **{f.get('finding_id')}**: {prov_parts}")
 
         return "\n".join(lines)
