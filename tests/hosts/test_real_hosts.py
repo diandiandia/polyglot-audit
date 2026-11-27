@@ -56,14 +56,14 @@ def _assert_no_cli_argument_rejection(feature, msg: str) -> None:
 @unittest.skipUnless(CLAUDE_BIN, "real claude CLI not available on PATH")
 class TestRealClaudeHost(unittest.TestCase):
 
-    def test_version_probe(self):
+    def test_10_version_probe(self):
         """DSR-048: real Claude CLI answers --version with evidence."""
         feature = probe_cli_version(CLAUDE_BIN, timeout=30)
         self.assertEqual(feature["state"], FeatureState.ENFORCED)
         self.assertIn("method", feature)
         self.assertTrue(feature["evidence"])
 
-    def test_headless_probe(self):
+    def test_20_headless_probe(self):
         """DSR-002: real headless invocation; honest status either way.
 
         P0-1 guard: a CLI argument rejection in the result is a CODE defect
@@ -80,7 +80,7 @@ class TestRealClaudeHost(unittest.TestCase):
             "claude headless probe transmitted an invalid CLI argument",
         )
 
-    def test_auth_failure_classification(self):
+    def test_30_auth_failure_classification(self):
         """DSR-048: authentication failure surfaces as a classified,
         non-retryable host failure. Strips credential env vars to force the
         unauthenticated path where the host honours them."""
@@ -136,13 +136,13 @@ class TestRealClaudeHost(unittest.TestCase):
 @unittest.skipUnless(CODEX_BIN, "real codex CLI not available on PATH")
 class TestRealCodexHost(unittest.TestCase):
 
-    def test_version_probe(self):
+    def test_10_version_probe(self):
         """DSR-048: real Codex CLI answers --version with evidence."""
         feature = probe_cli_version(CODEX_BIN, timeout=30)
         self.assertEqual(feature["state"], FeatureState.ENFORCED)
         self.assertTrue(feature["evidence"])
 
-    def test_headless_probe(self):
+    def test_20_headless_probe(self):
         """DSR-003: Codex probed independently with one real headless call.
 
         P0-1 guard: the real CLI takes the prompt as a POSITIONAL argument of
@@ -163,7 +163,7 @@ class TestRealCodexHost(unittest.TestCase):
             "codex headless probe transmitted an invalid CLI argument",
         )
 
-    def test_auth_failure_classification(self):
+    def test_30_auth_failure_classification(self):
         """DSR-048: Codex auth failure classification on a real exit."""
         env = dict(os.environ)
         for key in list(env):

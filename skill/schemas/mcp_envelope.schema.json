@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "mcp_envelope.schema.json",
+  "title": "MCP stdio wire envelope (JSON-RPC 2.0)",
+  "description": "Wire format for the stdio MCP candidate server (IFC-06 mcp / [DA-02]). Standard MCP framing: JSON-RPC 2.0 requests carry method (initialize / notifications:initialized / tools:list / tools:call) and MAY carry id (absent on notifications, no reply); responses carry result or error. The schema cannot express the result-xor-error exclusivity inside the supported keyword subset -- the server never emits both (enforced in mcp_adapter code, see description of the response branch). The legacy direct-invocation compat form (tool name as method) is outside this schema's scope and is documented in INTERFACE_CONTRACTS IFC-06. One envelope per line on stdio; diagnostics never mix into stdout.",
+  "type": "object",
+  "required": [
+    "jsonrpc"
+  ],
+  "properties": {
+    "jsonrpc": {
+      "const": "2.0"
+    },
+    "id": {
+      "description": "Request id; absent for notifications. JSON-RPC allows string or integer ids -- the union type is outside the supported schema subset, so no type constraint is applied here (the adapter accepts both). Responses echo the request id."
+    },
+    "method": {
+      "description": "Standard MCP methods served by the candidate server.",
+      "enum": [
+        "initialize",
+        "notifications/initialized",
+        "tools/list",
+        "tools/call"
+      ]
+    },
+    "params": {
+      "description": "initialize: protocolVersion plus client info/capabilities. tools/call: name (next/submit/status/read_artifact) and the tool's own arguments. tools:list and notifications may omit params.",
+      "type": "object"
+    },
+    "result": {
+      "description": "Response success payload (responses only; never emitted together with error).",
+      "type": "object"
+    },
+    "error": {
+      "description": "Response failure object (responses only): JSON-RPC reserved codes plus -32601 for unknown method.",
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "integer"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "description": "Request or notification: carries method; id absent on notifications.",
+      "required": [
+        "method"
+      ]
+    },
+    {
+      "description": "Response: carries result or error (server code enforces never both).",
+      "oneOf": [
+        {
+          "required": [
+            "result"
+          ]
+        },
+        {
+          "required": [
+            "error"
+          ]
+        }
+      ]
+    }
+  ]
+}

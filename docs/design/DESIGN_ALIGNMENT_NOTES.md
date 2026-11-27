@@ -181,6 +181,17 @@
 | 回填状态 | 已实现；版本 0.1.4 → 0.1.5。真实 run 缺口事实不变：11-23 的 1012 个隔离为终态诚实 gap（恢复需 finalize 后 scoped follow-up run）；11-26 的 +29 个同。 |
 | 待设计审查确认 | ① 熔断触发是否应自动 resume（当前设计为人工/监督方 resume——保守优先）；② 熔断阈值（3 连败）在分钟级退避日程下的适配性；③ paused 事件的 reason 长度上限（256）与多 worker 并发触发的幂等性已按 best-effort 处理，是否需要显式去重。 |
 
+### DA-16 continuation 字节预算分批（长线内容不再触发深度帽截断）
+
+| 项 | 内容 |
+|---|---|
+| 决议来源 | 两运行实锤（zcode O-05 + 本次大型多语言运行）：packet 溢出的 continuation 以纯行数分块（1500 行），长行内容上单块仍超字符预算 → 串行链在深度帽 3 处截断，单运行 642 次尾部永久欠覆盖——与 [DA-10] 全量覆盖语义冲突。包容量本质是字符预算（PacketBuilder max_chars=16000），分块必须同口径。 |
+| 决议内容 | ① continuation 余量按**估算字符预算**贪婪装包：行宽取自冻结 manifest 的 bytes/line_count（程序自有事实，非模型估计），未知路径回退 80 字符/行。② 每批一个真实 continuation 任务（task_key 含批次号，并行友好非串行链）；批数随尾部规模自然增长。③ 深度帽保留为**环保护**（默认 3→8），超出仍诚实丢弃并记 packet_overflow；④ 两个上界均可经 run_config 配置：packet_continuation_max_depth（默认 8）、packet_continuation_budget_chars（默认 13600 ≈ 包容量 × 0.85）；非法值回退安全默认。 |
+| 设计出处 | DSR-059（拆分或标缺口、禁止隐式截断——批处理即"拆分"的并行实现）、DSR-034（覆盖登记：批区间入 continuation 单元）、[DA-10]（截断即欠覆盖，全量语义下为最后手段）。 |
+| 代码位置 | app/service.py（_continuation_config / _manifest_widths / _enqueue_packet_continuation 重写）、schemas/run_config.schema.json（2 新键）。测试：tests/e2e/test_continuation_batching.py（长线文件全尾覆盖 ≥5 批、行联合覆盖、零深度帽丢弃、无链加深；深度帽守卫；坏配置回退）。 |
+| 回填状态 | 已实现；版本 0.1.10 → 0.1.11；DSR-059 条款已以 [DA-16] 注记回填；run_config.schema.json 已增 2 键。 |
+| 待设计审查确认 | ① 默认深度帽 8 与预算 13600 是否随真实溢出分布再校准；② 批数无上限（尾部 1MB → ~75 批并发入队）对预算记账与调度的冲击评估；③ manifest 缺失路径的 80 字符/行回退宽度是否需要按语言分层。 |
+
 ## 与并行工作流的接口确认（本文件随实现更新）
 
 | 接口 | 变更 | 消费方 |
@@ -189,4 +200,8 @@
 | `AuditAppService.finalize` | 新增 InvalidStateError 语义：有效租约内 claimed/running attempt >0 时拒绝 finalize。`tests/cli/test_cli.py::test_prepare_run_next_start_hostfail_submit_finalize` 现会命中该门禁（finalize 前需先 pause 或排空在途 claim）——该文件属 MCP/CLI 并行工作流，需同步更新。 | `audit.py finalize`、MCP finalize 工具、tests/cli |
 | `KnowledgeCatalog.get_applicable_indices` | `is_jvm` 升级为三态（默认 None=未知）。`audit.py`/hosts 层不直接调用。 | service 两处调用点、tests/knowledge |
 | 事件账本新增事件类型 | `frontier_recorded`、`sink_probe_recorded`、`connector_paired`、`unpaired_half_chain`、`verify_task_spec_rejected`；`run_finalized` payload 新增 `unprocessed_units` 明细。 | MCP/CLI 工具面若透传事件列表，属只读追加，向后兼容 |
+| run_config 新增 continuation 配置键（DA-16） | packet_continuation_max_depth（默认 8，环保护）、packet_continuation_budget_chars（默认 13600，≈包容量×0.85）入 run_config.schema.json；非法值回退安全默认。 | run 驱动（溢出 continuation 入队）、tests/e2e/test_continuation_batching.py |
+| validation.json 增记被拒载荷（DA-13/14 族） | worker_result_received 字段：schema/coverage 契约拒绝时记录收到的 worker_result verbatim（DSR-018 可审计性：拒绝对照原始内容）。 | submit 失败路径、卷宗复审 |
+| claude adapter usage 信封采集（O-T03） | adapter 经 --output-format json 提取 CLI 信封 usage（envelope usage→exact 遥测）；旧格式回退兼容。codex 侧未实现（headless 不可实测，保持 unknown）。 | usage_settled 事件、COST.md token 计量 |
+| 熔断安全暂停接口（DA-15） | execute_one_task 识别 breaker_tripped 标记 → service.pause（幂等 best-effort）+ 任务可重试重排 → dispatch blocked-drain 退出；resume 需外部触发（人工/监督哨兵）。 | run 驱动、运维 resume 流程 |
 | 自审输出与卷宗工件路径（DA-07） | `ReportGenerator` 自审输出移至 `skill-review/SKILL-REVIEW.md`（常驻）与 `skill-review/portable.json`（可移植导出，开启时；原 `report/skill-review.json`），`report/` 只保留 §9.3 七件套；service 新增卷宗工件：`run.json`、`plan/plan.json`、`inventory/summary.json`、`recon/recon-result.json`、`tasks/<id>/{result,usage,validation}.json`、`candidates/final.json`、`findings/<finding_id>/{record,history}.json`；plan 读取点回退旧 `plan.json`（只读）。`audit.py report` 只读 `report/REPORT.md`，不读自审，无破坏。 | `audit.py report`（确认无影响）、tests/reporting、tests/swr/test_swr_010、test_swr_012、test_swr_013、test_swr_016、tests/e2e |

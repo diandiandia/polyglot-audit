@@ -75,7 +75,7 @@
 | `status` | run_id → 状态、阶段、计数、预算及限制 | 只读；未知字段不可表现为 0。 |
 | `finalize` | run_id、reason? → generation/终态或错误 | 参照 DDS-03，未处理和未知必须进入 incomplete；只在工件及门禁对账后提交终态。 |
 | `resume` | run_id → 状态及恢复结果 | 检查版本、DB 与工件摘要；不覆盖快照、并发拒绝重复恢复。 |
-| `host-fail` | run_dir、claim（run/task/attempt/generation/token）、错误原因与 retryable 分类、max_retries → requeued 或 quarantined 结果 | 可重试失败在限额内回队列：新 attempt generation+1 并重新预留；不可重试或超限转 quarantined 并记 coverage_gap；终止不确定的失败保留预算预留并成为 incomplete 原因；错误结果不得归一为成功（绑定 DSR-065）。 |
+| `host-fail` | run_dir、claim（run/task/attempt/generation/token）、错误原因与 retryable 分类、max_retries → requeued 或 quarantined 结果 | 可重试失败在限额内回队列：新 attempt generation+1 并重新预留；不可重试或超限转 quarantined 并记 coverage_gap；终止不确定的失败保留预算预留并成为 incomplete 原因；错误结果不得归一为成功（绑定 DSR-065）。**[DA-15] 修订**：携带 breaker_tripped 标记的失败例外——run 安全暂停（幂等）+ 该任务按可重试重排，零隔离；resume 需外部触发。 |
 | `read_artifact` | run_id、artifact_id → 内容/引用 | 查询范围受 run 限制；不接受调用者自定义绝对路径，鉴权及传输依赖宿主。 |
 
 `run` 挂载的 driver 循环（`run_dispatch_loop`）为内部操作而非新增契约：消费同一服务的 `next → start → submit` 协议并施加 AIMD 并发控制；其行为由 IFC-06 的 `run` 行约束。
@@ -104,7 +104,7 @@ driver 拉起的无头 worker 进程不得继承 runner 的标准输入流：std
 |---|---|---|
 | `guide` | `--query TEXT --language LANG --json` | 轻量安全问答：仅按方法知识与目录卡片作答，不创建 run、事件库或审计卷宗；空、过短或无请求动词的模糊请求返回澄清问题，不静默启动完整审计。 |
 | `doctor` | `--host claude|codex|session`，`--json` | 非破坏性能力探测；需要启动真实 CLI 的检查需显式 `--probe` 并提前告知用户；返回 capability 对象数组。 |
-| `prepare` | `--target PATH --run-dir PATH --config PATH --json` | config 是 RunConfig；创建新 run、固定快照和计划，返回 run ID、snapshot ID、范围/预算摘要。已有 run 目录拒绝覆盖。 |
+| `prepare` | `--target PATH --run-dir PATH --config PATH --json` | config 是 RunConfig；创建新 run、固定快照和计划，返回 run ID、snapshot ID、范围/预算摘要。已有 run 目录拒绝覆盖。**[DA-16] 增补**：RunConfig 新键 `packet_continuation_max_depth`（默认 8，环保护）与 `packet_continuation_budget_chars`（默认 13600，≈包容量×0.85）——continuation 余量按估算字符预算装包（行宽取自冻结 manifest），每批一个真实任务。 |
 | `run` | `--run-dir PATH --host claude|codex --concurrency N --json` | 激活或继续 driver；仅对能力允许的参数启动宿主。用户取消后停止派发并处理在途任务，不以取消信号冒充进程已退出。 |
 | `next` | `--run-dir PATH --batch N --json` | 默认只领取会话内任务，N 正整数，返回至多 N 个 Claim 以及不足原因；含令牌的输出只能交给获授权执行者，不进审计日志。 |
 | `start` | `--run-dir PATH --json`，stdin 为 claim 认证对象 | 标记指定 attempt 开始，成功返回状态；过期/错误令牌拒绝。 |
@@ -136,7 +136,7 @@ JSON 输出信封固定为 `{"schema_version":"1.0","ok":true,"value":{...}}` �
 
 约束应使用事务、唯一约束和外键共同实现；DB 只能由应用层访问。不可变事件存放结果/工件引用，而非明文 token。claim 校验在已完成重传路径先检查已完成结果与凭证摘要，再检查过期；对未完成 attempt 才允许依据过期条件拒绝。用量 `u > r` 属于异常事实：事务记录外部报告和能力失效，允许异常态突破账本数值的预期而不能回滚成“未发生”，后续立即冻结派发。
 
-`result_digest` 对完整且通过结构校验的 WorkerResult 规范编码：UTF-8、key 字典序、无额外空白、非 ASCII 原字符、整数规范十进制；不接受浮点、重复键及非有限数。摘要为规范编码 SHA-256。实现与测试必须共享规范化规则；收件时重算并比较，不信任调用者声称的哈希。
+`result_digest` 对完整且通过结构校验的 WorkerResult 规范编码：UTF-8、key 字典序、无额外空白、非 ASCII 原字符、整数规范十进制；不接受浮点、重复键及非有限数。摘要为规范编码 SHA-256。实现与测试必须共享规范化规则；收件时重算并比较，不信任调用者声称的哈希。**[DA-13] 增补**：校验日志工件 `tasks/{task_id}/validation.json` 在拒绝原因与字段路径之外增记 `worker_result_received`（收到的 worker_result verbatim，DSR-018 可审计性：拒绝对照原始内容）。**[DA-09]** 跨单元连接器成边为词元级严格匹配（exact 或双 component 互证），双向子串匹配已退役。**[DA-07]** 自审工件位于 `skill-review/`（SKILL-REVIEW.md + portable.json），`report/` 仅保留纯审计报告集。
 
 ## 8. IFC-08 校验器与安全声明
 

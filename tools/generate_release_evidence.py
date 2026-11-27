@@ -1244,6 +1244,23 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--knowledge", default=str(KNOWLEDGE_DIR), help="knowledge dir")
     args = parser.parse_args(argv)
 
+    # Evidence-regression guard (RUN-LESSONS 2026-11-19 incident, recurred
+    # via --fast test runs on 2026-11-26): regenerating evidence WITHOUT a
+    # real orchestrator run degrades the committed summaries to unknown --
+    # a quality regression that must never silently overwrite the
+    # authoritative evidence directory. Skip mode must target a scratch
+    # directory explicitly; the default evidence dir refuses it.
+    if args.skip_tests and str(Path(args.out).resolve()) == str(Path(DEFAULT_OUT_DIR).resolve()):
+        import sys as _sys
+        _sys.stderr.write(
+            "[evidence-guard] refusing --skip-tests against the default "
+            "evidence directory: skipped runs degrade gateNN summaries to "
+            "unknown (quality regression). Use --out <scratch-dir> for "
+            "format experiments, or run the full suite without --skip-tests."
+            "\n"
+        )
+        return 2
+
     result = collect_evidence(
         Path(args.out),
         run_tests=not args.skip_tests,

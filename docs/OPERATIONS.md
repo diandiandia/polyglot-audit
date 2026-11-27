@@ -145,6 +145,8 @@ python3 -I skill/scripts/audit.py finalize --run-dir <输出目录> --format hum
 
 OS 级隔离未经验证时 `safety_acceptance.user_approved` 必须为 `true` 才能启动（SKILL.md §2）。
 
+**continuation 配置键（[DA-16]，可选）**：`packet_continuation_max_depth`（默认 8——溢出余量按估算字符预算装包后的环保护深度）与 `packet_continuation_budget_chars`（默认 13600，≈包容量 × 0.85——行宽取自冻结 manifest）。非法值回退安全默认。超长行内容（如压缩 JS）依赖此机制保证尾部全量续读而非深度帽截断。
+
 ## 5. 命令参考表（冻结接口，DSR-074）
 
 全部子命令输出统一 JSON 信封（默认，`--format json`）：成功 `{"schema_version":"1.0","ok":true,"value":{...}}`；失败 `{"schema_version":"1.0","ok":false,"error":{"code","message","retryable","details"}}`。`--format human` 输出紧凑人读文本（见 §4"输出格式"）；退出码与格式无关。诊断信息只写 stderr。
@@ -220,7 +222,7 @@ OS 级隔离未经验证时 `safety_acceptance.user_approved` 必须为 `true` �
 ## 8. 已知限制（需求规定的诚实降级与边界）
 
 1. **无 OS 级沙箱**：MCP/提示封装只是传输隔离；执行/网络/写入隔离未验证时需用户显式批准（GATE-01）。
-2. **无 token/费用硬预算声称**：并发任务实际花费不可预知，硬上限仅在预算维度可强制（任务数）时成立；其余为软预算（GATE-03）。
+2. **无 token/费用硬预算声称**：并发任务实际花费不可预知，硬上限仅在预算维度可强制（任务数）时成立；其余为软预算（GATE-03）。**[O-T03] 采集增补**：claude 宿主经 `--output-format json` 信封提取逐次 usage 遥测（事后审计维度可用性提升）；codex 宿主未实现（headless 不可实测，保持 unknown）。硬上限声称状态不变。
 3. **complete ≠ 安全**：`final_state: "complete"` 只表示流程与门禁完整，不证明无漏洞。
 4. **guide 不写盘**：guide 模式的回答不构成审计结论，也不产生证据。
 5. **目录名册是引导不是围栏**：语言卡片目录不构成完整漏洞类枚举。
