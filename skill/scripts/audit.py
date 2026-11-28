@@ -504,13 +504,27 @@ def _task_kind(conn, claim: dict) -> str:
 def _build_worker_prompt(claim: dict, run_dir: str) -> str:
     """Compose the headless worker prompt for one claim.
 
-    Carries only task metadata and the claim spec (unit ranges, output
-    contract). The claim token / lease credentials are deliberately excluded:
-    the prompt is passed as an argv argument to the host CLI and argv is not a
-    credential channel (DSR-074).
+    The published packet (tasks/{task_id}/packet.json prompt_text) IS the
+    worker input (SR-022 / SD §4.2): untrusted_code encapsulation, guard
+    summary, language index and the per-role output contract all travel in
+    it. External-review finding (P0-2): the driver previously hand-built a
+    minimal prompt telling workers to read the snapshot themselves -- the
+    packet isolation never reached headless workers and the coverage
+    bookkeeping claimed supply that never happened. The packet text is the
+    authoritative prompt; the legacy hand-built text is only a fallback for
+    claims whose packet was never published. The claim token / lease
+    credentials are deliberately excluded (DSR-074).
 
-    Requirements: SWR-006(任务提示) / DSR-074(凭证不走argv), DSR-059(包外供给)
+    Requirements: SWR-006(任务提示) / SR-022(包=输入), DSR-074(凭证不走argv)
     """
+    packet_path = Path(run_dir) / "tasks" / claim["task_id"] / "packet.json"
+    try:
+        packet = json.loads(packet_path.read_text(encoding="utf-8"))
+        text = packet.get("prompt_text")
+        if isinstance(text, str) and text.strip():
+            return text
+    except (OSError, json.JSONDecodeError, KeyError):
+        pass
     spec = claim.get("spec") if isinstance(claim.get("spec"), dict) else {}
     snapshot_id = spec.get("snapshot_id", "unknown")
     lines = [

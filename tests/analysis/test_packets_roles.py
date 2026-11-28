@@ -134,3 +134,14 @@ if __name__ == "__main__":
         self.assertIn("Asset Note", pkt_u["prompt_text"])
         self.assertIn("embedded credentials", pkt_u["prompt_text"])
         self.assertNotIn("Asset Note", pkt_k["prompt_text"])
+
+    def test_php_http_input_signal_matches_superglobals(self):
+        """P0-5 regression: the PHP src_http_input signal had unescaped $
+        (regex end-anchor), so $_GET/$_POST could never match."""
+        import re
+        from auditkit.inventory.signals import COMMON_SIGNALS
+        php = [t for t in COMMON_SIGNALS if t[0] == "src_http_input"]
+        assert php, "src_http_input signal missing"
+        pattern = php[0][3]
+        self.assertTrue(re.search(pattern, 'echo $_GET["input"];'), "$_GET must match")
+        self.assertTrue(re.search(pattern, '$_POST["x"]'), "$_POST must match")

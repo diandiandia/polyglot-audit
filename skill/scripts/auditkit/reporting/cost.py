@@ -272,6 +272,7 @@ class CostTracker:
             ),
         }
         out["six_ten_metrics"] = self._six_ten_metrics(out)
+        return out
 
     def _six_ten_metrics(self, out: Dict[str, Any]) -> Dict[str, Any]:
         """SYSTEM_DESIGN §6.10 metric table (M4: 可自动产出) -- honest

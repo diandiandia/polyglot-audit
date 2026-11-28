@@ -33,7 +33,7 @@ from auditkit.contracts.errors import InvalidInputError
 # Core common signal regexes per category
 COMMON_SIGNALS = [
     # Source signals
-    ("src_http_input", "source", 3, r"(request\.(form|args|json|body|data)|req\.(body|query|params)|http\.Request|r\.URL\.Query|getParameter|$_GET|$_POST)"),
+    ("src_http_input", "source", 3, r"(request\.(form|args|json|body|data)|req\.(body|query|params)|http\.Request|r\.URL\.Query|getParameter|\$_GET|\$_POST)"),
     ("src_cli_env", "source", 2, r"(os\.environ|process\.env|System\.getenv|os\.Getenv|\$argv|\$_SERVER|sys\.argv)"),
     ("src_file_read", "source", 1, r"(open\(|readFile|ioutil\.ReadFile|FileInputStream|File\.read)"),
 
