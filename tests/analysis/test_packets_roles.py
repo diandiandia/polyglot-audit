@@ -112,3 +112,25 @@ class TestReconPacket(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_unknown_language_packet_carries_generic_asset_guidance(self):
+        """O-07: a unit whose language is outside the catalog gets a generic
+        non-code asset guidance section (language-agnostic review strategy),
+        while catalog-covered units do not."""
+        from auditkit.analysis.packets import PacketBuilder
+        unit_unknown = {
+            "unit_id": "unit-example-u",
+            "language": "unknown",
+            "ranges": [{"path": "example-conf/app.conf", "line_start": 1, "line_end": 3}],
+        }
+        unit_known = dict(unit_unknown, language="python", unit_id="unit-example-k")
+        contents = {"example-conf/app.conf": "key=value\nother=1\n", "app.py": "x = 1\n"}
+        pkt_u, _, _ = PacketBuilder().build_packet(
+            "hunt", "snp-example", unit_unknown, contents
+        )
+        pkt_k, _, _ = PacketBuilder().build_packet(
+            "hunt", "snp-example", unit_known, contents
+        )
+        self.assertIn("Asset Note", pkt_u["prompt_text"])
+        self.assertIn("embedded credentials", pkt_u["prompt_text"])
+        self.assertNotIn("Asset Note", pkt_k["prompt_text"])

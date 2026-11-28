@@ -352,6 +352,23 @@ class PacketBuilder:
                     "## Applicable Base Language Index\n" + "\n".join(base_lines)
                 )
 
+        # O-07: a unit whose language is outside the knowledge catalog gets
+        # no language index -- but the review is still content-agnostic (the
+        # catalog guides, it does not fence). Supply a generic non-code
+        # asset guidance line so the worker has a strategy instead of an
+        # empty instruction block. Two real runs recorded 40-51% non-code
+        # assets whose content WAS supplied but with no review guidance.
+        if lang == "unknown":
+            sections.append(
+                "## Asset Note\n"
+                "This unit's type is outside the language catalog. Review it "
+                "as generic text content (configuration, template, "
+                "documentation, or script): embedded credentials or secrets, "
+                "insecure defaults, secrets leakage into generated output or "
+                "logs, injection vectors in templates (unescaped "
+                "interpolation), and exposure or permission settings."
+            )
+
         sections.append("## Target Code under Review")
 
         # -- range defense (RUN-LESSONS O-01 / L-06) -------------------------
